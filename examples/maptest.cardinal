@@ -1,0 +1,47 @@
+module maptest
+
+import io
+import fs
+import sys
+import strings
+
+func main () -> i32
+    # symbol-table-style str -> i32 map
+    let counts {str i32} = (map str i32)
+    set counts["foo"] = 1
+    set counts["bar"] = 2
+    set counts["foo"] = (+ counts["foo"] 10)     # update existing
+
+    do (io::println counts["foo"])               # 11
+    do (io::println (len counts))                # 2
+    do (io::println (map_has counts "bar"))      # true
+    do (io::println (map_has counts "zzz"))      # false
+
+    do (map_del counts "bar")
+    do (io::println (len counts))                # 1
+
+    # iterate keys
+    let total = 0i32
+    for k in (map_keys counts)
+        set total = (+ total counts[k])
+    end
+    do (io::println total)                        # 11
+
+    # file I/O round-trip (synchronous)
+    do (fs::write_file "/tmp/cardinal_io.txt" "hello from cardinal")
+    do (io::println (fs::read_file "/tmp/cardinal_io.txt"))   # hello from cardinal
+
+    # callback-based read
+    do (fs::read_file_cb "/tmp/cardinal_io.txt" print_it)
+
+    # program args
+    do (io::println (len (sys::args)))           # number of args passed
+    for a in (sys::args)
+        do (io::println a)
+    end
+    return 0i32
+end
+
+func print_it (contents str) -> unit
+    do (io::println (strings::concat "cb got: " contents))
+end

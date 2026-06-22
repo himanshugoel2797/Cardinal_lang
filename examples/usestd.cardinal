@@ -1,0 +1,23 @@
+module usestd
+
+import io
+import math
+import array (sum contains)
+
+func main () -> i32
+    do (io::println (math::abs (- 0 7)))     # 7
+    do (io::println (math::clamp 15 0 10))   # 10
+    do (io::println (math::pow 2 10))        # 1024
+
+    let xs [i32] = [3 1 4 1 5 9 2 6]
+    do (io::println (sum xs))                # 31  (selective import)
+    do (io::println (array::max xs))         # 9   (qualified)
+    if (contains xs 5)
+        do (io::println "has 5")
+    end
+
+    let buf [i32] = (array i32 4)
+    do (array::fill buf 7)
+    do (io::println buf)                      # [7 7 7 7]
+    return 0i32
+end

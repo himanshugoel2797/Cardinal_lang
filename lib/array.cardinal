@@ -1,0 +1,46 @@
+module array
+
+# Small helpers over [i32] arrays, using the `len` builtin + bounds-checked
+# indexing. (i32-specific until the language has generics.)
+
+export func sum (xs [i32]) -> i32
+    let total = 0i32
+    for x in xs
+        set total = (+ total x)
+    end
+    return total
+end
+
+export func contains (xs [i32]) (target i32) -> bool
+    for x in xs
+        if (== x target)
+            return true
+        end
+    end
+    return false
+end
+
+export func max (xs [i32]) -> i32
+    let n = (len xs)
+    if (== n 0u64)
+        do (panic "array::max of empty array")
+    end
+    let best = xs[0]
+    let i = 1u64
+    while (< i n)
+        if (> xs[i] best)
+            set best = xs[i]
+        end
+        set i = (+ i 1u64)
+    end
+    return best
+end
+
+export func fill (xs [i32]) (value i32) -> unit
+    let n = (len xs)
+    let i = 0u64
+    while (< i n)
+        set xs[i] = value
+        set i = (+ i 1u64)
+    end
+end

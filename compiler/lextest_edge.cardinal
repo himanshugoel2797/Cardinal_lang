@@ -1,0 +1,53 @@
+module lextest_edge
+
+import io
+import lexer
+
+func dump (label str) (src str) -> unit
+    do (io::println label)
+    let toks = (lexer::lex src)
+    for t in toks
+        do (io::println (lexer::describe t))
+    end
+    do (io::println "----")
+end
+
+func main () -> i32
+    # 1. empty string
+    do (dump "[empty]" "")
+
+    # 2. only whitespace, and only a comment line
+    do (dump "[ws]" "   \t  ")
+    do (dump "[comment]" "# just a comment")
+    do (dump "[ws_then_comment]" "   # trailing comment after spaces")
+
+    # 3. number followed by a dot that is NOT a digit; bare trailing dot; field access
+    do (dump "[dot_ident]" "1.foo")
+    do (dump "[dot_bare]" "1.")
+    do (dump "[field]" "x.y")
+
+    # 4. base prefixes with underscores
+    do (dump "[bases]" "0xDEAD_BEEF 0b1111_0000 0o755")
+
+    # 5. float forms
+    do (dump "[floats]" "3.14 6e10 2.5e-3 1.0f64 5f32")
+
+    # 6. adjacent punctuation and operators
+    do (dump "[adj1]" "a::b->c")
+    do (dump "[adj2]" "(((x)))")
+    do (dump "[adj3]" "a<=b>=c==d!=e")
+
+    # 7. string with all escapes
+    do (dump "[strescapes]" "\"tab\\there\\nnext\\\\slash\\\"quote\"")
+
+    # 8. char edge cases
+    do (dump "[chars]" "'\\0' '\\\\' '\\'' ' '")
+
+    # 9. nested brackets suppress newlines across lines; blank-line runs collapse
+    do (dump "[nested]" "a (b\nc\nd) e")
+    do (dump "[blanks]" "a\n\n\n\nb")
+
+    # 10. realistic multi-line snippet
+    do (dump "[snippet]" "func area (s Shape) -> f64\n    match s\n        case (Circle r)\n            return (* 3.14 (* r r))\n    end\nend")
+    return 0i32
+end

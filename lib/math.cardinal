@@ -1,0 +1,45 @@
+module math
+
+# Small integer-math helpers (i32). Generics are a future addition, so for now
+# these are i32-specific; widen by copy-paste or cast at the call site.
+
+export func abs (x i32) -> i32
+    if (< x 0)
+        return (- 0 x)
+    end
+    return x
+end
+
+export func min (a i32) (b i32) -> i32
+    if (< a b)
+        return a
+    end
+    return b
+end
+
+export func max (a i32) (b i32) -> i32
+    if (> a b)
+        return a
+    end
+    return b
+end
+
+export func clamp (x i32) (lo i32) (hi i32) -> i32
+    if (< x lo)
+        return lo
+    end
+    if (> x hi)
+        return hi
+    end
+    return x
+end
+
+export func pow (base i32) (exp i32) -> i32
+    let result = 1i32
+    let i = 0i32
+    while (< i exp)
+        set result = (* result base)
+        set i = (+ i 1)
+    end
+    return result
+end

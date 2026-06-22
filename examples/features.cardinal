@@ -1,0 +1,93 @@
+module features
+
+import io
+
+enum Color
+    Red
+    Green
+    Blue
+end
+
+struct Box
+    v i32
+end
+
+# recursion + literal-coercion via return type
+func fact (n i32) -> i32
+    if (<= n 1)
+        return 1
+    end
+    return (* n (fact (- n 1)))
+end
+
+# higher-order: function-typed parameter (no capture)
+func apply (f func(i32 -> i32)) (x i32) -> i32
+    return (f x)
+end
+
+func dbl (n i32) -> i32
+    return (* n 2)
+end
+
+# capture-by-reference closure: the returned closure shares `n`
+func make_counter () -> func(-> i32)
+    let n = 0i32
+    let inc = func () -> i32
+        set n = (+ n 1)
+        return n
+    end
+    return inc
+end
+
+func main () -> i32
+    # enums + equality
+    let c = Color::Green
+    if (== c Color::Green)
+        do (io::println "green!")
+    end
+
+    # recursion
+    do (io::println (fact 5))                  # 120
+
+    # higher-order call
+    do (io::println (apply dbl 21))            # 42
+
+    # closures sharing captured state
+    let next = (make_counter)
+    do (io::println (next))                    # 1
+    do (io::println (next))                    # 2
+    do (io::println (next))                    # 3
+
+    # value semantics: copying a struct is independent
+    let a = (Box v: 1)
+    let b = a
+    set b.v = 99
+    do (io::println a.v)                       # 1  (a unaffected)
+    do (io::println b.v)                       # 99
+
+    # half-open numeric for
+    let acc = 0i32
+    for i = 0 to 5
+        set acc = (+ acc i)
+    end
+    do (io::println acc)                       # 10  (0+1+2+3+4)
+
+    # loop + break
+    let k = 0i32
+    loop
+        set k = (+ k 1)
+        if (>= k 7)
+            break
+        end
+    end
+    do (io::println k)                         # 7
+
+    # bitwise + cast
+    do (io::println (shl 1u32 4u32))           # 16
+    do (io::println (as 300i32 u8))            # 44  (300 wrapped into u8)
+
+    # unchecked overflow = machine wrapping (no panic)
+    do (io::println (* 2000000000i32 2i32))    # -294967296
+
+    return 0i32
+end

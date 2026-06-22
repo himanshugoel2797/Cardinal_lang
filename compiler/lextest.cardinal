@@ -1,0 +1,31 @@
+module lextest
+
+import io
+import lexer
+
+func dump (label str) (src str) -> unit
+    do (io::println label)
+    let toks = (lexer::lex src)
+    for t in toks
+        do (io::println (lexer::describe t))
+    end
+    do (io::println "----")
+end
+
+func main () -> i32
+    # keywords, types, identifiers, punctuation, prefix arithmetic
+    do (dump "[decl]" "let x i32 = (+ a 1)")
+
+    # numbers: decimal, hex, binary, octal, underscores, suffixes, float, exponent
+    do (dump "[nums]" "42 0xFF 0b1010 0o17 1_000 7i32 3.14 1.5f32 6.02e23 10u8")
+
+    # strings and chars with escapes
+    do (dump "[lits]" "\"hi\\n\" 'a' '\\n' '\\''")
+
+    # newline as terminator; suppressed inside brackets
+    do (dump "[lines]" "a\nb (c\nd) e")
+
+    # multi-char operators and module path
+    do (dump "[ops]" "io::println a <= b == c -> d != e >= f")
+    return 0i32
+end

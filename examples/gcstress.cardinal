@@ -1,0 +1,26 @@
+module gcstress
+
+import io
+
+# each call allocates a box (for n) + an environment + a closure — all of which
+# become garbage once the returned closure is used and dropped.
+func make () -> func(-> i32)
+    let n = 0i32
+    let f = func () -> i32
+        set n = (+ n 1)
+        return n
+    end
+    return f
+end
+
+func main () -> i32
+    let total = 0i32
+    for i = 0 to 200000
+        let c = (make)              # fresh box + env + closure (previous ones = garbage)
+        let arr [i32] = (array i32 8)   # plus a fresh array each iteration
+        set arr[0] = (c)
+        set total = (+ total arr[0])
+    end
+    do (io::println total)          # 200000  (each closure returns 1)
+    return 0i32
+end

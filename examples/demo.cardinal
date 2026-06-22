@@ -1,0 +1,34 @@
+module demo
+
+import io
+
+struct Point
+    x i32
+    y i32
+end
+
+export func dist2 (a Point) (b Point) -> i32
+    let dx = (- a.x b.x)
+    let dy = (- a.y b.y)
+    return (+ (* dx dx) (* dy dy))
+end
+
+func main () -> i32
+    let p = (Point x: 0 y: 0)
+    let q = (Point x: 3 y: 4)
+    let d = (dist2 p q)
+
+    let xs [i32] = [10 20 30 40]
+    let sum = 0i32
+    for x in xs
+        set sum = (+ sum x)
+    end
+
+    if (> d sum)
+        do (io::println "d wins")
+    else
+        do (io::println "sum wins")
+    end
+
+    return 0i32
+end

@@ -1,0 +1,530 @@
+module lexer
+
+# The Cardinal lexer, written in Cardinal.
+#
+# Ported from the reference implementation in bootstrap/interpreter.py (`lex`).
+# Produces a vector of tokens; newlines act as statement terminators and are
+# suppressed inside (), [] and {} (continuation lines). Mirrors the reference
+# rules for comments, string/char literals, numbers (with base prefixes,
+# underscores, float exponents and type suffixes), identifiers/keywords/types,
+# and multi- vs single-char punctuation.
+
+import io
+import strings
+import convert
+
+# --------------------------------------------------------------------------- #
+# Token representation
+# --------------------------------------------------------------------------- #
+
+export type TokKind
+    KInt    (value i64) (suffix str)    # suffix "" when absent
+    KFloat  (text str)  (suffix str)    # mantissa text kept verbatim
+    KChar   (cp u32)
+    KStr    (value str)
+    KIdent  (name str)
+    KKw     (name str)
+    KType   (name str)
+    KPunct  (text str)
+    KNewline
+    KEof
+end
+
+export struct Tok
+    kind TokKind
+    line i32
+end
+
+# internal: result of scanning a numeric literal
+struct NumRes
+    tok  TokKind
+    next u64
+end
+
+# --------------------------------------------------------------------------- #
+# Character classification
+# --------------------------------------------------------------------------- #
+
+func is_digit (c char) -> bool
+    return (and (>= c '0') (<= c '9'))
+end
+
+func is_letter (c char) -> bool
+    return (or (and (>= c 'a') (<= c 'z')) (and (>= c 'A') (<= c 'Z')))
+end
+
+func is_ident_start (c char) -> bool
+    return (or (is_letter c) (== c '_'))
+end
+
+func is_ident_cont (c char) -> bool
+    return (or (is_ident_start c) (is_digit c))
+end
+
+func is_hex (c char) -> bool
+    return (or (is_digit c) (or (and (>= c 'a') (<= c 'f')) (and (>= c 'A') (<= c 'F'))))
+end
+
+func is_space (c char) -> bool
+    return (or (== c ' ') (or (== c '\t') (== c '\r')))
+end
+
+func char_in (c char) (s str) -> bool
+    let cs = (strings::chars s)
+    let n = (len cs)
+    let i = 0u64
+    while (< i n)
+        if (== cs[i] c)
+            return true
+        end
+        set i = (+ i 1)
+    end
+    return false
+end
+
+func is_punct_char (c char) -> bool
+    return (char_in c "()[]{}:.=+-*/%<>")
+end
+
+# --------------------------------------------------------------------------- #
+# Numeric helpers
+# --------------------------------------------------------------------------- #
+
+func digit_val (c char) -> i64
+    if (is_digit c)
+        return (as (- (convert::ord c) (convert::ord '0')) i64)
+    end
+    if (and (>= c 'a') (<= c 'f'))
+        return (+ 10 (as (- (convert::ord c) (convert::ord 'a')) i64))
+    end
+    if (and (>= c 'A') (<= c 'F'))
+        return (+ 10 (as (- (convert::ord c) (convert::ord 'A')) i64))
+    end
+    return (- 1)
+end
+
+func is_int_suffix (s str) -> bool
+    return (or (strings::eq s "i8")  (or (strings::eq s "i16") (or (strings::eq s "i32")
+           (or (strings::eq s "i64") (or (strings::eq s "u8")  (or (strings::eq s "u16")
+           (or (strings::eq s "u32") (strings::eq s "u64"))))))))
+end
+
+func is_float_suffix (s str) -> bool
+    return (or (strings::eq s "f32") (strings::eq s "f64"))
+end
+
+# --------------------------------------------------------------------------- #
+# Keyword / builtin-type sets
+# --------------------------------------------------------------------------- #
+
+func build_keywords () -> {str bool}
+    let m {str bool} = (map str bool)
+    set m["module"] = true
+    set m["import"] = true
+    set m["export"] = true
+    set m["func"] = true
+    set m["struct"] = true
+    set m["packed"] = true
+    set m["enum"] = true
+    set m["end"] = true
+    set m["type"] = true
+    set m["match"] = true
+    set m["case"] = true
+    set m["let"] = true
+    set m["const"] = true
+    set m["set"] = true
+    set m["do"] = true
+    set m["if"] = true
+    set m["elsif"] = true
+    set m["else"] = true
+    set m["while"] = true
+    set m["for"] = true
+    set m["to"] = true
+    set m["step"] = true
+    set m["in"] = true
+    set m["loop"] = true
+    set m["break"] = true
+    set m["continue"] = true
+    set m["return"] = true
+    set m["checked"] = true
+    set m["pass"] = true
+    set m["and"] = true
+    set m["or"] = true
+    set m["not"] = true
+    set m["as"] = true
+    set m["true"] = true
+    set m["false"] = true
+    set m["null"] = true
+    set m["band"] = true
+    set m["bor"] = true
+    set m["bxor"] = true
+    set m["bnot"] = true
+    set m["shl"] = true
+    set m["shr"] = true
+    return m
+end
+
+func build_types () -> {str bool}
+    let m {str bool} = (map str bool)
+    set m["i8"] = true
+    set m["i16"] = true
+    set m["i32"] = true
+    set m["i64"] = true
+    set m["u8"] = true
+    set m["u16"] = true
+    set m["u32"] = true
+    set m["u64"] = true
+    set m["f32"] = true
+    set m["f64"] = true
+    set m["bool"] = true
+    set m["char"] = true
+    set m["str"] = true
+    set m["handle"] = true
+    set m["unit"] = true
+    return m
+end
+
+# --------------------------------------------------------------------------- #
+# Escapes
+# --------------------------------------------------------------------------- #
+
+func escape_char (c char) -> char
+    if (== c 'n')
+        return '\n'
+    end
+    if (== c 't')
+        return '\t'
+    end
+    if (== c 'r')
+        return '\r'
+    end
+    if (== c '\\')
+        return '\\'
+    end
+    if (== c '\'')
+        return '\''
+    end
+    if (== c '"')
+        return '"'
+    end
+    if (== c '0')
+        return (convert::chr 0u32)
+    end
+    do (panic "bad escape sequence")
+    return c
+end
+
+# --------------------------------------------------------------------------- #
+# Number scanner
+# --------------------------------------------------------------------------- #
+
+func scan_number (src str) (cs [char]) (start u64) (n u64) -> NumRes
+    let i = start
+    let base = 10i64
+
+    # base prefix: 0x / 0b / 0o
+    if (and (== cs[i] '0') (< (+ i 1) n))
+        let c1 = cs[(+ i 1)]
+        if (or (== c1 'x') (== c1 'X'))
+            set base = 16
+            set i = (+ i 2)
+        elsif (or (== c1 'b') (== c1 'B'))
+            set base = 2
+            set i = (+ i 2)
+        elsif (or (== c1 'o') (== c1 'O'))
+            set base = 8
+            set i = (+ i 2)
+        else
+            pass
+        end
+    end
+
+    let value = 0i64
+    let is_float = false
+    let ftext = ""
+
+    # mantissa: digits, underscores, and (decimal only) a fractional point
+    let scanning = true
+    while (and scanning (< i n))
+        let ch = cs[i]
+        if (== ch '_')
+            set i = (+ i 1)
+        elsif (and (== base 16) (is_hex ch))
+            set value = (+ (* value 16) (digit_val ch))
+            set i = (+ i 1)
+        elsif (and (not (== base 16)) (is_digit ch))
+            set value = (+ (* value base) (digit_val ch))
+            set ftext = (strings::concat ftext (strings::from_char ch))
+            set i = (+ i 1)
+        elsif (and (and (== base 10) (== ch '.')) (and (< (+ i 1) n) (is_digit cs[(+ i 1)])))
+            set is_float = true
+            set ftext = (strings::concat ftext ".")
+            set i = (+ i 1)
+        else
+            set scanning = false
+        end
+    end
+
+    # exponent (decimal only)
+    if (and (== base 10) (and (< i n) (or (== cs[i] 'e') (== cs[i] 'E'))))
+        set is_float = true
+        set ftext = (strings::concat ftext "e")
+        set i = (+ i 1)
+        if (and (< i n) (or (== cs[i] '+') (== cs[i] '-')))
+            set ftext = (strings::concat ftext (strings::from_char cs[i]))
+            set i = (+ i 1)
+        end
+        while (and (< i n) (or (is_digit cs[i]) (== cs[i] '_')))
+            if (not (== cs[i] '_'))
+                set ftext = (strings::concat ftext (strings::from_char cs[i]))
+            end
+            set i = (+ i 1)
+        end
+    end
+
+    # optional type suffix (starts with a letter)
+    let suffix = ""
+    if (and (< i n) (is_letter cs[i]))
+        let sstart = i
+        # suffix continues over letters/digits only (not '_'), matching the
+        # reference's isalnum() scan so e.g. `1u8_x` lexes as int + `_x`.
+        while (and (< i n) (or (is_letter cs[i]) (is_digit cs[i])))
+            set i = (+ i 1)
+        end
+        set suffix = (strings::substr src sstart (- i sstart))
+        if (not (or (is_int_suffix suffix) (is_float_suffix suffix)))
+            do (panic (strings::concat "bad numeric suffix: " suffix))
+        end
+    end
+
+    let fl = is_float
+    if (is_float_suffix suffix)
+        set fl = true
+    end
+    if fl
+        if (is_int_suffix suffix)
+            do (panic "float literal with integer suffix")
+        end
+        return (NumRes tok: (KFloat text: ftext suffix: suffix) next: i)
+    end
+    return (NumRes tok: (KInt value: value suffix: suffix) next: i)
+end
+
+# --------------------------------------------------------------------------- #
+# Are we at the start of a logical line? True at the very start of input (empty
+# token list) and immediately after a newline token. Mirrors the reference
+# guard `toks and toks[-1].kind != "newline"`: an emitted newline is suppressed
+# in both cases, so leading/empty input never produces a spurious newline.
+# --------------------------------------------------------------------------- #
+
+func at_line_start (toks {Tok}) -> bool
+    if (== (len toks) 0u64)
+        return true
+    end
+    let last = toks[(- (len toks) 1)]
+    match last.kind
+        case (KInt v s)
+            return false
+        case (KFloat t s)
+            return false
+        case (KChar cp)
+            return false
+        case (KStr v)
+            return false
+        case (KIdent nm)
+            return false
+        case (KKw nm)
+            return false
+        case (KType nm)
+            return false
+        case (KPunct t)
+            return false
+        case KNewline
+            return true
+        case KEof
+            return false
+    end
+    return false
+end
+
+# --------------------------------------------------------------------------- #
+# Main entry point
+# --------------------------------------------------------------------------- #
+
+export func lex (src str) -> {Tok}
+    let cs = (strings::chars src)
+    let n = (len cs)
+    let toks {Tok} = (vec Tok)
+    let kws = (build_keywords)
+    let types = (build_types)
+
+    let i = 0u64
+    let line = 1i32
+    let depth = 0i64
+
+    while (< i n)
+        let c = cs[i]
+
+        if (is_space c)
+            set i = (+ i 1)
+
+        elsif (== c '#')
+            # comment to end of line
+            while (and (< i n) (not (== cs[i] '\n')))
+                set i = (+ i 1)
+            end
+
+        elsif (== c '\n')
+            if (== depth 0)
+                if (not (at_line_start toks))
+                    do (push toks (Tok kind: KNewline line: line))
+                end
+            end
+            set line = (+ line 1)
+            set i = (+ i 1)
+
+        elsif (== c '"')
+            # string literal
+            set i = (+ i 1)
+            let buf = ""
+            let closed = false
+            while (and (< i n) (not closed))
+                let ch = cs[i]
+                if (== ch '"')
+                    set closed = true
+                    set i = (+ i 1)
+                elsif (== ch '\\')
+                    set i = (+ i 1)
+                    if (>= i n)
+                        do (panic "unterminated string escape")
+                    end
+                    set buf = (strings::concat buf (strings::from_char (escape_char cs[i])))
+                    set i = (+ i 1)
+                elsif (== ch '\n')
+                    do (panic "newline in string literal")
+                else
+                    set buf = (strings::concat buf (strings::from_char ch))
+                    set i = (+ i 1)
+                end
+            end
+            if (not closed)
+                do (panic "unterminated string literal")
+            end
+            do (push toks (Tok kind: (KStr value: buf) line: line))
+
+        elsif (== c '\'')
+            # char literal
+            set i = (+ i 1)
+            if (>= i n)
+                do (panic "unterminated char literal")
+            end
+            let cp = 0u32
+            if (== cs[i] '\\')
+                set i = (+ i 1)
+                if (>= i n)
+                    do (panic "unterminated char literal")
+                end
+                set cp = (convert::ord (escape_char cs[i]))
+                set i = (+ i 1)
+            else
+                set cp = (convert::ord cs[i])
+                set i = (+ i 1)
+            end
+            if (or (>= i n) (not (== cs[i] '\'')))
+                do (panic "unterminated char literal")
+            end
+            set i = (+ i 1)
+            do (push toks (Tok kind: (KChar cp: cp) line: line))
+
+        elsif (is_digit c)
+            let r = (scan_number src cs i n)
+            do (push toks (Tok kind: r.tok line: line))
+            set i = r.next
+
+        elsif (is_ident_start c)
+            let start = i
+            while (and (< i n) (is_ident_cont cs[i]))
+                set i = (+ i 1)
+            end
+            let word = (strings::substr src start (- i start))
+            if (map_has kws word)
+                do (push toks (Tok kind: (KKw name: word) line: line))
+            elsif (map_has types word)
+                do (push toks (Tok kind: (KType name: word) line: line))
+            else
+                do (push toks (Tok kind: (KIdent name: word) line: line))
+            end
+
+        else
+            # punctuation: try a two-char operator first
+            let two = ""
+            if (< (+ i 1) n)
+                set two = (strings::substr src i 2)
+            end
+            if (or (strings::eq two "::") (or (strings::eq two "->")
+               (or (strings::eq two "<=") (or (strings::eq two ">=")
+               (or (strings::eq two "==") (strings::eq two "!="))))))
+                do (push toks (Tok kind: (KPunct text: two) line: line))
+                set i = (+ i 2)
+            else
+                if (or (== c '(') (or (== c '[') (== c '{')))
+                    set depth = (+ depth 1)
+                elsif (or (== c ')') (or (== c ']') (== c '}')))
+                    if (> depth 0)
+                        set depth = (- depth 1)
+                    end
+                else
+                    if (not (is_punct_char c))
+                        do (panic (strings::concat "unexpected character: " (strings::from_char c)))
+                    end
+                end
+                do (push toks (Tok kind: (KPunct text: (strings::from_char c)) line: line))
+                set i = (+ i 1)
+            end
+        end
+    end
+
+    if (not (at_line_start toks))
+        do (push toks (Tok kind: KNewline line: line))
+    end
+    do (push toks (Tok kind: KEof line: line))
+    return toks
+end
+
+# --------------------------------------------------------------------------- #
+# Debug rendering
+# --------------------------------------------------------------------------- #
+
+func with_suffix (base str) (suf str) -> str
+    if (strings::eq suf "")
+        return base
+    end
+    return (strings::concat base (strings::concat ":" suf))
+end
+
+export func describe (t Tok) -> str
+    let k = t.kind
+    match k
+        case (KInt v s)
+            return (strings::concat "int:" (with_suffix (convert::int_to_str v) s))
+        case (KFloat x s)
+            return (strings::concat "float:" (with_suffix x s))
+        case (KChar cp)
+            return (strings::concat "char:" (convert::int_to_str (as cp i64)))
+        case (KStr v)
+            return (strings::concat "str:" v)
+        case (KIdent nm)
+            return (strings::concat "ident:" nm)
+        case (KKw nm)
+            return (strings::concat "kw:" nm)
+        case (KType nm)
+            return (strings::concat "type:" nm)
+        case (KPunct x)
+            return (strings::concat "punct:" x)
+        case KNewline
+            return "newline"
+        case KEof
+            return "eof"
+    end
+    return "?"
+end

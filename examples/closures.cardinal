@@ -1,0 +1,48 @@
+module closures
+
+import io
+
+# capture a parameter, return the closure (escapes its defining frame)
+func adder (n i32) -> func(i32 -> i32)
+    let f = func (x i32) -> i32
+        return (+ x n)
+    end
+    return f
+end
+
+# two closures sharing ONE captured cell (by-reference)
+func pair () -> i32
+    let count = 0i32
+    let inc = func () -> i32
+        set count = (+ count 1)
+        return count
+    end
+    let get = func () -> i32
+        return count
+    end
+    do (io::println (inc))     # 1
+    do (io::println (inc))     # 2
+    do (io::println (get))     # 2  -- sees inc's mutations
+    return count               # 2
+end
+
+# multi-level capture: inner captures `a` (2 levels up) and `b` (1 level up)
+func outer (a i32) -> i32
+    let mk = func (b i32) -> func(-> i32)
+        let inner = func () -> i32
+            return (+ a b)
+        end
+        return inner
+    end
+    let g = (mk 10)
+    return (g)
+end
+
+func main () -> i32
+    let add5 = (adder 5)
+    do (io::println (add5 10))     # 15
+    do (io::println (add5 100))    # 105
+    do (io::println (pair))        # 1, 2, 2, then returns 2
+    do (io::println (outer 7))     # 17
+    return 0i32
+end

@@ -1,0 +1,55 @@
+module cdemo
+
+import io
+import math
+import array (sum)
+
+enum Dir
+    North
+    East
+end
+
+struct Vec
+    x i32
+    y i32
+end
+
+func fact (n i32) -> i32
+    if (<= n 1)
+        return 1
+    end
+    return (* n (fact (- n 1)))
+end
+
+func main () -> i32
+    do (io::println (fact 6))                  # 720
+    do (io::println (math::clamp 50 0 10))     # 10
+
+    let v = (Vec x: 3 y: 4)
+    do (io::println (+ (* v.x v.x) (* v.y v.y)))   # 25
+
+    let xs [i32] = [5 10 15 20]
+    do (io::println (sum xs))                  # 50
+
+    let acc = 0i32
+    for i = 0 to 5
+        set acc = (+ acc i)
+    end
+    do (io::println acc)                        # 10
+
+    let k = 0i32
+    while (< k 3)
+        set k = (+ k 1)
+    end
+    do (io::println k)                          # 3
+
+    let d = Dir::East
+    if (== d Dir::East)
+        do (io::println "east")
+    end
+
+    do (io::println (shl 1u32 5u32))           # 32
+    do (io::println (as 300i32 u8))            # 44
+    do (io::println (* 2000000000i32 2i32))    # -294967296
+    return 0i32
+end

@@ -1,0 +1,38 @@
+module vectest
+
+import io
+import strings
+
+# build a vector by pushing, then read it back
+func main () -> i32
+    let xs {i32} = (vec i32)        # empty growable vector
+    let i = 0i32
+    while (< i 5)
+        do (push xs (* i i))         # 0 1 4 9 16
+        set i = (+ i 1)
+    end
+    do (io::println (len xs))        # 5
+    do (io::println xs[3])           # 9
+    do (io::println xs)              # {0 1 4 9 16}
+
+    set xs[0] = 100
+    do (io::println (pop xs))        # 16
+    do (io::println (len xs))        # 4
+
+    # vector literal + iteration sum
+    let ys {i32} = {10 20 30}
+    let total = 0i32
+    for y in ys
+        set total = (+ total y)
+    end
+    do (io::println total)           # 60
+
+    # a vector of strings (element type is a reference type)
+    let words {str} = (vec str)
+    do (push words "hello")
+    do (push words "world")
+    for w in words
+        do (io::println w)
+    end
+    return 0i32
+end

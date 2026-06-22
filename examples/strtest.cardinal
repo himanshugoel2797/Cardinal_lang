@@ -1,0 +1,43 @@
+module strtest
+
+import io
+import strings
+import convert
+
+func is_digit (c char) -> bool
+    return (and (>= c '0') (<= c '9'))
+end
+
+# parse a run of digits starting at index i into an integer; lexer-style
+func main () -> i32
+    let src = "value = 1234"
+    let cs = (strings::chars src)
+    do (io::println (len cs))                   # 12
+
+    # count digits
+    let digits = 0i32
+    for c in cs
+        if (is_digit c)
+            set digits = (+ digits 1)
+        else
+            pass
+        end
+    end
+    do (io::println digits)                      # 4
+
+    # accumulate the numeric value of the trailing digits
+    let n = 0i32
+    for c in cs
+        if (is_digit c)
+            let d = (as (- (convert::ord c) (convert::ord '0')) i32)
+            set n = (+ (* n 10) d)
+        end
+    end
+    do (io::println n)                           # 1234
+
+    do (io::println (strings::concat "hello, " "world"))   # hello, world
+    do (io::println (convert::ord 'A'))                    # 65
+    do (io::println (convert::int_to_str 42))              # 42
+    do (io::println (convert::str_to_int "100"))           # 100
+    return 0i32
+end
