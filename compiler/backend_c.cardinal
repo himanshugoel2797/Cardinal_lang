@@ -46,6 +46,22 @@ func cint (name str) -> str
     return "int32_t"
 end
 
+# Mangle a (qualified) struct type name to its C typedef name:
+# "mod::Bare" -> "cl_struct_mod__Bare"; a bare "Bare" -> "cl_struct_Bare".
+func struct_cname (qn str) -> str
+    let cs = (strings::chars qn)
+    let i = 0u64
+    while (< i (len cs))
+        if (and (== cs[i] ':') (and (< (+ i 1u64) (len cs)) (== cs[(+ i 1u64)] ':')))
+            let m = (strings::substr qn 0u64 i)
+            let b = (strings::substr qn (+ i 2u64) (- (len cs) (+ i 2u64)))
+            return (strings::concat "cl_struct_" (strings::concat m (strings::concat "__" b)))
+        end
+        set i = (+ i 1u64)
+    end
+    return (strings::concat "cl_struct_" qn)
+end
+
 func ctype_t (t Type) -> str
     match t
         case (TInt n)
@@ -70,7 +86,7 @@ func ctype_t (t Type) -> str
             end
             return "void*"
         case (TStruct n)
-            return (strings::concat "cl_struct_" n)
+            return (struct_cname n)
         case (TEnum n)
             return "int32_t"
         case (TArray e)
@@ -462,7 +478,7 @@ func emit_instr (ins Instr) (nroots i64) -> {str}
                 set inits = (strings::concat inits (strings::concat "." (strings::concat fnames[i] (strings::concat "=" (val fvals[i])))))
                 set i = (+ i 1)
             end
-            return (line1 (strings::concat (val dst) (strings::concat " = (cl_struct_" (strings::concat struct_name (strings::concat "){" (strings::concat inits "};"))))))
+            return (line1 (strings::concat (val dst) (strings::concat " = (" (strings::concat (struct_cname struct_name) (strings::concat "){" (strings::concat inits "};"))))))
         case (IArrNew dst elem count)
             let p {str} = (vec str)
             do (push p (val dst))
@@ -765,7 +781,7 @@ func emit_struct (s IRStruct) -> str
         set out = (strings::concat out (strings::concat "    " (strings::concat (ctype s.fields[i].ty) (strings::concat " " (strings::concat s.fields[i].name ";\n")))))
         set i = (+ i 1)
     end
-    return (strings::concat out (strings::concat "} cl_struct_" (strings::concat s.name ";\n\n")))
+    return (strings::concat out (strings::concat "} " (strings::concat (struct_cname s.name) ";\n\n")))
 end
 
 export func emit (m IRModule) -> str

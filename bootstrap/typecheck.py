@@ -272,7 +272,7 @@ class Checker:
                     table[vname] = rfields
                     if vname in sig.variants:
                         self.err(f"duplicate variant name {vname!r}")
-                    sig.variants[vname] = (d.name, rfields)
+                    sig.variants[vname] = (self._make_qual(sig.name, d.name), rfields)
                 sig.sums[d.name] = table
 
         # function signatures and consts
@@ -288,6 +288,51 @@ class Checker:
                 if d.exported: sig.exports.add(d.name)
         return sig
 
+    # ---- module-local type identity (qualified "mod::bare" name string) ---- #
+    @staticmethod
+    def _make_qual(m, n):
+        return f"{m}::{n}"
+
+    @staticmethod
+    def _split_qual(s):
+        i = s.find("::")
+        if i < 0:
+            return "", s
+        return s[:i], s[i + 2:]
+
+    def _defining_module(self, n, sig):
+        # bare type name n -> defining module: local-first, else unique import,
+        # else ambiguity error; "" if undeclared.
+        if n in sig.structs or n in sig.enums or n in sig.sums:
+            return sig.name
+        found = []
+        for mod in sig.imported.values():
+            if (n in mod.structs or n in mod.enums or n in mod.sums) \
+                    and mod.name not in found:
+                found.append(mod.name)
+        if len(found) >= 2:
+            self.err(f"ambiguous type name {n}; qualify it (e.g. {found[0]}::{n})")
+            return found[0]
+        if len(found) == 1:
+            return found[0]
+        return ""
+
+    def _resolve_user_type(self, modpart, n, sig):
+        dm = modpart or self._defining_module(n, sig)
+        if not dm:
+            self.err(f"unknown type {n!r}")
+            return UNIT
+        osig = self.sigs.get(dm)
+        if osig is None:
+            self.err(f"unknown module {dm} in type")
+            return UNIT
+        qn = self._make_qual(dm, n)
+        if n in osig.structs: return StructT(qn)
+        if n in osig.enums: return EnumT(qn)
+        if n in osig.sums: return SumT(qn)
+        self.err(f"unknown type {qn!r}")
+        return UNIT
+
     # ---- type resolution ---- #
     def resolve(self, node, sig):
         if node is None:
@@ -297,15 +342,7 @@ class Checker:
             if n in INT_TYPES: return IntT(n)
             if n in FLOAT_TYPES: return FloatT(n)
             if n in ("bool", "char", "str", "unit", "handle"): return PrimT(n)
-            if n in sig.structs: return StructT(n)
-            if n in sig.enums: return EnumT(n)
-            if n in sig.sums: return SumT(n)
-            for mod in sig.imported.values():
-                if n in mod.structs: return StructT(n)
-                if n in mod.enums: return EnumT(n)
-                if n in mod.sums: return SumT(n)
-            self.err(f"unknown type {n!r}")
-            return UNIT
+            return self._resolve_user_type("", n, sig)
         if isinstance(node, TyArray):
             return ArrayT(self.resolve(node.elem, sig))
         if isinstance(node, TyVec):
@@ -541,13 +578,13 @@ class Checker:
         if len(parts) == 2 and parts[0] in sig.enums:
             if parts[1] not in sig.enums[parts[0]]:
                 self.err(f"no variant {parts[1]} in enum {parts[0]}", e)
-            return EnumT(parts[0])
+            return EnumT(self._make_qual(sig.name, parts[0]))
         # imported enum
         for mod in sig.imported.values():
             if len(parts) == 2 and parts[0] in mod.enums:
                 if parts[1] not in mod.enums[parts[0]]:
                     self.err(f"no variant {parts[1]} in enum {parts[0]}", e)
-                return EnumT(parts[0])
+                return EnumT(self._make_qual(mod.name, parts[0]))
         mod = sig.imported.get(parts[0]) or self.sigs.get(parts[0])
         if mod is not None and len(parts) == 2:
             if mod.exports and parts[1] not in mod.exports:
@@ -686,7 +723,7 @@ class Checker:
         for fname in fields:
             if fname not in given:
                 self.err(f"missing field {fname!r} in {name}", e)
-        return StructT(name)
+        return StructT(self._make_qual(self._defining_module(name, sig), name))
 
     def check_array_lit(self, e, scope, sig, expected):
         elem = expected.elem if isinstance(expected, ArrayT) else None
@@ -757,6 +794,12 @@ class Checker:
         return None
 
     def sum_table(self, name, sig):
+        if "::" in name:
+            m, b = self._split_qual(name)
+            osig = self.sigs.get(m)
+            if osig and b in osig.sums and osig.sums[b]:
+                return osig.sums[b]
+            return None
         if name in sig.sums and sig.sums[name]:
             return sig.sums[name]
         for mod in sig.imported.values():
@@ -802,6 +845,12 @@ class Checker:
         return fields[field]
 
     def struct_fields(self, name, sig):
+        if "::" in name:
+            m, b = self._split_qual(name)
+            osig = self.sigs.get(m)
+            if osig and b in osig.structs and osig.structs[b] is not None:
+                return osig.structs[b]
+            return None
         if name in sig.structs and sig.structs[name] is not None:
             return sig.structs[name]
         for mod in sig.imported.values():

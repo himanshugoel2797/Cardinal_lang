@@ -51,6 +51,20 @@ func irt (t Type) -> IRType
     return (TyOf t: t)
 end
 
+func qual (m str) (n str) -> str
+    return (strings::concat m (strings::concat "::" n))
+end
+
+func t_struct_name (t Type) -> str
+    match t
+        case (TStruct n)
+            return n
+        else
+            return ""
+    end
+    return ""
+end
+
 func unit_ty () -> Type
     return (TPrim name: "unit")
 end
@@ -394,7 +408,7 @@ func lower_expr (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (expected Ty
             do (ir::emit lx.b (IArrGet dst: dst arr: arr idx: idx ty: (irt elem)))
             return dst
         case (EStruct typ fields)
-            return (lower_struct_lit lx vs ts typ fields)
+            return (lower_struct_lit lx vs ts e fields)
         case (EArr elems)
             return (lower_array_lit lx vs ts e elems expected)
         case (EArrNew elem count)
@@ -640,12 +654,16 @@ func find_and_lower (lx LX) (vs {str IVal}) (ts {str Binding}) (fields {Field}) 
     return ImmUnit
 end
 
-func lower_struct_lit (lx LX) (vs {str IVal}) (ts {str Binding}) (typ Expr) (fields {Field}) -> IVal
-    let name = (head_name typ)
-    let sl = (checker::struct_fields lx.ctx name)
-    if (not sl.found)
-        # A sum-variant construction literal — sum types are stage 4.
+func lower_struct_lit (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (fields {Field}) -> IVal
+    let st = (checker::check_expr lx.ctx e ts TNone)
+    if (not (t_is_struct st))
+        # head resolved to a sum variant, not a struct — sum types are stage 4.
         do (panic "lower: sum variant literal (stage 4)")
+    end
+    let qn = (t_struct_name st)
+    let sl = (checker::struct_fields lx.ctx qn)
+    if (not sl.found)
+        do (panic (strings::concat "lower: unknown struct " qn))
     end
     let defs = sl.fields
     let fnames {str} = (vec str)
@@ -657,8 +675,8 @@ func lower_struct_lit (lx LX) (vs {str IVal}) (ts {str Binding}) (typ Expr) (fie
         do (push fvals v)
         set i = (+ i 1)
     end
-    let dst = (ir::fresh_temp lx.b (irt (TStruct name: name)))
-    do (ir::emit lx.b (IStructNew dst: dst struct_name: name fnames: fnames fvals: fvals))
+    let dst = (ir::fresh_temp lx.b (irt st))
+    do (ir::emit lx.b (IStructNew dst: dst struct_name: qn fnames: fnames fvals: fvals))
     return dst
 end
 
@@ -1061,10 +1079,9 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
     let lx = (LX ctx: ctx irm: m b: (ir::new_builder "__init" (vec IRParam) (irt (unit_ty))) chk: chk brk: (vec str) cont: (vec str) uq: uq callmap: (map str str) ret: (unit_ty))
     let names = (sorted_sig_names ctx.sigs)
     # Pass 1: collect value-struct typedefs (sorted module order = deterministic).
-    # Struct names must be globally unique — the C backend mangles them as
-    # cl_struct_<name> with no module prefix, consistent with the checker's bare
-    # type-name resolution (module-qualified type names are unsupported).
-    let seen {str bool} = (map str bool)
+    # Struct identity is module-qualified ("mod::Name"); the C backend mangles it
+    # to cl_struct_<mod>__<Name>, so same-named structs in different modules do
+    # not collide (DESIGN §10 module-local types).
     let si = 0u64
     while (< si (len names))
         let ssig = ctx.sigs[names[si]]
@@ -1073,15 +1090,11 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
             for d in ssig.decls
                 match d
                     case (DStruct sname sfields is_packed exported)
-                        if (map_has seen sname)
-                            do (panic (strings::concat "lower: C backend needs globally-unique struct names; duplicated: " sname))
-                        end
-                        set seen[sname] = true
                         let irfields {IRParam} = (vec IRParam)
                         for pf in sfields
                             do (push irfields (IRParam name: pf.name ty: (irt (checker::resolve lx.ctx pf.ty))))
                         end
-                        do (push lx.irm.structs (IRStruct name: sname fields: irfields))
+                        do (push lx.irm.structs (IRStruct name: (qual ssig.name sname) fields: irfields))
                     else
                         pass
                 end

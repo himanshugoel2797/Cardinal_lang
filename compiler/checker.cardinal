@@ -456,6 +456,31 @@ func str_in_vec (s str) (v {str}) -> bool
     return false
 end
 
+# Module-local type identity is carried as a qualified name string "mod::bare"
+# in the TStruct/TEnum/TSum `name` field, so type_eq (string compare) is module
+# aware and the Type shape is unchanged. These helpers build/split it.
+func make_qual (m str) (n str) -> str
+    return (strings::concat m (strings::concat "::" n))
+end
+
+func split_at_dcolon (s str) -> {str}
+    let cs = (strings::chars s)
+    let i = 0u64
+    while (< i (len cs))
+        if (and (== cs[i] ':') (and (< (+ i 1u64) (len cs)) (== cs[(+ i 1u64)] ':')))
+            let out {str} = (vec str)
+            do (push out (strings::substr s 0u64 i))
+            do (push out (strings::substr s (+ i 2u64) (- (len cs) (+ i 2u64))))
+            return out
+        end
+        set i = (+ i 1u64)
+    end
+    let out {str} = (vec str)
+    do (push out "")
+    do (push out s)
+    return out
+end
+
 func copy_scope (m {str Binding}) -> {str Binding}
     let out {str Binding} = (map str Binding)
     for k in (map_keys m)
@@ -530,6 +555,66 @@ end
 # Type resolution (AST Ty -> Type)
 # --------------------------------------------------------------------------- #
 
+# Does sig define a user type named n?
+func sig_has_type (sig Sig) (n str) -> bool
+    return (or (or (map_has sig.structs n) (map_has sig.enums n)) (map_has sig.sum_variants n))
+end
+
+# The module that defines bare user-type name n, per the resolution rule:
+# local module first (shadows imports), else the UNIQUE importing module that
+# declares it, else ambiguity error. Returns "" if undeclared anywhere.
+func defining_module (ctx Ctx) (n str) -> str
+    if (sig_has_type ctx.cur n)
+        return ctx.cur.name
+    end
+    let found {str} = (vec str)
+    for alias in (map_keys ctx.cur.imported)
+        let mname = ctx.cur.imported[alias]
+        if (and (map_has ctx.sigs mname) (sig_has_type ctx.sigs[mname] n))
+            if (not (str_in_vec mname found))
+                do (push found mname)
+            end
+        end
+    end
+    if (>= (len found) 2u64)
+        do (err ctx (strings::concat "ambiguous type name " (strings::concat n (strings::concat "; qualify it (e.g. " (strings::concat found[0] (strings::concat "::" (strings::concat n ")")))))))
+        return found[0]
+    end
+    if (== (len found) 1u64)
+        return found[0]
+    end
+    return ""
+end
+
+# Resolve a possibly-qualified user-type name ("mod::Bare" or bare) to its Type.
+func resolve_user_type (ctx Ctx) (modpart str) (n str) -> Type
+    let dm = modpart
+    if (strings::eq dm "")
+        set dm = (defining_module ctx n)
+    end
+    if (strings::eq dm "")
+        do (err ctx (strings::concat "unknown type " n))
+        return (t_unit)
+    end
+    if (not (map_has ctx.sigs dm))
+        do (err ctx (strings::concat "unknown module " (strings::concat dm " in type")))
+        return (t_unit)
+    end
+    let osig = ctx.sigs[dm]
+    let qn = (make_qual dm n)
+    if (map_has osig.structs n)
+        return (TStruct name: qn)
+    end
+    if (map_has osig.enums n)
+        return (TEnum name: qn)
+    end
+    if (map_has osig.sum_variants n)
+        return (TSum name: qn)
+    end
+    do (err ctx (strings::concat "unknown type " (make_qual dm n)))
+    return (t_unit)
+end
+
 func resolve_name (ctx Ctx) (n str) -> Type
     if (strings::eq n "")
         return (t_unit)
@@ -543,33 +628,7 @@ func resolve_name (ctx Ctx) (n str) -> Type
     if (is_prim_name n)
         return (TPrim name: n)
     end
-    if (map_has ctx.cur.structs n)
-        return (TStruct name: n)
-    end
-    if (map_has ctx.cur.enums n)
-        return (TEnum name: n)
-    end
-    if (map_has ctx.cur.sum_variants n)
-        return (TSum name: n)
-    end
-    # imported types
-    for alias in (map_keys ctx.cur.imported)
-        let mname = ctx.cur.imported[alias]
-        if (map_has ctx.sigs mname)
-            let osig = ctx.sigs[mname]
-            if (map_has osig.structs n)
-                return (TStruct name: n)
-            end
-            if (map_has osig.enums n)
-                return (TEnum name: n)
-            end
-            if (map_has osig.sum_variants n)
-                return (TSum name: n)
-            end
-        end
-    end
-    do (err ctx (strings::concat "unknown type " n))
-    return (t_unit)
+    return (resolve_user_type ctx "" n)
 end
 
 export func resolve (ctx Ctx) (node Ty) -> Type
@@ -834,7 +893,7 @@ export func build_sig (ctx Ctx) (mod Module) -> Sig
                     if (map_has sig.variants vr.name)
                         do (err ctx (strings::concat "duplicate variant name " vr.name))
                     end
-                    set sig.variants[vr.name] = (VarInfo name: vr.name sum_name: name fields: fds)
+                    set sig.variants[vr.name] = (VarInfo name: vr.name sum_name: (make_qual mod.name name) fields: fds)
                 end
                 set sig.sum_variants[name] = vnames
             else
@@ -890,6 +949,17 @@ end
 # Cross-module lookups: current module first, then every imported module.
 
 export func struct_fields (ctx Ctx) (name str) -> StructLookup
+    # qualified "mod::bare" -> look up directly in that module
+    let parts = (split_at_dcolon name)
+    if (not (strings::eq parts[0] ""))
+        let m = parts[0]
+        let b = parts[1]
+        if (and (map_has ctx.sigs m) (map_has ctx.sigs[m].structs b))
+            return (StructLookup found: true fields: ctx.sigs[m].structs[b])
+        end
+        return (StructLookup found: false fields: (vec FieldDef))
+    end
+    # bare -> local module first, then imports (struct-literal head resolution)
     if (map_has ctx.cur.structs name)
         return (StructLookup found: true fields: ctx.cur.structs[name])
     end
@@ -922,6 +992,15 @@ func find_variant (ctx Ctx) (name str) -> VarLookup
 end
 
 func sum_table (ctx Ctx) (sname str) -> SumLookup
+    let parts = (split_at_dcolon sname)
+    if (not (strings::eq parts[0] ""))
+        let m = parts[0]
+        let b = parts[1]
+        if (and (map_has ctx.sigs m) (map_has ctx.sigs[m].sum_variants b))
+            return (SumLookup found: true variants: ctx.sigs[m].sum_variants[b])
+        end
+        return (SumLookup found: false variants: (vec str))
+    end
     if (map_has ctx.cur.sum_variants sname)
         return (SumLookup found: true variants: ctx.cur.sum_variants[sname])
     end
@@ -950,6 +1029,14 @@ func variant_in_sig (sig Sig) (sname str) (vname str) -> VarLookup
 end
 
 func find_variant_in_sum (ctx Ctx) (sname str) (vname str) -> VarLookup
+    let parts = (split_at_dcolon sname)
+    if (not (strings::eq parts[0] ""))
+        let m = parts[0]
+        if (map_has ctx.sigs m)
+            return (variant_in_sig ctx.sigs[m] parts[1] vname)
+        end
+        return (VarLookup found: false info: (VarInfo name: "" sum_name: "" fields: (vec FieldDef)))
+    end
     let here = (variant_in_sig ctx.cur sname vname)
     if here.found
         return here
@@ -1318,7 +1405,7 @@ func check_path (ctx Ctx) (parts {str}) -> Type
             if (not (str_in_vec m1 ctx.cur.enums[m0]))
                 do (err ctx (strings::concat "no variant " (strings::concat m1 (strings::concat " in enum " m0))))
             end
-            return (TEnum name: m0)
+            return (TEnum name: (make_qual ctx.cur.name m0))
         end
         # imported enum
         for alias in (map_keys ctx.cur.imported)
@@ -1329,7 +1416,7 @@ func check_path (ctx Ctx) (parts {str}) -> Type
                     if (not (str_in_vec m1 osig.enums[m0]))
                         do (err ctx (strings::concat "no variant " (strings::concat m1 (strings::concat " in enum " m0))))
                     end
-                    return (TEnum name: m0)
+                    return (TEnum name: (make_qual mname m0))
                 end
             end
         end
@@ -1605,7 +1692,7 @@ func check_struct_lit (ctx Ctx) (typ Expr) (fields {Field}) (scope {str Binding}
         end
         set i = (+ i 1)
     end
-    return (TStruct name: name)
+    return (TStruct name: (make_qual (defining_module ctx name) name))
 end
 
 func check_variant_lit (ctx Ctx) (vi VarInfo) (fields {Field}) (scope {str Binding}) -> Type
