@@ -568,6 +568,26 @@ struct** (§11), not multiple returns or tuples.
   access (`.`), so module paths and field access never need disambiguation — `::`
   always means a module path, `.` always means field/element access.
 
+- **Types are module-scoped; type identity is `(defining module, name)`.** Two
+  modules may each declare a `Point`; they are **distinct types**. Passing one
+  where the other is expected is a **compile error** (not a silent
+  bare-name match). This applies to all user-defined types — `struct`, `enum`,
+  and `sum`. (Primitive/builtin types — sized ints, `f32`/`f64`, `bool`, `char`,
+  `str`, `unit`, `handle`, and the builtin generics `[T]`/`{T}`/`{K V}` — are
+  global and unqualified.)
+  - **Bare type name resolution** (a `T` written without a module): resolves
+    **local-first** — the current module's `T` shadows any import; otherwise the
+    **unique** imported module that declares a `T`; if **two or more** imported
+    modules declare a `T`, it is an **ambiguity error** and must be qualified.
+  - **Qualified type names use `::`** in any type position (parameters, returns,
+    struct/sum fields, `let`/`const`/cast annotations, and element positions like
+    `[mod::T]` / `{mod::T}` / `{K mod::V}`): `let p mathx::Point = …`. This is the
+    type-position analogue of the value-path `mod::name`, and the only way to name
+    an imported type that a local declaration shadows or that is ambiguous.
+  - *Implementation note:* the C backend mangles a struct as
+    `cl_struct_<module>__<name>`, so same-named structs from different modules
+    never collide.
+
 ### 10.1 Open
 
 - [ ] Cyclic module dependencies allowed?
