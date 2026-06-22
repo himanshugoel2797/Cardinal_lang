@@ -181,17 +181,16 @@ immutable static `cl_str`.** You must:
      this type". This is a recursive, type-driven DISPLAY feature, its own
      milestone — not vec/map lowering. (examples/vectest prints a whole vec, so
      it needs this; examples/maptest also needs Stage-4 callbacks.)
-   * **DESIGN HOLE — `set m[k].field = v`** (composable field-set on a map
-     element). Checker ACCEPTS it; the interpreter MUTATES IN PLACE via an
-     aliased struct ref (interpreter.py eval_place Index->MapV returns the stored
-     StructV by reference); native PANICS cleanly at lowering
-     (`lower.cardinal` lower_place EIndex map branch). DIVERGENCE on a
-     type-valid program. NOT used by the compiler itself (only whole-value
-     `set m[k]=v`), so not self-host-blocking. The interpreter's in-place
-     mutation arguably contradicts map value-copy semantics (DESIGN §5.3/§6.3).
-     User decision needed: (a) reject in BOTH checkers (recommended — makes them
-     agree, pins "no mutable ref into a value-semantic map element"); or (b)
-     support natively via the cl_map_get pointer (commits to in-place mutability).
+   * **`set m[k].field = v` — RESOLVED (user ruling): rejected in BOTH checkers.**
+     Maps hold value-semantic copies, so taking a mutable field reference into a
+     map element has no faithful semantics. `check_place` now threads a `via_map`
+     flag (PlaceRes in checker.cardinal / the 3-tuple in typecheck.py): a map
+     index sets via_map=true; a FieldAccess whose base is via_map is a compile
+     error; an array/vector index clears via_map (those are references, so
+     `set m[k][i]=v` and `set m[k][i].field=v` through a vec/array the map holds
+     stay legal). Both checkers emit the identical message; difftest AGREE=13.
+     `set m[k]=v` (whole value) and reading `m[k].field` remain fine. The native
+     lower_place map-panic is now unreachable for valid programs (defense-in-depth).
    * **`for k in m` directly over a map** is rejected by BOTH checkers today
      (only `for k in (map_keys m)` works); DESIGN §5.3 lists `for k in m` as a
      contract, so spec leads impl — a future wiring item.

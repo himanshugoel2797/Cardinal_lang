@@ -64,6 +64,7 @@ struct PlaceRes
     ok bool
     ty Type
     mutable bool
+    via_map bool        # true when this lvalue is a value copied out of a map element
 end
 
 struct Sig
@@ -1245,14 +1246,14 @@ func check_place (ctx Ctx) (node Expr) (scope {str Binding}) -> PlaceRes
         case (EName id)
             if (map_has scope id)
                 let b = scope[id]
-                return (PlaceRes ok: true ty: b.ty mutable: b.mutable)
+                return (PlaceRes ok: true ty: b.ty mutable: b.mutable via_map: false)
             end
             let v = (lookup_value ctx id)
             if (not (is_none v))
-                return (PlaceRes ok: true ty: v mutable: false)
+                return (PlaceRes ok: true ty: v mutable: false via_map: false)
             end
             do (err ctx (strings::concat "undefined name " id))
-            return (PlaceRes ok: false ty: (t_unit) mutable: false)
+            return (PlaceRes ok: false ty: (t_unit) mutable: false via_map: false)
         case (EField obj field)
             let base = (check_place ctx obj scope)
             let bt = (t_unit)
@@ -1263,7 +1264,12 @@ func check_place (ctx Ctx) (node Expr) (scope {str Binding}) -> PlaceRes
             else
                 set bt = (check_expr ctx obj scope TNone)
             end
-            return (PlaceRes ok: true ty: (field_type ctx bt field) mutable: mut)
+            # A map element is a value COPY (maps hold value-semantic entries), so
+            # mutating a field of it would not persist. Reject (set m[k] = ...).
+            if base.via_map
+                do (err ctx "cannot assign to a field of a map element; maps hold value copies — rebuild and assign the whole value (set m[k] = ...)")
+            end
+            return (PlaceRes ok: true ty: (field_type ctx bt field) mutable: mut via_map: false)
         case (EIndex obj index)
             let base = (check_place ctx obj scope)
             let bt = (t_unit)
@@ -1276,22 +1282,26 @@ func check_place (ctx Ctx) (node Expr) (scope {str Binding}) -> PlaceRes
             end
             if (is_map bt)
                 do (coerce ctx (check_expr ctx index scope (map_key bt)) (map_key bt))
-                return (PlaceRes ok: true ty: (map_val bt) mutable: mut)
+                # indexing a map yields a value copy of the element
+                return (PlaceRes ok: true ty: (map_val bt) mutable: mut via_map: true)
             end
             if (not (or (is_array bt) (is_vec bt)))
                 do (err ctx "indexing a non-array/vector/map")
-                return (PlaceRes ok: true ty: (t_unit) mutable: mut)
+                return (PlaceRes ok: true ty: (t_unit) mutable: mut via_map: false)
             end
+            # arrays/vectors are reference-semantic: indexing through one reaches
+            # shared storage, so projecting/mutating an element is fine even when
+            # the array/vector itself came out of a map.
             let it = (check_expr ctx index scope (t_u64))
             if (not (or (is_int it) (is_uint it)))
                 do (err ctx (strings::concat "index must be an integer, got " (tystr it)))
             end
-            return (PlaceRes ok: true ty: (elem_of bt) mutable: mut)
+            return (PlaceRes ok: true ty: (elem_of bt) mutable: mut via_map: false)
         else
             do (err ctx "invalid assignment target")
-            return (PlaceRes ok: false ty: (t_unit) mutable: false)
+            return (PlaceRes ok: false ty: (t_unit) mutable: false via_map: false)
     end
-    return (PlaceRes ok: false ty: (t_unit) mutable: false)
+    return (PlaceRes ok: false ty: (t_unit) mutable: false via_map: false)
 end
 
 # --------------------------------------------------------------------------- #

@@ -448,28 +448,34 @@ class Checker:
         tt = self.check_place(target, scope, sig)
         if tt is None:
             return
-        ty, mutable = tt
+        ty, mutable, _via_map = tt
         if not mutable:
             self.err("cannot assign to an immutable binding", target)
         vt = self.check_expr(s.expr, scope, sig, ty)
         self.coerce(vt, ty, s.expr)
 
     def check_place(self, node, scope, sig):
-        """Return (Type, mutable) for an lvalue, or None on error."""
+        """Return (Type, mutable, via_map) for an lvalue, or None on error.
+        via_map is True when the lvalue is a value copied out of a map element."""
         if isinstance(node, Name):
             if node.ident in scope:
-                return scope[node.ident]
+                t, m = scope[node.ident]
+                return (t, m, False)
             v = sig.lookup_value(node.ident)
             if v is not None:
-                return (v, False)
+                return (v, False, False)
             self.err(f"undefined name {node.ident!r}", node)
             return None
         if isinstance(node, FieldAccess):
             base = self.check_place(node.obj, scope, sig)
             bt = base[0] if base else self.check_expr(node.obj, scope, sig, None)
             mutable = base[1] if base else True
+            # A map element is a value COPY (maps hold value-semantic entries), so
+            # mutating a field of it would not persist. Reject (set m[k] = ...).
+            if base and base[2]:
+                self.err("cannot assign to a field of a map element; maps hold value copies — rebuild and assign the whole value (set m[k] = ...)", node)
             ft = self.field_type(bt, node.field, node)
-            return (ft, mutable)
+            return (ft, mutable, False)
         if isinstance(node, Index):
             base = self.check_place(node.obj, scope, sig)
             bt = base[0] if base else self.check_expr(node.obj, scope, sig, None)
@@ -477,13 +483,16 @@ class Checker:
             if isinstance(bt, MapT):
                 kt = self.check_expr(node.index, scope, sig, bt.key)
                 self.coerce(kt, bt.key, node.index)
-                return (bt.val, mutable)
+                # indexing a map yields a value copy of the element
+                return (bt.val, mutable, True)
             if not isinstance(bt, (ArrayT, VecT)):
-                self.err("indexing a non-array/vector/map", node); return (UNIT, mutable)
+                self.err("indexing a non-array/vector/map", node); return (UNIT, mutable, False)
+            # arrays/vectors are reference-semantic: indexing through one reaches
+            # shared storage, so projecting an element out of a map is fine.
             it = self.check_expr(node.index, scope, sig, U64)
             if not isinstance(it, (IntT, UntypedIntT)):
                 self.err(f"index must be an integer, got {tystr(it)}", node)
-            return (bt.elem, mutable)
+            return (bt.elem, mutable, False)
         # other expressions are not lvalues
         self.err("invalid assignment target", node)
         return None
