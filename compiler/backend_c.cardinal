@@ -1,0 +1,645 @@
+module backend_c
+
+# C backend: IR (ir.cardinal) -> portable C, compiled by cc against
+# runtime/cardinal_{rt,gc}.c. Port of bootstrap/backend_c.py. This is the first
+# of several interchangeable backends consuming the same IR; a future x86_64
+# backend will emit objects directly from the same IRModule.
+#
+# STAGE 0: scalar types, enums, functions, full control flow, casts, panic, and
+# io print calls. Aggregate / closure instructions raise a clean panic until
+# their stage.
+
+import strings
+import convert
+import checker
+import ir
+
+# --------------------------------------------------------------------------- #
+# Type mapping
+# --------------------------------------------------------------------------- #
+
+func cint (name str) -> str
+    if (strings::eq name "i8")
+        return "int8_t"
+    end
+    if (strings::eq name "i16")
+        return "int16_t"
+    end
+    if (strings::eq name "i32")
+        return "int32_t"
+    end
+    if (strings::eq name "i64")
+        return "int64_t"
+    end
+    if (strings::eq name "u8")
+        return "uint8_t"
+    end
+    if (strings::eq name "u16")
+        return "uint16_t"
+    end
+    if (strings::eq name "u32")
+        return "uint32_t"
+    end
+    if (strings::eq name "u64")
+        return "uint64_t"
+    end
+    return "int32_t"
+end
+
+func ctype_t (t Type) -> str
+    match t
+        case (TInt n)
+            return (cint n)
+        case (TFloat n)
+            if (strings::eq n "f32")
+                return "float"
+            end
+            return "double"
+        case (TPrim n)
+            if (strings::eq n "bool")
+                return "bool"
+            end
+            if (strings::eq n "char")
+                return "int32_t"
+            end
+            if (strings::eq n "str")
+                return "cl_str"
+            end
+            if (strings::eq n "unit")
+                return "void"
+            end
+            return "void*"
+        case (TStruct n)
+            return (strings::concat "cl_struct_" n)
+        case (TEnum n)
+            return "int32_t"
+        case (TArray e)
+            return "cl_array"
+        case (TVec e)
+            return "cl_vec"
+        case (TFunc p r)
+            return "cl_closure"
+        else
+            return "void"
+    end
+    return "void"
+end
+
+func ctype (t IRType) -> str
+    match t
+        case (TyOf st)
+            return (ctype_t st)
+        case (Ptr p)
+            return "cl_handle"
+        case VoidPtr
+            return "void*"
+    end
+    return "void"
+end
+
+func irt_is_unit (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TPrim n)
+                    return (strings::eq n "unit")
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+func irt_is_int (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TInt n)
+                    return true
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+func managed (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TStruct n)
+                    return true
+                case (TArray e)
+                    return true
+                case (TVec e)
+                    return true
+                case (TFunc p r)
+                    return true
+                else
+                    return false
+            end
+        case (Ptr p)
+            return true
+        case VoidPtr
+            return false
+    end
+    return false
+end
+
+# --------------------------------------------------------------------------- #
+# Operators
+# --------------------------------------------------------------------------- #
+
+func cop (op str) -> str
+    if (strings::eq op "band")
+        return "&"
+    end
+    if (strings::eq op "bor")
+        return "|"
+    end
+    if (strings::eq op "bxor")
+        return "^"
+    end
+    if (strings::eq op "shl")
+        return "<<"
+    end
+    if (strings::eq op "shr")
+        return ">>"
+    end
+    return op
+end
+
+func is_cmp (op str) -> bool
+    let v {str} = (vec str)
+    do (push v "<")
+    do (push v "<=")
+    do (push v ">")
+    do (push v ">=")
+    do (push v "==")
+    do (push v "!=")
+    let i = 0u64
+    while (< i (len v))
+        if (strings::eq v[i] op)
+            return true
+        end
+        set i = (+ i 1)
+    end
+    return false
+end
+
+func overflow_builtin (op str) -> str
+    if (strings::eq op "+")
+        return "__builtin_add_overflow"
+    end
+    if (strings::eq op "-")
+        return "__builtin_sub_overflow"
+    end
+    return "__builtin_mul_overflow"
+end
+
+# --------------------------------------------------------------------------- #
+# Operands / immediates
+# --------------------------------------------------------------------------- #
+
+func cescape (s str) -> str
+    let cs = (strings::chars s)
+    let out = ""
+    let i = 0u64
+    while (< i (len cs))
+        let c = cs[i]
+        if (== c '"')
+            set out = (strings::concat out "\\\"")
+        elsif (== c '\\')
+            set out = (strings::concat out "\\\\")
+        elsif (== c '\n')
+            set out = (strings::concat out "\\n")
+        elsif (== c '\t')
+            set out = (strings::concat out "\\t")
+        elsif (== c '\r')
+            set out = (strings::concat out "\\r")
+        else
+            set out = (strings::concat out (strings::from_char c))
+        end
+        set i = (+ i 1)
+    end
+    return out
+end
+
+func int_name_of (t IRType) -> str
+    match t
+        case (TyOf st)
+            match st
+                case (TInt n)
+                    return n
+                else
+                    return "i32"
+            end
+        else
+            return "i32"
+    end
+    return "i32"
+end
+
+func imm_int (v i64) (t IRType) -> str
+    let nm = (int_name_of t)
+    let suf = ""
+    if (not (== (strings::chars nm)[0] 'i'))
+        set suf = "u"
+    end
+    if (or (strings::eq nm "i64") (strings::eq nm "u64"))
+        set suf = (strings::concat suf "ll")
+    end
+    return (strings::concat "((" (strings::concat (cint nm) (strings::concat ")" (strings::concat (convert::int_to_str v) (strings::concat suf ")")))))
+end
+
+func float_is_f32 (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TFloat n)
+                    return (strings::eq n "f32")
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+func val (v IVal) -> str
+    match v
+        case (Temp id ty)
+            return (strings::concat "t" (convert::int_to_str id))
+        case (Local name ty)
+            return (strings::concat "v_" name)
+        case (ImmInt vv ty)
+            return (imm_int vv ty)
+        case (ImmFloat text ty)
+            if (float_is_f32 ty)
+                return (strings::concat "(" (strings::concat text "f)"))
+            end
+            return (strings::concat "(" (strings::concat text ")"))
+        case (ImmBool b)
+            if b
+                return "true"
+            end
+            return "false"
+        case (ImmChar cp)
+            return (strings::concat "((int32_t)" (strings::concat (convert::int_to_str cp) ")"))
+        case (ImmStr s)
+            return (strings::concat "((cl_str){\"" (strings::concat (cescape s) (strings::concat "\", " (strings::concat (convert::int_to_str (as (len (strings::chars s)) i64)) "})"))))
+        case ImmUnit
+            return "0"
+        case (ImmNull ty)
+            return "0"
+    end
+    return "0"
+end
+
+func place (p IPlace) -> str
+    match p
+        case (PLocal name ty)
+            return (strings::concat "v_" name)
+        case (PField base field ty)
+            return (strings::concat (place base) (strings::concat "." field))
+        case (PDeref ptr ty)
+            return (strings::concat "(*(" (strings::concat (ctype ty) (strings::concat "*)cl_gc_deref(" (strings::concat (val ptr) "))"))))
+    end
+    return ""
+end
+
+# --------------------------------------------------------------------------- #
+# Instructions  (each returns a vec of C lines, no indentation)
+# --------------------------------------------------------------------------- #
+
+func line1 (s str) -> {str}
+    let v {str} = (vec str)
+    do (push v s)
+    return v
+end
+
+func cat (parts {str}) -> str
+    let out = ""
+    let i = 0u64
+    while (< i (len parts))
+        set out = (strings::concat out parts[i])
+        set i = (+ i 1)
+    end
+    return out
+end
+
+func join_args (args {IVal}) -> str
+    let out = ""
+    let i = 0u64
+    while (< i (len args))
+        if (> i 0u64)
+            set out = (strings::concat out ", ")
+        end
+        set out = (strings::concat out (val args[i]))
+        set i = (+ i 1)
+    end
+    return out
+end
+
+func emit_bin (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk bool) -> {str}
+    let d = (val dst)
+    let a = (val lhs)
+    let b = (val rhs)
+    let cty = (ctype ty)
+    if (is_cmp op)
+        return (line1 (strings::concat d (strings::concat " = (" (strings::concat a (strings::concat " " (strings::concat op (strings::concat " " (strings::concat b ");"))))))))
+    end
+    if (or (strings::eq op "/") (strings::eq op "%"))
+        let v {str} = (vec str)
+        do (push v (strings::concat "if ((" (strings::concat b ") == 0) cl_panic_cstr(\"integer division by zero\");")))
+        do (push v (strings::concat d (strings::concat " = (" (strings::concat cty (strings::concat ")((" (strings::concat a (strings::concat ") " (strings::concat op (strings::concat " (" (strings::concat b "));"))))))))))
+        return v
+    end
+    if (and chk (or (or (strings::eq op "+") (strings::eq op "-")) (strings::eq op "*")))
+        let p {str} = (vec str)
+        do (push p "if (")
+        do (push p (overflow_builtin op))
+        do (push p "(")
+        do (push p a)
+        do (push p ", ")
+        do (push p b)
+        do (push p ", &")
+        do (push p d)
+        do (push p ")) cl_panic_cstr(\"integer overflow (")
+        do (push p op)
+        do (push p ")\");")
+        return (line1 (cat p))
+    end
+    return (line1 (strings::concat d (strings::concat " = (" (strings::concat cty (strings::concat ")((" (strings::concat a (strings::concat ") " (strings::concat (cop op) (strings::concat " (" (strings::concat b "));"))))))))))
+end
+
+func emit_un (dst IVal) (op str) (v IVal) (ty IRType) (chk bool) -> {str}
+    let d = (val dst)
+    let x = (val v)
+    let cty = (ctype ty)
+    if (strings::eq op "not")
+        return (line1 (strings::concat d (strings::concat " = !(" (strings::concat x ");"))))
+    end
+    if (strings::eq op "bnot")
+        return (line1 (strings::concat d (strings::concat " = (" (strings::concat cty (strings::concat ")(~(" (strings::concat x "));"))))))
+    end
+    # unary minus
+    if chk
+        let p {str} = (vec str)
+        do (push p "if (__builtin_sub_overflow((")
+        do (push p cty)
+        do (push p ")0, ")
+        do (push p x)
+        do (push p ", &")
+        do (push p d)
+        do (push p ")) cl_panic_cstr(\"integer overflow (-)\");")
+        return (line1 (cat p))
+    end
+    return (line1 (strings::concat d (strings::concat " = (" (strings::concat cty (strings::concat ")(-(" (strings::concat x "));"))))))
+end
+
+func emit_instr (ins Instr) (nroots i64) -> {str}
+    match ins
+        case (IConst dst v ty)
+            return (line1 (strings::concat (val dst) (strings::concat " = " (strings::concat (val v) ";"))))
+        case (IBin dst op lhs rhs ty chk)
+            return (emit_bin dst op lhs rhs ty chk)
+        case (IUn dst op v ty chk)
+            return (emit_un dst op v ty chk)
+        case (ICast dst v toty)
+            return (line1 (strings::concat (val dst) (strings::concat " = (" (strings::concat (ctype toty) (strings::concat ")(" (strings::concat (val v) ");"))))))
+        case (IAssign p src)
+            return (line1 (strings::concat (place p) (strings::concat " = " (strings::concat (val src) ";"))))
+        case (ILoadField dst base field ty)
+            return (line1 (strings::concat (val dst) (strings::concat " = (" (strings::concat (val base) (strings::concat ")." (strings::concat field ";"))))))
+        case (ICall has_dst dst callee args ty)
+            let argstr = (join_args args)
+            if has_dst
+                return (line1 (strings::concat (val dst) (strings::concat " = " (strings::concat callee (strings::concat "(" (strings::concat argstr ");"))))))
+            end
+            return (line1 (strings::concat callee (strings::concat "(" (strings::concat argstr ");"))))
+        case (IEnumConst dst enum_name variant intval)
+            return (line1 (strings::concat (val dst) (strings::concat " = " (strings::concat (convert::int_to_str intval) (strings::concat "; /* " (strings::concat enum_name (strings::concat "::" (strings::concat variant " */"))))))))
+        case (IBr target)
+            return (line1 (strings::concat "goto " (strings::concat target ";")))
+        case (ICondBr cond then_l else_l)
+            return (line1 (strings::concat "if (" (strings::concat (val cond) (strings::concat ") goto " (strings::concat then_l (strings::concat "; else goto " (strings::concat else_l ";")))))))
+        case (IRet has_val v)
+            let out {str} = (vec str)
+            if (> nroots 0i64)
+                do (push out (strings::concat "cl_gc_pop_roots(" (strings::concat (convert::int_to_str nroots) ");")))
+            end
+            if has_val
+                do (push out (strings::concat "return " (strings::concat (val v) ";")))
+            else
+                do (push out "return;")
+            end
+            return out
+        case (IPanic msg)
+            return (line1 (strings::concat "cl_panic(" (strings::concat (val msg) ");")))
+        else
+            do (panic "backend_c: unsupported instruction (later stage)")
+    end
+    return (vec str)
+end
+
+# --------------------------------------------------------------------------- #
+# Functions
+# --------------------------------------------------------------------------- #
+
+func proto (f IRFunc) -> str
+    let ps = ""
+    if (== (len f.params) 0u64)
+        set ps = "void"
+    else
+        let i = 0u64
+        while (< i (len f.params))
+            if (> i 0u64)
+                set ps = (strings::concat ps ", ")
+            end
+            set ps = (strings::concat ps (strings::concat (ctype f.params[i].ty) (strings::concat " v_" f.params[i].name)))
+            set i = (+ i 1)
+        end
+    end
+    return (strings::concat (ctype f.ret) (strings::concat " " (strings::concat f.name (strings::concat "(" (strings::concat ps ")")))))
+end
+
+func str_in (v {str}) (s str) -> bool
+    let i = 0u64
+    while (< i (len v))
+        if (strings::eq v[i] s)
+            return true
+        end
+        set i = (+ i 1)
+    end
+    return false
+end
+
+func referenced_labels (f IRFunc) -> {str}
+    let refs {str} = (vec str)
+    let bi = 0u64
+    while (< bi (len f.blocks))
+        let blk = f.blocks[bi]
+        let ii = 0u64
+        while (< ii (len blk.instrs))
+            match blk.instrs[ii]
+                case (IBr target)
+                    do (push refs target)
+                case (ICondBr cond then_l else_l)
+                    do (push refs then_l)
+                    do (push refs else_l)
+                else
+                    pass
+            end
+            set ii = (+ ii 1)
+        end
+        set bi = (+ bi 1)
+    end
+    return refs
+end
+
+func func_def (f IRFunc) -> str
+    let out = (strings::concat (proto f) " {\n")
+    let roots {str} = (vec str)
+    # temps
+    let ti = 0u64
+    while (< ti (len f.temps))
+        match f.temps[ti]
+            case (Temp id ty)
+                if (not (irt_is_unit ty))
+                    let nm = (strings::concat "t" (convert::int_to_str id))
+                    let initz = ""
+                    if (managed ty)
+                        set initz = " = {0}"
+                    end
+                    set out = (strings::concat out (strings::concat "    " (strings::concat (ctype ty) (strings::concat " " (strings::concat nm (strings::concat initz ";\n"))))))
+                    if (managed ty)
+                        do (push roots nm)
+                    end
+                end
+            else
+                pass
+        end
+        set ti = (+ ti 1)
+    end
+    # locals
+    let li = 0u64
+    while (< li (len f.locals))
+        let lp = f.locals[li]
+        let nm = (strings::concat "v_" lp.name)
+        let initz = ""
+        if (managed lp.ty)
+            set initz = " = {0}"
+        end
+        set out = (strings::concat out (strings::concat "    " (strings::concat (ctype lp.ty) (strings::concat " " (strings::concat nm (strings::concat initz ";\n"))))))
+        if (managed lp.ty)
+            do (push roots nm)
+        end
+        set li = (+ li 1)
+    end
+    # params that are managed also need rooting
+    let pi = 0u64
+    while (< pi (len f.params))
+        if (managed f.params[pi].ty)
+            do (push roots (strings::concat "v_" f.params[pi].name))
+        end
+        set pi = (+ pi 1)
+    end
+    # push roots
+    let ri = 0u64
+    while (< ri (len roots))
+        set out = (strings::concat out (strings::concat "    cl_gc_push_root(&" (strings::concat roots[ri] (strings::concat ", sizeof(" (strings::concat roots[ri] "));\n")))))
+        set ri = (+ ri 1)
+    end
+    let nroots = (as (len roots) i64)
+    let referenced = (referenced_labels f)
+    let bi = 0u64
+    while (< bi (len f.blocks))
+        let blk = f.blocks[bi]
+        if (str_in referenced blk.label)
+            set out = (strings::concat out (strings::concat "  " (strings::concat blk.label ":;\n")))
+        end
+        let ii = 0u64
+        while (< ii (len blk.instrs))
+            let lines = (emit_instr blk.instrs[ii] nroots)
+            let ki = 0u64
+            while (< ki (len lines))
+                set out = (strings::concat out (strings::concat "    " (strings::concat lines[ki] "\n")))
+                set ki = (+ ki 1)
+            end
+            set ii = (+ ii 1)
+        end
+        set bi = (+ bi 1)
+    end
+    set out = (strings::concat out "}\n")
+    return out
+end
+
+func ends_with_main (s str) -> bool
+    let cs = (strings::chars s)
+    let suf = (strings::chars "__main")
+    if (< (len cs) (len suf))
+        return false
+    end
+    let off = (- (len cs) (len suf))
+    let i = 0u64
+    while (< i (len suf))
+        if (not (== cs[(+ off i)] suf[i]))
+            return false
+        end
+        set i = (+ i 1)
+    end
+    return true
+end
+
+func main_wrapper (m IRModule) -> str
+    let found = false
+    let tname = ""
+    let tret = (TyOf t: (TPrim name: "unit"))
+    let i = 0u64
+    while (< i (len m.funcs))
+        if (and (not found) (ends_with_main m.funcs[i].name))
+            set found = true
+            set tname = m.funcs[i].name
+            set tret = m.funcs[i].ret
+        end
+        set i = (+ i 1)
+    end
+    if (not found)
+        return "int main(void) { int b; cl_gc_init(&b); return 0; }"
+    end
+    if (irt_is_int tret)
+        return (strings::concat "int main(void) { int b; cl_gc_init(&b); return (int)" (strings::concat tname "(); }"))
+    end
+    return (strings::concat "int main(void) { int b; cl_gc_init(&b); " (strings::concat tname "(); return 0; }"))
+end
+
+# --------------------------------------------------------------------------- #
+# Module
+# --------------------------------------------------------------------------- #
+
+export func emit (m IRModule) -> str
+    let out = "#include \"cardinal_rt.h\"\n\n"
+    # prototypes
+    let i = 0u64
+    while (< i (len m.funcs))
+        set out = (strings::concat out (strings::concat (proto m.funcs[i]) ";\n"))
+        set i = (+ i 1)
+    end
+    set out = (strings::concat out "\n")
+    # definitions
+    set i = 0u64
+    while (< i (len m.funcs))
+        set out = (strings::concat out (func_def m.funcs[i]))
+        set out = (strings::concat out "\n")
+        set i = (+ i 1)
+    end
+    set out = (strings::concat out (main_wrapper m))
+    set out = (strings::concat out "\n")
+    return out
+end

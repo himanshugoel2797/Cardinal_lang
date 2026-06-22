@@ -1,0 +1,9 @@
+module mathx
+
+export func square (n i64) -> i64
+    return (* n n)
+end
+
+export func cube (n i64) -> i64
+    return (* n (square n))
+end

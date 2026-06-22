@@ -1,0 +1,14 @@
+module usemathx
+
+import io
+import mathx
+
+func main () -> i32
+    let i = 1i64
+    while (< i 6)
+        do (io::println (mathx::square i))
+        do (io::println (mathx::cube i))
+        set i = (+ i 1)
+    end
+    return 0i32
+end

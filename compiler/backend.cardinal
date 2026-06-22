@@ -1,0 +1,18 @@
+module backend
+
+# Backend selector. Cardinal has no traits, so backend dispatch is a function:
+# every backend module exports `emit(IRModule) -> str`, and this picks one by
+# name. The IR is the swap point — adding an x86_64 backend means adding a
+# module here, not touching lower.cardinal.
+
+import strings
+import ir
+import backend_c
+
+export func emit_with (name str) (m IRModule) -> str
+    if (strings::eq name "c")
+        return (backend_c::emit m)
+    end
+    do (panic (strings::concat "backend: unknown backend " name))
+    return ""
+end

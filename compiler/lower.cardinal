@@ -1,0 +1,789 @@
+module lower
+
+# Lowering pass: typed AST -> target-independent IR (ir.cardinal).
+#
+# Port of bootstrap/lower.py, adapted to "Option B": instead of reading a
+# `.ctype` annotation off each AST node (our AST is immutable), the lowerer
+# holds a checker Ctx plus a parallel `{str Binding}` type-scope and calls
+# `checker::check_expr` to learn each expression's Type on demand. The checker
+# is the SOLE type oracle — the lowerer never invents a type; an unknown or
+# uninferable type is a `panic`, never a silent default.
+#
+# STAGE 0 (this cut): sized ints/floats/bool/char, enums, functions + recursion,
+# cross-module calls, all control flow, casts, `panic`, and io::print/println of
+# scalars. Aggregates (structs/arrays/vecs/maps/strings), sum types/match, and
+# closures raise a clean panic until their stage.
+
+import strings
+import convert
+import parser
+import checker
+import ir
+
+# --------------------------------------------------------------------------- #
+# Mutable lowering state. All mutated state is behind reference vecs/maps (cells
+# and the builder's block/temp lists), so passing LX by value still threads the
+# mutations through deep helpers. `b`, `ret`, `callmap`, and `uq[0]` are reset
+# per function in lower_func.
+# --------------------------------------------------------------------------- #
+
+struct LX
+    ctx Ctx
+    irm IRModule
+    b FuncBuilder
+    chk {bool}          # `checked`-block flag (cell)
+    brk {str}           # break-target label stack
+    cont {str}          # continue-target label stack
+    uq {i64}            # uniquifier counter (cell)
+    callmap {str str}   # local/imported function name -> mangled symbol
+    ret Type            # current function's return type
+end
+
+# --------------------------------------------------------------------------- #
+# Small helpers
+# --------------------------------------------------------------------------- #
+
+func mangle (m str) (n str) -> str
+    return (strings::concat "cl_" (strings::concat m (strings::concat "__" n)))
+end
+
+func irt (t Type) -> IRType
+    return (TyOf t: t)
+end
+
+func unit_ty () -> Type
+    return (TPrim name: "unit")
+end
+func bool_ty () -> Type
+    return (TPrim name: "bool")
+end
+func str_ty () -> Type
+    return (TPrim name: "str")
+end
+
+func copy_iv (m {str IVal}) -> {str IVal}
+    let out {str IVal} = (map str IVal)
+    for k in (map_keys m)
+        set out[k] = m[k]
+    end
+    return out
+end
+
+func copy_bind (m {str Binding}) -> {str Binding}
+    let out {str Binding} = (map str Binding)
+    for k in (map_keys m)
+        set out[k] = m[k]
+    end
+    return out
+end
+
+func uniq (lx LX) (base str) -> str
+    set lx.uq[0] = (+ lx.uq[0] 1)
+    return (strings::concat base (strings::concat "_" (convert::int_to_str lx.uq[0])))
+end
+
+func ival_name (v IVal) -> str
+    match v
+        case (Local name ty)
+            return name
+        else
+            return ""
+    end
+    return ""
+end
+
+func index_of (v {str}) (s str) -> i64
+    let i = 0u64
+    while (< i (len v))
+        if (strings::eq v[i] s)
+            return (as i i64)
+        end
+        set i = (+ i 1)
+    end
+    return 0i64
+end
+
+# --- local Type predicates / accessors (Type variants are exported, so we match
+# directly rather than export a pile of checker predicates) --- #
+
+func t_is_int (t Type) -> bool
+    match t
+        case (TInt n)
+            return true
+        else
+            return false
+    end
+    return false
+end
+func t_is_float (t Type) -> bool
+    match t
+        case (TFloat n)
+            return true
+        else
+            return false
+    end
+    return false
+end
+func t_is_uint (t Type) -> bool
+    match t
+        case TUInt
+            return true
+        else
+            return false
+    end
+    return false
+end
+func t_is_ufloat (t Type) -> bool
+    match t
+        case TUFloat
+            return true
+        else
+            return false
+    end
+    return false
+end
+func t_is_unit (t Type) -> bool
+    match t
+        case (TPrim n)
+            return (strings::eq n "unit")
+        else
+            return false
+    end
+    return false
+end
+func t_is_func (t Type) -> bool
+    match t
+        case (TFunc p r)
+            return true
+        else
+            return false
+    end
+    return false
+end
+func t_func_params (t Type) -> {Type}
+    match t
+        case (TFunc p r)
+            return p
+        else
+            return (vec Type)
+    end
+    return (vec Type)
+end
+func t_func_ret (t Type) -> Type
+    match t
+        case (TFunc p r)
+            return r
+        else
+            return (unit_ty)
+    end
+    return (unit_ty)
+end
+
+func pick_int (ts {Type}) -> Type
+    let i = 0u64
+    while (< i (len ts))
+        if (t_is_int ts[i])
+            return ts[i]
+        end
+        set i = (+ i 1)
+    end
+    return (TInt name: "i32")
+end
+
+# The type the checker assigns to `e` in context `expected`. For untyped numeric
+# literals it falls back to the (concrete) context type — that is the language's
+# context-typing rule, not a guess. Anything still uninferable is a hard error.
+func result_ty (lx LX) (ts {str Binding}) (e Expr) (expected Type) -> Type
+    let t = (checker::check_expr lx.ctx e ts expected)
+    if (or (t_is_uint t) (t_is_ufloat t))
+        if (or (t_is_int expected) (t_is_float expected))
+            return expected
+        end
+        do (panic "lower: uninferable numeric result type")
+    end
+    return t
+end
+
+func concrete_ty (lx LX) (ts {str Binding}) (e Expr) -> Type
+    let t = (checker::check_expr lx.ctx e ts TNone)
+    if (or (t_is_uint t) (t_is_ufloat t))
+        do (panic "lower: cannot infer type of let binding (annotate it)")
+    end
+    return t
+end
+
+func int_lit_ty (suffix str) (expected Type) -> Type
+    if (not (strings::eq suffix ""))
+        return (TInt name: suffix)
+    end
+    if (t_is_int expected)
+        return expected
+    end
+    do (panic "lower: uninferable integer literal")
+    return (TInt name: "i32")
+end
+
+func float_lit_ty (suffix str) (expected Type) -> Type
+    if (not (strings::eq suffix ""))
+        return (TFloat name: suffix)
+    end
+    if (t_is_float expected)
+        return expected
+    end
+    return (TFloat name: "f64")
+end
+
+func is_cmp (op str) -> bool
+    let v {str} = (vec str)
+    do (push v "<")
+    do (push v "<=")
+    do (push v ">")
+    do (push v ">=")
+    do (push v "==")
+    do (push v "!=")
+    let i = 0u64
+    while (< i (len v))
+        if (strings::eq v[i] op)
+            return true
+        end
+        set i = (+ i 1)
+    end
+    return false
+end
+
+func print_sym (t Type) -> str
+    match t
+        case (TInt n)
+            if (== (strings::chars n)[0] 'i')
+                return "cl_print_i64"
+            end
+            return "cl_print_u64"
+        case (TFloat n)
+            return "cl_print_f64"
+        case (TPrim n)
+            if (strings::eq n "bool")
+                return "cl_print_bool"
+            end
+            if (strings::eq n "str")
+                return "cl_print_str"
+            end
+            do (panic "lower: cannot io::print this type")
+        else
+            do (panic "lower: cannot io::print this type")
+    end
+    return ""
+end
+
+# --------------------------------------------------------------------------- #
+# Expressions
+# --------------------------------------------------------------------------- #
+
+func lower_expr (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (expected Type) -> IVal
+    match e
+        case (EInt value suffix)
+            return (ImmInt val: value ty: (irt (int_lit_ty suffix expected)))
+        case (EFloat text suffix)
+            return (ImmFloat text: text ty: (irt (float_lit_ty suffix expected)))
+        case (EBool value)
+            return (ImmBool b: value)
+        case (EChar cp)
+            return (ImmChar cp: (as cp i64))
+        case (EStr value)
+            return (ImmStr s: value)
+        case ENull
+            do (panic "lower: null/handles not supported yet")
+        case (EName ident)
+            return (lower_name lx vs ident)
+        case (EPath parts)
+            return (lower_path lx parts)
+        case (EOp op args)
+            return (lower_op lx vs ts e op args expected)
+        case (ECast ex ty)
+            let inner = (lower_expr lx vs ts ex TNone)
+            let toty = (checker::resolve lx.ctx ty)
+            let dst = (ir::fresh_temp lx.b (irt toty))
+            do (ir::emit lx.b (ICast dst: dst val: inner toty: (irt toty)))
+            return dst
+        case (ECall callee args)
+            return (lower_call lx vs ts callee args)
+        case (EField obj field)
+            do (panic "lower: field access (stage 2)")
+        case (EIndex obj index)
+            do (panic "lower: indexing (stage 2)")
+        case (EStruct typ fields)
+            do (panic "lower: struct literal (stage 2)")
+        case (EArr elems)
+            do (panic "lower: array literal (stage 2)")
+        case (EArrNew elem count)
+            do (panic "lower: array new (stage 2)")
+        case (EVecNew elem)
+            do (panic "lower: vec (stage 3)")
+        case (EVec elems)
+            do (panic "lower: vec literal (stage 3)")
+        case (EMapNew key val)
+            do (panic "lower: map (stage 3)")
+        case (ERef place)
+            do (panic "lower: (ref ...) not supported yet")
+        case (EFunc params ret has_ret body)
+            do (panic "lower: closures (stage 4)")
+    end
+    return ImmUnit
+end
+
+func lower_name (lx LX) (vs {str IVal}) (id str) -> IVal
+    if (map_has vs id)
+        return vs[id]
+    end
+    do (panic (strings::concat "lower: cannot use as a value: " id))
+    return ImmUnit
+end
+
+func lower_path (lx LX) (parts {str}) -> IVal
+    if (== (len parts) 2u64)
+        let e0 = parts[0]
+        let e1 = parts[1]
+        # local enum  Enum::Variant
+        if (map_has lx.ctx.cur.enums e0)
+            let idx = (index_of lx.ctx.cur.enums[e0] e1)
+            let dst = (ir::fresh_temp lx.b (irt (TEnum name: e0)))
+            do (ir::emit lx.b (IEnumConst dst: dst enum_name: e0 variant: e1 intval: idx))
+            return dst
+        end
+        # imported enum
+        for alias in (map_keys lx.ctx.cur.imported)
+            let mname = lx.ctx.cur.imported[alias]
+            if (map_has lx.ctx.sigs mname)
+                let osig = lx.ctx.sigs[mname]
+                if (map_has osig.enums e0)
+                    let idx = (index_of osig.enums[e0] e1)
+                    let dst = (ir::fresh_temp lx.b (irt (TEnum name: e0)))
+                    do (ir::emit lx.b (IEnumConst dst: dst enum_name: e0 variant: e1 intval: idx))
+                    return dst
+                end
+            end
+        end
+    end
+    do (panic "lower: cannot lower path as a value (stage 4)")
+    return ImmUnit
+end
+
+func operand_ty (lx LX) (ts {str Binding}) (args {Expr}) -> Type
+    let i = 0u64
+    while (< i (len args))
+        let t = (checker::check_expr lx.ctx args[i] ts TNone)
+        if (not (or (t_is_uint t) (t_is_ufloat t)))
+            return t
+        end
+        set i = (+ i 1)
+    end
+    return (checker::check_expr lx.ctx args[0] ts TNone)
+end
+
+func lower_op (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (op str) (args {Expr}) (expected Type) -> IVal
+    if (strings::eq op "and")
+        return (lower_andor lx vs ts args false)
+    end
+    if (strings::eq op "or")
+        return (lower_andor lx vs ts args true)
+    end
+    if (strings::eq op "not")
+        let v = (lower_expr lx vs ts args[0] (bool_ty))
+        let dst = (ir::fresh_temp lx.b (irt (bool_ty)))
+        do (ir::emit lx.b (IUn dst: dst op: "not" val: v ty: (irt (bool_ty)) chk: false))
+        return dst
+    end
+    if (is_cmp op)
+        let opty = (operand_ty lx ts args)
+        let lv = (lower_expr lx vs ts args[0] opty)
+        let rv = (lower_expr lx vs ts args[1] opty)
+        let dst = (ir::fresh_temp lx.b (irt (bool_ty)))
+        do (ir::emit lx.b (IBin dst: dst op: op lhs: lv rhs: rv ty: (irt opty) chk: false))
+        return dst
+    end
+    let rty = (result_ty lx ts e expected)
+    if (strings::eq op "bnot")
+        let v = (lower_expr lx vs ts args[0] rty)
+        let dst = (ir::fresh_temp lx.b (irt rty))
+        do (ir::emit lx.b (IUn dst: dst op: "bnot" val: v ty: (irt rty) chk: lx.chk[0]))
+        return dst
+    end
+    if (and (strings::eq op "-") (== (len args) 1u64))
+        let v = (lower_expr lx vs ts args[0] rty)
+        let dst = (ir::fresh_temp lx.b (irt rty))
+        do (ir::emit lx.b (IUn dst: dst op: "-" val: v ty: (irt rty) chk: lx.chk[0]))
+        return dst
+    end
+    # n-ary arithmetic / bitwise: fold left
+    let acc = (lower_expr lx vs ts args[0] rty)
+    let i = 1u64
+    while (< i (len args))
+        let v = (lower_expr lx vs ts args[i] rty)
+        let dst = (ir::fresh_temp lx.b (irt rty))
+        do (ir::emit lx.b (IBin dst: dst op: op lhs: acc rhs: v ty: (irt rty) chk: lx.chk[0]))
+        set acc = dst
+        set i = (+ i 1)
+    end
+    return acc
+end
+
+func lower_andor (lx LX) (vs {str IVal}) (ts {str Binding}) (args {Expr}) (short_true bool) -> IVal
+    let un = (uniq lx "sc")
+    let res = (ir::add_local lx.b un (irt (bool_ty)))
+    let endl = (ir::fresh_label lx.b "sc_end")
+    let i = 0u64
+    while (< i (len args))
+        let av = (lower_expr lx vs ts args[i] (bool_ty))
+        do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt (bool_ty))) src: av))
+        let nxt = (ir::fresh_label lx.b "sc_nx")
+        if short_true
+            do (ir::emit lx.b (ICondBr cond: av then_l: endl else_l: nxt))
+        else
+            do (ir::emit lx.b (ICondBr cond: av then_l: nxt else_l: endl))
+        end
+        do (ir::new_block lx.b nxt)
+        set i = (+ i 1)
+    end
+    do (ir::emit lx.b (IBr target: endl))
+    do (ir::new_block lx.b endl)
+    return res
+end
+
+func lower_call (lx LX) (vs {str IVal}) (ts {str Binding}) (callee Expr) (args {Expr}) -> IVal
+    match callee
+        case (EName id)
+            if (strings::eq id "panic")
+                let msg = (lower_expr lx vs ts args[0] (str_ty))
+                set lx.irm.externs["cl_panic"] = true
+                do (ir::emit lx.b (IPanic msg: msg))
+                return ImmUnit
+            end
+            if (strings::eq id "len")
+                do (panic "lower: len (stage 2/3)")
+            end
+        case (EPath parts)
+            if (strings::eq parts[0] "io")
+                return (lower_io lx vs ts parts[1] args)
+            end
+        else
+            pass
+    end
+    # direct call to a named top-level function
+    let ft = (checker::check_expr lx.ctx callee ts TNone)
+    if (not (t_is_func ft))
+        do (panic "lower: indirect/closure call (stage 4)")
+    end
+    let params = (t_func_params ft)
+    let rty = (t_func_ret ft)
+    let argvals {IVal} = (vec IVal)
+    let i = 0u64
+    while (< i (len args))
+        let pexp = TNone
+        if (< i (len params))
+            set pexp = params[i]
+        end
+        do (push argvals (lower_expr lx vs ts args[i] pexp))
+        set i = (+ i 1)
+    end
+    let mname = (callee_mangle lx callee)
+    if (t_is_unit rty)
+        do (ir::emit lx.b (ICall has_dst: false dst: ImmUnit callee: mname args: argvals ty: (irt rty)))
+        return ImmUnit
+    end
+    let dst = (ir::fresh_temp lx.b (irt rty))
+    do (ir::emit lx.b (ICall has_dst: true dst: dst callee: mname args: argvals ty: (irt rty)))
+    return dst
+end
+
+func callee_mangle (lx LX) (callee Expr) -> str
+    match callee
+        case (EName id)
+            if (map_has lx.callmap id)
+                return lx.callmap[id]
+            end
+            return (mangle lx.ctx.cur.name id)
+        case (EPath parts)
+            return (mangle parts[0] parts[1])
+        else
+            do (panic "lower: unsupported call target")
+    end
+    return ""
+end
+
+func lower_io (lx LX) (vs {str IVal}) (ts {str Binding}) (fn str) (args {Expr}) -> IVal
+    let i = 0u64
+    while (< i (len args))
+        let v = (lower_expr lx vs ts args[i] TNone)
+        let t = (checker::check_expr lx.ctx args[i] ts TNone)
+        let sym = (print_sym t)
+        set lx.irm.externs[sym] = true
+        let a1 {IVal} = (vec IVal)
+        do (push a1 v)
+        do (ir::emit lx.b (ICall has_dst: false dst: ImmUnit callee: sym args: a1 ty: (irt (unit_ty))))
+        set i = (+ i 1)
+    end
+    if (strings::eq fn "println")
+        set lx.irm.externs["cl_print_nl"] = true
+        do (ir::emit lx.b (ICall has_dst: false dst: ImmUnit callee: "cl_print_nl" args: (vec IVal) ty: (irt (unit_ty))))
+    end
+    return ImmUnit
+end
+
+# --------------------------------------------------------------------------- #
+# Statements
+# --------------------------------------------------------------------------- #
+
+func lower_block (lx LX) (vscope {str IVal}) (tscope {str Binding}) (body {Stmt}) -> unit
+    let vs = (copy_iv vscope)
+    let ts = (copy_bind tscope)
+    for s in body
+        do (lower_stmt lx vs ts s)
+    end
+end
+
+func lower_stmt (lx LX) (vs {str IVal}) (ts {str Binding}) (s Stmt) -> unit
+    match s
+        case (SLet name ty has_ty expr mutable)
+            let vty = (unit_ty)
+            if has_ty
+                set vty = (checker::resolve lx.ctx ty)
+            else
+                set vty = (concrete_ty lx ts expr)
+            end
+            let val = (lower_expr lx vs ts expr vty)
+            let un = (uniq lx name)
+            let loc = (ir::add_local lx.b un (irt vty))
+            do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt vty)) src: val))
+            set vs[name] = loc
+            set ts[name] = (Binding ty: vty mutable: mutable)
+        case (SSet target expr)
+            do (lower_set lx vs ts target expr)
+        case (SDo call)
+            let ignore = (lower_expr lx vs ts call (unit_ty))
+            pass
+        case (SIf branches orelse has_else)
+            do (lower_if lx vs ts branches orelse has_else)
+        case (SWhile cond body)
+            do (lower_while lx vs ts cond body)
+        case (SForNum var start stop stride has_step body)
+            do (lower_fornum lx vs ts var start stop stride has_step body)
+        case (SForIn var iter body)
+            do (panic "lower: for-in (stage 2)")
+        case (SLoop body)
+            do (lower_loop lx vs ts body)
+        case SBreak
+            do (ir::emit lx.b (IBr target: lx.brk[(- (len lx.brk) 1u64)]))
+        case SContinue
+            do (ir::emit lx.b (IBr target: lx.cont[(- (len lx.cont) 1u64)]))
+        case SPass
+            pass
+        case (SReturn expr has_expr)
+            if has_expr
+                let v = (lower_expr lx vs ts expr lx.ret)
+                do (ir::emit lx.b (IRet has_val: true val: v))
+            else
+                do (ir::emit lx.b (IRet has_val: false val: ImmUnit))
+            end
+        case (SChecked body)
+            let old = lx.chk[0]
+            set lx.chk[0] = true
+            do (lower_block lx vs ts body)
+            set lx.chk[0] = old
+        case (SMatch scrut arms orelse has_else)
+            do (panic "lower: match/sum types (stage 4)")
+    end
+end
+
+func lower_set (lx LX) (vs {str IVal}) (ts {str Binding}) (target Expr) (expr Expr) -> unit
+    match target
+        case (EName id)
+            let loc = vs[id]
+            let pty = ts[id].ty
+            let un = (ival_name loc)
+            let v = (lower_expr lx vs ts expr pty)
+            do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt pty)) src: v))
+        case (EIndex obj index)
+            do (panic "lower: array/map assignment (stage 2/3)")
+        case (EField obj field)
+            do (panic "lower: field assignment (stage 2)")
+        else
+            do (panic "lower: invalid assignment target")
+    end
+end
+
+func lower_if (lx LX) (vs {str IVal}) (ts {str Binding}) (branches {Branch}) (orelse {Stmt}) (has_else bool) -> unit
+    let endl = (ir::fresh_label lx.b "if_end")
+    let i = 0u64
+    while (< i (len branches))
+        let br = branches[i]
+        let cv = (lower_expr lx vs ts br.cond (bool_ty))
+        let thenl = (ir::fresh_label lx.b "then")
+        let elsl = (ir::fresh_label lx.b "else")
+        do (ir::emit lx.b (ICondBr cond: cv then_l: thenl else_l: elsl))
+        do (ir::new_block lx.b thenl)
+        do (lower_block lx vs ts br.body)
+        if (not (ir::cur_terminated lx.b))
+            do (ir::emit lx.b (IBr target: endl))
+        end
+        do (ir::new_block lx.b elsl)
+        set i = (+ i 1)
+    end
+    if has_else
+        do (lower_block lx vs ts orelse)
+    end
+    if (not (ir::cur_terminated lx.b))
+        do (ir::emit lx.b (IBr target: endl))
+    end
+    do (ir::new_block lx.b endl)
+end
+
+func lower_while (lx LX) (vs {str IVal}) (ts {str Binding}) (cond Expr) (body {Stmt}) -> unit
+    let head = (ir::fresh_label lx.b "while_head")
+    let bodyl = (ir::fresh_label lx.b "while_body")
+    let endl = (ir::fresh_label lx.b "while_end")
+    do (ir::emit lx.b (IBr target: head))
+    do (ir::new_block lx.b head)
+    let cv = (lower_expr lx vs ts cond (bool_ty))
+    do (ir::emit lx.b (ICondBr cond: cv then_l: bodyl else_l: endl))
+    do (ir::new_block lx.b bodyl)
+    do (push lx.brk endl)
+    do (push lx.cont head)
+    do (lower_block lx vs ts body)
+    do (pop lx.brk)
+    do (pop lx.cont)
+    if (not (ir::cur_terminated lx.b))
+        do (ir::emit lx.b (IBr target: head))
+    end
+    do (ir::new_block lx.b endl)
+end
+
+func lower_loop (lx LX) (vs {str IVal}) (ts {str Binding}) (body {Stmt}) -> unit
+    let head = (ir::fresh_label lx.b "loop_head")
+    let endl = (ir::fresh_label lx.b "loop_end")
+    do (ir::emit lx.b (IBr target: head))
+    do (ir::new_block lx.b head)
+    do (push lx.brk endl)
+    do (push lx.cont head)
+    do (lower_block lx vs ts body)
+    do (pop lx.brk)
+    do (pop lx.cont)
+    if (not (ir::cur_terminated lx.b))
+        do (ir::emit lx.b (IBr target: head))
+    end
+    do (ir::new_block lx.b endl)
+end
+
+func lower_fornum (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (startE Expr) (stopE Expr) (strideE Expr) (has_step bool) (body {Stmt}) -> unit
+    let cand {Type} = (vec Type)
+    do (push cand (checker::check_expr lx.ctx startE ts TNone))
+    do (push cand (checker::check_expr lx.ctx stopE ts TNone))
+    if has_step
+        do (push cand (checker::check_expr lx.ctx strideE ts TNone))
+    end
+    let ity = (pick_int cand)
+    let un = (uniq lx var)
+    let loc = (ir::add_local lx.b un (irt ity))
+    let startv = (lower_expr lx vs ts startE ity)
+    do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt ity)) src: startv))
+    let stopv = (lower_expr lx vs ts stopE ity)
+    let stepv = (ImmInt val: 1i64 ty: (irt ity))
+    if has_step
+        set stepv = (lower_expr lx vs ts strideE ity)
+    end
+    let head = (ir::fresh_label lx.b "for_head")
+    let bodyl = (ir::fresh_label lx.b "for_body")
+    let post = (ir::fresh_label lx.b "for_post")
+    let fin = (ir::fresh_label lx.b "for_end")
+    do (ir::emit lx.b (IBr target: head))
+    do (ir::new_block lx.b head)
+    let cond = (ir::fresh_temp lx.b (irt (bool_ty)))
+    do (ir::emit lx.b (IBin dst: cond op: "<" lhs: loc rhs: stopv ty: (irt ity) chk: false))
+    do (ir::emit lx.b (ICondBr cond: cond then_l: bodyl else_l: fin))
+    do (ir::new_block lx.b bodyl)
+    let vs2 = (copy_iv vs)
+    let ts2 = (copy_bind ts)
+    set vs2[var] = loc
+    set ts2[var] = (Binding ty: ity mutable: true)
+    do (push lx.brk fin)
+    do (push lx.cont post)
+    do (lower_block lx vs2 ts2 body)
+    do (pop lx.brk)
+    do (pop lx.cont)
+    if (not (ir::cur_terminated lx.b))
+        do (ir::emit lx.b (IBr target: post))
+    end
+    do (ir::new_block lx.b post)
+    let nxt = (ir::fresh_temp lx.b (irt ity))
+    do (ir::emit lx.b (IBin dst: nxt op: "+" lhs: loc rhs: stepv ty: (irt ity) chk: false))
+    do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt ity)) src: nxt))
+    do (ir::emit lx.b (IBr target: head))
+    do (ir::new_block lx.b fin)
+end
+
+# --------------------------------------------------------------------------- #
+# Functions / driver
+# --------------------------------------------------------------------------- #
+
+func lower_func (lx LX) (name str) (params {Param}) (ret Ty) (has_ret bool) (body {Stmt}) -> unit
+    let irparams {IRParam} = (vec IRParam)
+    let vscope {str IVal} = (map str IVal)
+    let tscope {str Binding} = (map str Binding)
+    for pf in params
+        let pty = (checker::resolve lx.ctx pf.ty)
+        do (push irparams (IRParam name: pf.name ty: (irt pty)))
+        set vscope[pf.name] = (Local name: pf.name ty: (irt pty))
+        set tscope[pf.name] = (Binding ty: pty mutable: true)
+    end
+    let rty = (unit_ty)
+    if has_ret
+        set rty = (checker::resolve lx.ctx ret)
+    end
+    set lx.b = (ir::new_builder (mangle lx.ctx.cur.name name) irparams (irt rty))
+    set lx.ret = rty
+    set lx.uq[0] = 0i64
+    do (lower_block lx vscope tscope body)
+    if (not (ir::cur_terminated lx.b))
+        do (ir::emit lx.b (IRet has_val: false val: ImmUnit))
+    end
+    do (push lx.irm.funcs lx.b.fn)
+end
+
+func build_callmap (sig Sig) -> {str str}
+    let m {str str} = (map str str)
+    for d in sig.decls
+        match d
+            case (DFunc name params ret has_ret body exported)
+                set m[name] = (mangle sig.name name)
+            else
+                pass
+        end
+    end
+    return m
+end
+
+export func lower_program (src str) (searchdirs {str}) -> IRModule
+    let mainmod = (parser::parse src)
+    let ctx = (checker::new_ctx searchdirs)
+    let s0 = (checker::build_sig ctx mainmod)
+    let m = (IRModule name: mainmod.name structs: (vec IRStruct) funcs: (vec IRFunc) externs: (map str bool) thunks: (map str Type))
+    let chk {bool} = (vec bool)
+    do (push chk false)
+    let uq {i64} = (vec i64)
+    do (push uq 0i64)
+    let lx = (LX ctx: ctx irm: m b: (ir::new_builder "__init" (vec IRParam) (irt (unit_ty))) chk: chk brk: (vec str) cont: (vec str) uq: uq callmap: (map str str) ret: (unit_ty))
+    for name in (map_keys ctx.sigs)
+        let sig = ctx.sigs[name]
+        if sig.has_module
+            set lx.ctx.cur = sig
+            set lx.callmap = (build_callmap sig)
+            for d in sig.decls
+                match d
+                    case (DFunc fname params ret has_ret body exported)
+                        do (lower_func lx fname params ret has_ret body)
+                    else
+                        pass
+                end
+            end
+        end
+    end
+    return m
+end

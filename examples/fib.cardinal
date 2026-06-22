@@ -1,0 +1,19 @@
+module fib
+
+import io
+
+func fib (n i64) -> i64
+    if (< n 2)
+        return n
+    end
+    return (+ (fib (- n 1)) (fib (- n 2)))
+end
+
+func main () -> i32
+    let i = 0i64
+    while (< i 15)
+        do (io::println (fib i))
+        set i = (+ i 1)
+    end
+    return 0i32
+end

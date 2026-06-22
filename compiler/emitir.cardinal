@@ -1,0 +1,40 @@
+module emitir
+
+# Driver: lower the Cardinal program named on argv[0] to IR, emit C, print it.
+# This is the new self-hosting backend pipeline (lower -> IR -> backend),
+# replacing the direct AST->C emitter (codegen.cardinal).
+
+import io
+import fs
+import sys
+import strings
+import lower
+import backend
+
+# Directory portion of a path ("" if none), so imported modules resolve relative
+# to the program being compiled.
+func dirname (p str) -> str
+    let cs = (strings::chars p)
+    let last = (- 1i64)
+    let i = 0u64
+    while (< i (len cs))
+        if (== cs[i] '/')
+            set last = (as i i64)
+        end
+        set i = (+ i 1)
+    end
+    if (< last 0i64)
+        return "."
+    end
+    return (strings::substr p 0u64 (as last u64))
+end
+
+func main () -> i32
+    let a = (sys::args)
+    let dirs {str} = (vec str)
+    do (push dirs (dirname a[0]))
+    do (push dirs ".")
+    let m = (lower::lower_program (fs::read_file a[0]) dirs)
+    do (io::print (backend::emit_with "c" m))
+    return 0i32
+end

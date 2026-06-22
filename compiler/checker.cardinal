@@ -572,7 +572,7 @@ func resolve_name (ctx Ctx) (n str) -> Type
     return (t_unit)
 end
 
-func resolve (ctx Ctx) (node Ty) -> Type
+export func resolve (ctx Ctx) (node Ty) -> Type
     match node
         case (TyName n)
             return (resolve_name ctx n)
@@ -766,7 +766,7 @@ func resolve_selective (ctx Ctx) (sig Sig) (other Sig) (modname str) (nm str) ->
     end
 end
 
-func build_sig (ctx Ctx) (mod Module) -> Sig
+export func build_sig (ctx Ctx) (mod Module) -> Sig
     let sig = (new_sig mod.name mod.decls true)
     set ctx.sigs[mod.name] = sig        # register early (supports import cycles)
     set ctx.cur = sig                   # resolve runs against this module
@@ -986,7 +986,7 @@ func new_sig (name str) (decls {Decl}) (has_module bool) -> Sig
                 has_module: has_module)
 end
 
-func new_ctx (dirs {str}) -> Ctx
+export func new_ctx (dirs {str}) -> Ctx
     return (Ctx sigs: (map str Sig)
                 cur: (new_sig "" (vec Decl) false)
                 errors: (vec str)
@@ -1207,7 +1207,7 @@ end
 # Expressions
 # --------------------------------------------------------------------------- #
 
-func check_expr (ctx Ctx) (e Expr) (scope {str Binding}) (expected Type) -> Type
+export func check_expr (ctx Ctx) (e Expr) (scope {str Binding}) (expected Type) -> Type
     match e
         case (EInt value suffix)
             if (strings::eq suffix "")
