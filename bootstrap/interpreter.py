@@ -1986,10 +1986,24 @@ def builtin_convert():
     def _int_to_str(interp, args):
         return str(args[0].val)
     def _str_to_int(interp, args):
-        try:
-            return CInt(int(args[0]), "i64")
-        except ValueError:
+        # Strict ASCII base-10 (matches the C runtime cl_convert__str_to_int).
+        # NOT Python int(): no underscore separators, no Unicode digits/whitespace
+        # — those are bootstrap-host accidents, not a Cardinal semantic.
+        s = args[0]
+        i, j = 0, len(s)
+        while i < j and s[i] in " \t\n\r": i += 1
+        while j > i and s[j - 1] in " \t\n\r": j -= 1
+        neg = False
+        if i < j and s[i] in "+-":
+            neg = (s[i] == "-"); i += 1
+        if i >= j:
             raise Panic(f"str_to_int: not an integer: {args[0]!r}")
+        acc = 0
+        for k in range(i, j):
+            if not ("0" <= s[k] <= "9"):
+                raise Panic(f"str_to_int: not an integer: {args[0]!r}")
+            acc = acc * 10 + (ord(s[k]) - 48)
+        return CInt(-acc if neg else acc, "i64")
     ms.env.define("ord", Builtin("convert::ord", _ord), mutable=False)
     ms.env.define("chr", Builtin("convert::chr", _chr), mutable=False)
     ms.env.define("int_to_str", Builtin("convert::int_to_str", _int_to_str), mutable=False)

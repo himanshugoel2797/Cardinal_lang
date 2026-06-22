@@ -124,14 +124,38 @@ immutable static `cl_str`.** You must:
      NOT the C stack): ≤1 un-rooted alloc in flight, stored into the
      caller-rooted header before the next alloc; `cl_map_keys` push-roots its
      result vec across the build loop.
-   - **STILL TODO: heap strings.** `strings::concat`/`substr`/`from_char`/`chars`
-     need GC-allocated `cl_str`; today `cl_str` is `{const char*, len}` static.
-     Decide the cl_str ABI for owned vs static and keep `cl_print_str`/
-     `cl_str_len` working. NOTE: map STR keys currently store `cl_str` by value
-     and compare by content — that works for static AND owned strings, but owned
-     char buffers held only as map keys/vec elements are NOT GC-traced (cl_str
-     `.data` is a raw `const char*`, not a handle). Resolve when the owned-cl_str
-     ABI lands (e.g. back owned strings with a handle the scanner can see).
+   - **Heap strings — IN PROGRESS (this milestone).** ABI decided + specced in
+     DESIGN §5.3: a `str` is a single `cl_handle` to a managed string object
+     `{ u64 nbytes; UTF-8 bytes... }` (bytes inline). cl_str is now traced like
+     any other handle — no raw-char* field, no static-vs-owned split. Work items:
+     * Runtime (`cardinal_rt.{h,c}`): `typedef cl_handle cl_str`; rewrite
+       `cl_print_str`/`cl_str_len`/`cl_panic` to deref; add `cl_str_from_utf8`
+       and **interned `cl_strlit(const char*)`** — pointer-keyed intern in a
+       permanently-rooted cl_map so a literal evaluates to a stable rooted handle
+       (this is how the inlined-literal GC hazard is avoided: the backend emits
+       literals inline as `cl_strlit("...")`, which must NOT be an un-rooted fresh
+       alloc each eval). Builtins with the exact mangled names the backend emits
+       (`cl_<mod>__<fn>`): `cl_strings__chars` (->cl_array of int32 codepoints),
+       `__concat`, `__substr` (codepoint-indexed, Python-slice clamp — NO panic),
+       `__from_char(int32 cp)`, `__eq`(bool, content); `cl_convert__ord/chr/
+       int_to_str/str_to_int`. All str ops are CODEPOINT-indexed (interpreter str
+       is a Python str): `len(str)`=codepoint count, `substr` slices codepoints,
+       `chars` decodes to codepoints. Re-deref str args after any alloc (GC is
+       non-moving so ptrs are stable, but be explicit); str args are caller-rooted.
+     * vec/map STR-key path: keysz is now sizeof(cl_handle)=8; `map_hash_key`/
+       `map_key_eq` STR branch must DEREF the handle to reach bytes (done).
+     * Backend (`backend_c.cardinal`): `ImmStr` -> `cl_strlit("escaped")` (runtime
+       strlens it — also fixes the old codepoint-vs-byte length bug); `managed()`
+       += str + TMap; `ctype_t` += TMap (`cl_map`).
+     * Lowerer (`lower.cardinal`): `len(str)` -> ICall `cl_str_len`; `==`/`!=` on
+       str -> ICall `cl_strings__eq` (raw IBin would compare handles, not content).
+     * No checker change -> difftest stays AGREE=13 automatically.
+     CAVEATS to revisit: `cl_strlit` strlens, so embedded-NUL string literals
+     truncate (compiler/tests use none; lexer likely can't make one). `cescape`
+     (backend) still only escapes `"\ \n\t\r` — arbitrary control bytes in a
+     literal emit invalid C (pre-existing). `str_to_int` panic-message text is
+     best-effort, not byte-identical to Python's `repr` (stderr only; stdout
+     parity holds).
 2. **Lower** them in `lower.cardinal`: replace the `(stage 3)` panics — EVecNew/
    EVec/EMapNew, vec/map index read+write, `len` of str/vec/map, for-in over
    vec, `push`/`pop`/`map_has`/`map_del`/`map_keys` builtins (see

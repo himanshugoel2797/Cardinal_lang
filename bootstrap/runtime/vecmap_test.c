@@ -13,7 +13,7 @@ static int ok = 1;
     if (!(cond)) { printf("FAIL: %s\n", msg); ok = 0; } \
 } while (0)
 
-static cl_str S(const char *s) { cl_str x; x.data = s; x.len = strlen(s); return x; }
+static cl_str S(const char *s) { return cl_str_from_utf8(s, strlen(s)); }
 
 /* --- vectors ---------------------------------------------------------- */
 static void test_vec(void) {
@@ -109,9 +109,9 @@ static void test_map_str(void) {
     v = 2; cl_map_set(m, &b, &v);
     v = 3; cl_map_set(m, &g, &v);
 
-    /* a DIFFERENT cl_str object with the same content must hit the same key */
+    /* a DIFFERENT string object with the same content must hit the same key */
     char buf[8]; strcpy(buf, "beta");
-    cl_str b2; b2.data = buf; b2.len = 4;
+    cl_str b2 = cl_str_from_utf8(buf, 4);
     CHECK(cl_map_has(m, &b2), "str key matched by content, not pointer");
     CHECK(*(int64_t *)cl_map_get(m, &b2) == 2, "str key get by content");
 

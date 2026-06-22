@@ -21,15 +21,48 @@ void *cl_array_at(cl_array a, uint64_t i) {
     return (char *)cl_gc_deref(a.data) + i * a.elemsz;
 }
 
+/* A str is a handle to this object; the UTF-8 bytes follow inline. */
+typedef struct { uint64_t nbytes; } cl_str_hdr;
+#define CL_STR_HDR sizeof(cl_str_hdr)
+
+/* Bytes of a string + its byte length. Re-call after any allocation. */
+static const char *str_bytes(cl_str s, uint64_t *nbytes) {
+    cl_str_hdr *h = (cl_str_hdr *)cl_gc_deref(s);
+    if (nbytes) *nbytes = h->nbytes;
+    return (const char *)h + CL_STR_HDR;
+}
+
+/* Allocate an nbytes-long managed string; returns the handle and (via out) a
+ * pointer to its (uninitialised) byte region. Single allocation: the caller may
+ * fill the bytes before any further alloc. */
+static cl_str str_alloc(uint64_t nbytes, char **bytes_out) {
+    cl_handle h = cl_gc_alloc(CL_STR_HDR + nbytes);
+    cl_str_hdr *hd = (cl_str_hdr *)cl_gc_deref(h);
+    hd->nbytes = nbytes;
+    *bytes_out = (char *)hd + CL_STR_HDR;
+    return h;
+}
+
+cl_str cl_str_from_utf8(const char *bytes, uint64_t nbytes) {
+    char *dst;
+    cl_str s = str_alloc(nbytes, &dst);
+    if (nbytes) memcpy(dst, bytes, nbytes);
+    return s;
+}
+
 uint64_t cl_str_len(cl_str s) {
+    uint64_t nbytes;
+    const char *b = str_bytes(s, &nbytes);
     uint64_t n = 0;
-    for (uint64_t i = 0; i < s.len; i++)
-        if (((unsigned char)s.data[i] & 0xC0) != 0x80) n++;  /* count UTF-8 leads */
+    for (uint64_t i = 0; i < nbytes; i++)
+        if (((unsigned char)b[i] & 0xC0) != 0x80) n++;   /* count UTF-8 leads */
     return n;
 }
 
 void cl_panic(cl_str msg) {
-    fprintf(stderr, "panic: %.*s\n", (int)msg.len, msg.data);
+    uint64_t nbytes;
+    const char *b = str_bytes(msg, &nbytes);
+    fprintf(stderr, "panic: %.*s\n", (int)nbytes, b);
     exit(101);
 }
 
@@ -42,7 +75,7 @@ void cl_print_i64(int64_t v)  { printf("%lld", (long long)v); }
 void cl_print_u64(uint64_t v) { printf("%llu", (unsigned long long)v); }
 void cl_print_f64(double v)   { printf("%g", v); }
 void cl_print_bool(int v)     { fputs(v ? "true" : "false", stdout); }
-void cl_print_str(cl_str s)   { fwrite(s.data, 1, s.len, stdout); }
+void cl_print_str(cl_str s)   { uint64_t n; const char *b = str_bytes(s, &n); fwrite(b, 1, n, stdout); }
 void cl_print_nl(void)        { putchar('\n'); }
 
 /* ===================================================================== *
@@ -157,8 +190,9 @@ static uint64_t fnv1a(const void *p, uint64_t n) {
 
 static uint64_t map_hash_key(const cl_map_hdr *m, const void *key) {
     if (m->kind == CL_MAP_STR) {
-        cl_str s; memcpy(&s, key, sizeof s);
-        return fnv1a(s.data, s.len);
+        cl_str s; memcpy(&s, key, sizeof s);   /* key bytes hold a str handle */
+        uint64_t n; const char *b = str_bytes(s, &n);
+        return fnv1a(b, n);
     }
     return fnv1a(key, m->keysz);
 }
@@ -166,7 +200,10 @@ static uint64_t map_hash_key(const cl_map_hdr *m, const void *key) {
 static int map_key_eq(const cl_map_hdr *m, const void *a, const void *b) {
     if (m->kind == CL_MAP_STR) {
         cl_str x, y; memcpy(&x, a, sizeof x); memcpy(&y, b, sizeof y);
-        return x.len == y.len && (x.len == 0 || memcmp(x.data, y.data, x.len) == 0);
+        uint64_t nx, ny;
+        const char *bx = str_bytes(x, &nx);
+        const char *by = str_bytes(y, &ny);
+        return nx == ny && (nx == 0 || memcmp(bx, by, nx) == 0);
     }
     return memcmp(a, b, m->keysz) == 0;
 }
@@ -338,4 +375,159 @@ cl_vec cl_map_keys(cl_map h) {
     }
     cl_gc_pop_roots(1);
     return out;
+}
+
+/* ===================================================================== *
+ *  Heap strings: builtins (DESIGN.md §5.3). A str is a managed handle to
+ *  { u64 nbytes; UTF-8 bytes }. All indexing is by Unicode codepoint, to
+ *  match the interpreter (a runtime string there is a Python str). The
+ *  collector is non-moving, so a pointer from cl_gc_deref stays valid across
+ *  a later allocation — but we re-deref str arguments after any alloc for
+ *  clarity. String arguments are kept alive by the caller's roots.
+ * ===================================================================== */
+
+/* UTF-8: bytes for codepoint cp written to buf (>=4 bytes); returns byte count. */
+static int utf8_encode(uint32_t cp, char *buf) {
+    if (cp < 0x80) { buf[0] = (char)cp; return 1; }
+    if (cp < 0x800) {
+        buf[0] = (char)(0xC0 | (cp >> 6));
+        buf[1] = (char)(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    if (cp < 0x10000) {
+        buf[0] = (char)(0xE0 | (cp >> 12));
+        buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        buf[2] = (char)(0x80 | (cp & 0x3F));
+        return 3;
+    }
+    buf[0] = (char)(0xF0 | (cp >> 18));
+    buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    buf[3] = (char)(0x80 | (cp & 0x3F));
+    return 4;
+}
+
+/* Decode one codepoint at b[i..nbytes); advance *i past it. */
+static uint32_t utf8_decode(const char *b, uint64_t nbytes, uint64_t *i) {
+    unsigned char c = (unsigned char)b[*i];
+    uint32_t cp; int extra;
+    if (c < 0x80)      { cp = c;          extra = 0; }
+    else if (c < 0xE0) { cp = c & 0x1F;   extra = 1; }
+    else if (c < 0xF0) { cp = c & 0x0F;   extra = 2; }
+    else               { cp = c & 0x07;   extra = 3; }
+    (*i)++;
+    for (int k = 0; k < extra && *i < nbytes; k++, (*i)++)
+        cp = (cp << 6) | ((unsigned char)b[*i] & 0x3F);
+    return cp;
+}
+
+cl_str cl_strings__concat(cl_str a, cl_str b) {
+    uint64_t na, nb;
+    str_bytes(a, &na);
+    str_bytes(b, &nb);
+    char *dst;
+    cl_str s = str_alloc(na + nb, &dst);        /* may collect; a,b caller-rooted */
+    memcpy(dst,      str_bytes(a, &na), na);    /* re-deref a,b after alloc */
+    memcpy(dst + na, str_bytes(b, &nb), nb);
+    return s;
+}
+
+cl_str cl_strings__substr(cl_str s, uint64_t start, uint64_t count) {
+    uint64_t nbytes;
+    const char *b = str_bytes(s, &nbytes);
+    uint64_t end = start + count;
+    if (end < start) end = (uint64_t)-1;        /* overflow -> "to the end" */
+    /* Byte offsets of codepoint #start (lo) and #end (hi). Python slice clamps:
+     * an index past the end maps to the end (nbytes); never panics. */
+    uint64_t lo = nbytes, hi = nbytes;
+    if (start == 0) lo = 0;
+    if (end == 0)   hi = 0;
+    uint64_t cp = 0, i = 0;
+    while (i < nbytes) {
+        utf8_decode(b, nbytes, &i);             /* i now = byte offset after cp+1 codepoints */
+        cp++;
+        if (cp == start) lo = i;
+        if (cp == end)   hi = i;
+    }
+    if (hi < lo) hi = lo;
+    uint64_t n = hi - lo;
+    char *dst;
+    cl_str out = str_alloc(n, &dst);            /* may collect; s caller-rooted */
+    if (n) memcpy(dst, str_bytes(s, &nbytes) + lo, n);
+    return out;
+}
+
+cl_array cl_strings__chars(cl_str s) {
+    uint64_t nbytes;
+    const char *b = str_bytes(s, &nbytes);
+    uint64_t ncp = 0;
+    for (uint64_t i = 0; i < nbytes; i++)
+        if (((unsigned char)b[i] & 0xC0) != 0x80) ncp++;
+    cl_array a = cl_array_new(sizeof(int32_t), ncp);   /* alloc; s caller-rooted */
+    b = str_bytes(s, &nbytes);                          /* re-deref after alloc */
+    int32_t *out = (int32_t *)cl_gc_deref(a.data);
+    uint64_t i = 0, k = 0;
+    while (i < nbytes) out[k++] = (int32_t)utf8_decode(b, nbytes, &i);
+    return a;
+}
+
+cl_str cl_strings__from_char(int32_t cp) {
+    char buf[4];
+    int n = utf8_encode((uint32_t)cp, buf);
+    return cl_str_from_utf8(buf, (uint64_t)n);
+}
+
+bool cl_strings__eq(cl_str a, cl_str b) {
+    uint64_t na, nb;
+    const char *ba = str_bytes(a, &na);
+    const char *bb = str_bytes(b, &nb);
+    return na == nb && (na == 0 || memcmp(ba, bb, na) == 0);
+}
+
+uint32_t cl_convert__ord(int32_t ch) { return (uint32_t)ch; }
+int32_t  cl_convert__chr(uint32_t v) { return (int32_t)v; }
+
+cl_str cl_convert__int_to_str(int64_t v) {
+    char buf[24];
+    int n = snprintf(buf, sizeof buf, "%lld", (long long)v);
+    return cl_str_from_utf8(buf, (uint64_t)n);
+}
+
+int64_t cl_convert__str_to_int(cl_str s) {
+    uint64_t nbytes;
+    const char *b = str_bytes(s, &nbytes);
+    /* Python int(): optional surrounding whitespace, optional sign, base-10. */
+    uint64_t i = 0, j = nbytes;
+    while (i < j && (b[i] == ' ' || b[i] == '\t' || b[i] == '\n' || b[i] == '\r')) i++;
+    while (j > i && (b[j-1] == ' ' || b[j-1] == '\t' || b[j-1] == '\n' || b[j-1] == '\r')) j--;
+    int neg = 0;
+    if (i < j && (b[i] == '+' || b[i] == '-')) { neg = (b[i] == '-'); i++; }
+    if (i >= j) cl_panic_cstr("str_to_int: not an integer");
+    int64_t acc = 0;
+    for (; i < j; i++) {
+        if (b[i] < '0' || b[i] > '9') cl_panic_cstr("str_to_int: not an integer");
+        acc = acc * 10 + (b[i] - '0');
+    }
+    return neg ? -acc : acc;
+}
+
+/* String-literal interning: a literal's C-string pointer is stable, so map it to
+ * a managed string held forever in a permanently-rooted map. Emitted code calls
+ * cl_strlit("...") inline; this guarantees a stable, already-rooted handle (no
+ * un-rooted fresh allocation per evaluation). */
+static cl_map g_strlit_intern = CL_NULL;
+
+cl_str cl_strlit(const char *utf8_cstr) {
+    uint64_t key = (uint64_t)(uintptr_t)utf8_cstr;
+    if (g_strlit_intern == CL_NULL) {
+        g_strlit_intern = cl_map_new(sizeof(uint64_t), sizeof(cl_str), CL_MAP_SCALAR);
+        cl_gc_push_root(&g_strlit_intern, sizeof g_strlit_intern);   /* permanent */
+    }
+    if (cl_map_has(g_strlit_intern, &key))
+        return *(cl_str *)cl_map_get(g_strlit_intern, &key);
+    cl_str s = cl_str_from_utf8(utf8_cstr, (uint64_t)strlen(utf8_cstr));
+    cl_gc_push_root(&s, sizeof s);              /* protect across map_set's alloc */
+    cl_map_set(g_strlit_intern, &key, &s);      /* now also rooted via the map */
+    cl_gc_pop_roots(1);
+    return s;
 }

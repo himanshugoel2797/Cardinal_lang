@@ -93,6 +93,8 @@ func ctype_t (t Type) -> str
             return "cl_array"
         case (TVec e)
             return "cl_vec"
+        case (TMap k v)
+            return "cl_map"
         case (TFunc p r)
             return "cl_closure"
         else
@@ -153,8 +155,12 @@ func managed (t IRType) -> bool
                     return true
                 case (TVec e)
                     return true
+                case (TMap k v)
+                    return true
                 case (TFunc p r)
                     return true
+                case (TPrim n)
+                    return (strings::eq n "str")    # str is a managed handle
                 else
                     return false
             end
@@ -308,7 +314,10 @@ func val (v IVal) -> str
         case (ImmChar cp)
             return (strings::concat "((int32_t)" (strings::concat (convert::int_to_str cp) ")"))
         case (ImmStr s)
-            return (strings::concat "((cl_str){\"" (strings::concat (cescape s) (strings::concat "\", " (strings::concat (convert::int_to_str (as (len (strings::chars s)) i64)) "})"))))
+            # Interned literal: a stable, permanently-rooted handle. The runtime
+            # strlens the C string for the byte length (so multi-byte UTF-8 is
+            # correct, unlike a codepoint count).
+            return (strings::concat "cl_strlit(\"" (strings::concat (cescape s) "\")"))
         case ImmUnit
             return "0"
         case (ImmNull ty)

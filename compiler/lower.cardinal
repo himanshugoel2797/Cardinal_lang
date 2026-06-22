@@ -210,6 +210,15 @@ func t_is_array (t Type) -> bool
     end
     return false
 end
+func t_is_str (t Type) -> bool
+    match t
+        case (TPrim n)
+            return (strings::eq n "str")
+        else
+            return false
+    end
+    return false
+end
 func t_is_vec (t Type) -> bool
     match t
         case (TVec e)
@@ -501,6 +510,21 @@ func lower_op (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (op str) (args
         let opty = (operand_ty lx ts args)
         let lv = (lower_expr lx vs ts args[0] opty)
         let rv = (lower_expr lx vs ts args[1] opty)
+        if (t_is_str opty)
+            # str ==/!= is CONTENT equality; a raw handle compare would test
+            # object identity. Route through the runtime, negating for !=.
+            let eqd = (ir::fresh_temp lx.b (irt (bool_ty)))
+            let a2 {IVal} = (vec IVal)
+            do (push a2 lv)
+            do (push a2 rv)
+            do (ir::emit lx.b (ICall has_dst: true dst: eqd callee: "cl_strings__eq" args: a2 ty: (irt (bool_ty))))
+            if (strings::eq op "!=")
+                let nd = (ir::fresh_temp lx.b (irt (bool_ty)))
+                do (ir::emit lx.b (IUn dst: nd op: "not" val: eqd ty: (irt (bool_ty)) chk: false))
+                return nd
+            end
+            return eqd
+        end
         let dst = (ir::fresh_temp lx.b (irt (bool_ty)))
         do (ir::emit lx.b (IBin dst: dst op: op lhs: lv rhs: rv ty: (irt opty) chk: false))
         return dst
@@ -564,8 +588,16 @@ func lower_call (lx LX) (vs {str IVal}) (ts {str Binding}) (callee Expr) (args {
             end
             if (strings::eq id "len")
                 let at = (checker::check_expr lx.ctx args[0] ts TNone)
+                if (t_is_str at)
+                    let sv = (lower_expr lx vs ts args[0] TNone)
+                    let sd = (ir::fresh_temp lx.b (irt (u64_ty)))
+                    let a1 {IVal} = (vec IVal)
+                    do (push a1 sv)
+                    do (ir::emit lx.b (ICall has_dst: true dst: sd callee: "cl_str_len" args: a1 ty: (irt (u64_ty))))
+                    return sd
+                end
                 if (not (t_is_array at))
-                    do (panic "lower: len of str/vec/map (stage 3)")
+                    do (panic "lower: len of vec/map (stage 3)")
                 end
                 let arg = (lower_expr lx vs ts args[0] TNone)
                 let dst = (ir::fresh_temp lx.b (irt (u64_ty)))
