@@ -60,6 +60,15 @@ end
 func str_ty () -> Type
     return (TPrim name: "str")
 end
+func u64_ty () -> Type
+    return (TInt name: "u64")
+end
+
+# A resolved assignment place plus its (checker) type.
+struct PlaceR
+    place IPlace
+    ty Type
+end
 
 func copy_iv (m {str IVal}) -> {str IVal}
     let out {str IVal} = (map str IVal)
@@ -369,27 +378,19 @@ func lower_path (lx LX) (parts {str}) -> IVal
 end
 
 func operand_ty (lx LX) (ts {str Binding}) (args {Expr}) -> Type
-    let any_float = false
     let i = 0u64
     while (< i (len args))
         let t = (checker::check_expr lx.ctx args[i] ts TNone)
         if (not (or (t_is_uint t) (t_is_ufloat t)))
             return t
         end
-        if (t_is_ufloat t)
-            set any_float = true
-        end
         set i = (+ i 1)
     end
-    # Every operand is an untyped numeric literal (e.g. `(== 4 4)`): apply the
-    # language's default numeric type (i32 / f64) — the same defaulting the
-    # checker uses for unannotated for-loop indices — so both operands lower to a
-    # concrete type. The literal helpers still panic on anything that is NOT a
-    # bare untyped literal, so this never masks a real inference failure.
-    if any_float
-        return (TFloat name: "f64")
-    end
-    return (TInt name: "i32")
+    # Every operand is a bare untyped numeric literal (e.g. `(== 4 4)`): per
+    # DESIGN §7.2 there is NO fallback literal type — an uninferable literal is a
+    # compile error, never an implicit i32/f64. The lowerer must not invent one.
+    do (panic "lower: comparison operands are untyped literals with no inferable type — annotate one (e.g. 4i64). DESIGN §7.2: no fallback literal type")
+    return TNone
 end
 
 func lower_op (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (op str) (args {Expr}) (expected Type) -> IVal
