@@ -1,0 +1,30 @@
+module checkmod
+
+# Multi-module checker harness: argv[0] = main file path, argv[1:] = search dirs.
+# Resolves user imports against the search dirs.
+
+import io
+import fs
+import sys
+import checker
+
+func main () -> i32
+    let a = (sys::args)
+    let path = a[0]
+    let dirs {str} = (vec str)
+    let i = 1u64
+    while (< i (len a))
+        do (push dirs a[i])
+        set i = (+ i 1)
+    end
+    let errs = (checker::check_file (fs::read_file path) dirs)
+    if (== (len errs) 0u64)
+        do (io::println (strings::concat "ok    " path))
+    else
+        do (io::println (strings::concat "ERRS  " path))
+        for e in errs
+            do (io::println (strings::concat "    " e))
+        end
+    end
+    return 0i32
+end

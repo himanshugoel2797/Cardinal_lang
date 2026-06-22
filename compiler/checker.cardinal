@@ -17,6 +17,7 @@ module checker
 
 import strings
 import convert
+import fs
 import parser
 
 # --------------------------------------------------------------------------- #
@@ -49,6 +50,7 @@ struct FieldDef
 end
 
 struct VarInfo
+    name str
     sum_name str
     fields {FieldDef}
 end
@@ -74,12 +76,34 @@ struct Sig
     variants {str VarInfo}       # variant name -> (sum, fields)
     exports {str bool}
     imports {str bool}           # set of imported module names (gates path resolution)
+    imported {str str}           # alias -> imported module name (resolved via registry)
+    selective {str Type}         # selectively-imported value name -> Type
+    decls {Decl}                 # this module's decls (for body checking; empty for builtins)
+    has_module bool              # false for builtin synthetic sigs
 end
 
+# The registry (sigs) is the single source of truth; `cur` is the module being
+# checked right now (switched per-module during the body pass).
 struct Ctx
-    sig Sig
+    sigs {str Sig}               # module name -> Sig
+    cur Sig                      # the current module's Sig
     errors {str}
     modname str
+    searchdirs {str}             # dirs to resolve module files in
+end
+
+# `found`-flag lookup results (Cardinal maps have no nullable value)
+struct StructLookup
+    found bool
+    fields {FieldDef}
+end
+struct VarLookup
+    found bool
+    info VarInfo
+end
+struct SumLookup
+    found bool
+    variants {str}
 end
 
 # --------------------------------------------------------------------------- #
@@ -519,14 +543,30 @@ func resolve_name (ctx Ctx) (n str) -> Type
     if (is_prim_name n)
         return (TPrim name: n)
     end
-    if (map_has ctx.sig.structs n)
+    if (map_has ctx.cur.structs n)
         return (TStruct name: n)
     end
-    if (map_has ctx.sig.enums n)
+    if (map_has ctx.cur.enums n)
         return (TEnum name: n)
     end
-    if (map_has ctx.sig.sum_variants n)
+    if (map_has ctx.cur.sum_variants n)
         return (TSum name: n)
+    end
+    # imported types
+    for alias in (map_keys ctx.cur.imported)
+        let mname = ctx.cur.imported[alias]
+        if (map_has ctx.sigs mname)
+            let osig = ctx.sigs[mname]
+            if (map_has osig.structs n)
+                return (TStruct name: n)
+            end
+            if (map_has osig.enums n)
+                return (TEnum name: n)
+            end
+            if (map_has osig.sum_variants n)
+                return (TSum name: n)
+            end
+        end
     end
     do (err ctx (strings::concat "unknown type " n))
     return (t_unit)
@@ -642,12 +682,107 @@ end
 # Signature building
 # --------------------------------------------------------------------------- #
 
-func build_sig (ctx Ctx) (mod Module) -> unit
-    let sig = ctx.sig
+func find_module (ctx Ctx) (name str) -> str
+    let i = 0u64
+    while (< i (len ctx.searchdirs))
+        let p = (strings::concat ctx.searchdirs[i] (strings::concat "/" (strings::concat name ".cardinal")))
+        if (fs::exists p)
+            return p
+        end
+        set i = (+ i 1)
+    end
+    return ""
+end
 
-    # record imported module names (gates path resolution; see check_path)
+func builtin_fn_names (m str) -> {str}
+    let v {str} = (vec str)
+    if (strings::eq m "io")
+        do (push v "println")
+        do (push v "print")
+    end
+    if (strings::eq m "strings")
+        do (push v "chars")
+        do (push v "concat")
+        do (push v "substr")
+        do (push v "from_char")
+        do (push v "eq")
+    end
+    if (strings::eq m "convert")
+        do (push v "ord")
+        do (push v "chr")
+        do (push v "int_to_str")
+        do (push v "str_to_int")
+    end
+    if (strings::eq m "fs")
+        do (push v "read_file")
+        do (push v "write_file")
+        do (push v "read_file_cb")
+        do (push v "write_file_cb")
+        do (push v "exists")
+    end
+    if (strings::eq m "sys")
+        do (push v "args")
+    end
+    return v
+end
+
+func builtin_sig (name str) -> Sig
+    let s = (new_sig name (vec Decl) false)
+    for f in (builtin_fn_names name)
+        set s.funcs[f] = (builtin_path_type name f)
+    end
+    return s
+end
+
+func load_sig (ctx Ctx) (name str) -> Sig
+    if (map_has ctx.sigs name)
+        return ctx.sigs[name]
+    end
+    if (is_builtin_module name)
+        let s = (builtin_sig name)
+        set ctx.sigs[name] = s
+        return s
+    end
+    let path = (find_module ctx name)
+    if (strings::eq path "")
+        do (err ctx (strings::concat "module " (strings::concat name " not found")))
+        let s = (new_sig name (vec Decl) false)
+        set ctx.sigs[name] = s
+        return s
+    end
+    return (build_sig ctx (parser::parse (fs::read_file path)))
+end
+
+func resolve_selective (ctx Ctx) (sig Sig) (other Sig) (modname str) (nm str) -> unit
+    let v = (lookup_value_in other nm)
+    if (is_none v)
+        do (err ctx (strings::concat "module " (strings::concat modname (strings::concat " has no value " nm))))
+    else
+        if (and (> (len other.exports) 0u64) (not (map_has other.exports nm)))
+            do (err ctx (strings::concat nm (strings::concat " is not exported from " modname)))
+        else
+            set sig.selective[nm] = v
+        end
+    end
+end
+
+func build_sig (ctx Ctx) (mod Module) -> Sig
+    let sig = (new_sig mod.name mod.decls true)
+    set ctx.sigs[mod.name] = sig        # register early (supports import cycles)
+    set ctx.cur = sig                   # resolve runs against this module
+    set ctx.modname = mod.name
+
+    # imports: record name (gates builtin paths), load the other sig, and pull
+    # in selective names
     for imp in mod.imports
         set sig.imports[imp.name] = true
+        let other = (load_sig ctx imp.name)
+        if imp.selective
+            for nm in imp.names
+                do (resolve_selective ctx sig other imp.name nm)
+            end
+        end
+        set sig.imported[imp.name] = imp.name
     end
 
     # register type names first so recursive/mutual references resolve
@@ -699,7 +834,7 @@ func build_sig (ctx Ctx) (mod Module) -> unit
                     if (map_has sig.variants vr.name)
                         do (err ctx (strings::concat "duplicate variant name " vr.name))
                     end
-                    set sig.variants[vr.name] = (VarInfo sum_name: name fields: fds)
+                    set sig.variants[vr.name] = (VarInfo name: vr.name sum_name: name fields: fds)
                 end
                 set sig.sum_variants[name] = vnames
             else
@@ -732,61 +867,153 @@ func build_sig (ctx Ctx) (mod Module) -> unit
                 pass
         end
     end
+    return sig
 end
 
-func lookup_value (ctx Ctx) (id str) -> Type
-    if (map_has ctx.sig.funcs id)
-        return ctx.sig.funcs[id]
+func lookup_value_in (sig Sig) (id str) -> Type
+    if (map_has sig.funcs id)
+        return sig.funcs[id]
     end
-    if (map_has ctx.sig.consts id)
-        return ctx.sig.consts[id]
+    if (map_has sig.consts id)
+        return sig.consts[id]
+    end
+    if (map_has sig.selective id)
+        return sig.selective[id]
     end
     return TNone
 end
 
+func lookup_value (ctx Ctx) (id str) -> Type
+    return (lookup_value_in ctx.cur id)
+end
+
+# Cross-module lookups: current module first, then every imported module.
+
+func struct_fields (ctx Ctx) (name str) -> StructLookup
+    if (map_has ctx.cur.structs name)
+        return (StructLookup found: true fields: ctx.cur.structs[name])
+    end
+    for alias in (map_keys ctx.cur.imported)
+        let mname = ctx.cur.imported[alias]
+        if (map_has ctx.sigs mname)
+            let osig = ctx.sigs[mname]
+            if (map_has osig.structs name)
+                return (StructLookup found: true fields: osig.structs[name])
+            end
+        end
+    end
+    return (StructLookup found: false fields: (vec FieldDef))
+end
+
+func find_variant (ctx Ctx) (name str) -> VarLookup
+    if (map_has ctx.cur.variants name)
+        return (VarLookup found: true info: ctx.cur.variants[name])
+    end
+    for alias in (map_keys ctx.cur.imported)
+        let mname = ctx.cur.imported[alias]
+        if (map_has ctx.sigs mname)
+            let osig = ctx.sigs[mname]
+            if (map_has osig.variants name)
+                return (VarLookup found: true info: osig.variants[name])
+            end
+        end
+    end
+    return (VarLookup found: false info: (VarInfo name: "" sum_name: "" fields: (vec FieldDef)))
+end
+
+func sum_table (ctx Ctx) (sname str) -> SumLookup
+    if (map_has ctx.cur.sum_variants sname)
+        return (SumLookup found: true variants: ctx.cur.sum_variants[sname])
+    end
+    for alias in (map_keys ctx.cur.imported)
+        let mname = ctx.cur.imported[alias]
+        if (map_has ctx.sigs mname)
+            let osig = ctx.sigs[mname]
+            if (map_has osig.sum_variants sname)
+                return (SumLookup found: true variants: osig.sum_variants[sname])
+            end
+        end
+    end
+    return (SumLookup found: false variants: (vec str))
+end
+
 # --------------------------------------------------------------------------- #
-# Entry point
+# Sig / Ctx construction
 # --------------------------------------------------------------------------- #
 
-export func check (src str) -> {str}
-    let mod = (parser::parse src)
-    let sig = (Sig name: mod.name
-                   funcs: (map str Type)
-                   consts: (map str Type)
-                   structs: (map str {FieldDef})
-                   enums: (map str {str})
-                   sum_variants: (map str {str})
-                   variants: (map str VarInfo)
-                   exports: (map str bool)
-                   imports: (map str bool))
-    let errors {str} = (vec str)
-    let ctx = (Ctx sig: sig errors: errors modname: mod.name)
-    do (build_sig ctx mod)
-    do (check_module_bodies ctx mod)
+func new_sig (name str) (decls {Decl}) (has_module bool) -> Sig
+    return (Sig name: name
+                funcs: (map str Type)
+                consts: (map str Type)
+                structs: (map str {FieldDef})
+                enums: (map str {str})
+                sum_variants: (map str {str})
+                variants: (map str VarInfo)
+                exports: (map str bool)
+                imports: (map str bool)
+                imported: (map str str)
+                selective: (map str Type)
+                decls: decls
+                has_module: has_module)
+end
+
+func new_ctx (dirs {str}) -> Ctx
+    return (Ctx sigs: (map str Sig)
+                cur: (new_sig "" (vec Decl) false)
+                errors: (vec str)
+                modname: ""
+                searchdirs: dirs)
+end
+
+# --------------------------------------------------------------------------- #
+# Entry points
+# --------------------------------------------------------------------------- #
+
+func run_check (ctx Ctx) (mainmod Module) -> {str}
+    do (build_sig ctx mainmod)
+    # check the bodies of every loaded module that has source (main + imports)
+    for name in (map_keys ctx.sigs)
+        let s = ctx.sigs[name]
+        if s.has_module
+            set ctx.cur = s
+            set ctx.modname = s.name
+            do (check_module_bodies ctx)
+        end
+    end
     return ctx.errors
+end
+
+# single-module convenience (no user-import resolution: empty search dirs)
+export func check (src str) -> {str}
+    return (run_check (new_ctx (vec str)) (parser::parse src))
+end
+
+# full checker: resolves user imports against `searchdirs`
+export func check_file (src str) (searchdirs {str}) -> {str}
+    return (run_check (new_ctx searchdirs) (parser::parse src))
 end
 
 # --------------------------------------------------------------------------- #
 # Module bodies
 # --------------------------------------------------------------------------- #
 
-func check_module_bodies (ctx Ctx) (mod Module) -> unit
-    for d in mod.decls
+func check_module_bodies (ctx Ctx) -> unit
+    for d in ctx.cur.decls
         match d
             case (DConst name ty has_ty expr exported)
-                let expected = ctx.sig.consts[name]
+                let expected = ctx.cur.consts[name]
                 let t = (check_expr ctx expr (empty_scope) expected)
                 if (is_none expected)
-                    set ctx.sig.consts[name] = (concrete ctx t name)
+                    set ctx.cur.consts[name] = (concrete ctx t name)
                 else
-                    set ctx.sig.consts[name] = (coerce ctx t expected)
+                    set ctx.cur.consts[name] = (coerce ctx t expected)
                 end
             case (DFunc name params ret has_ret body exported)
                 let scope = (empty_scope)
                 for pf in params
                     set scope[pf.name] = (Binding ty: (resolve ctx pf.ty) mutable: true)
                 end
-                let rt = (func_ret ctx.sig.funcs[name])
+                let rt = (func_ret ctx.cur.funcs[name])
                 do (check_block ctx body scope rt)
             else
                 pass
@@ -1038,12 +1265,12 @@ func check_name (ctx Ctx) (id str) (scope {str Binding}) -> Type
     if (strings::eq id "panic")
         return (mk_fn0 TNever)
     end
-    if (map_has ctx.sig.variants id)
-        let vi = ctx.sig.variants[id]
-        if (> (len vi.fields) 0u64)
+    let fv = (find_variant ctx id)
+    if fv.found
+        if (> (len fv.info.fields) 0u64)
             do (err ctx (strings::concat "variant " (strings::concat id (strings::concat " needs fields; use (" (strings::concat id " ...)")))))
         end
-        return (TSum name: vi.sum_name)
+        return (TSum name: fv.info.sum_name)
     end
     do (err ctx (strings::concat "undefined name " id))
     return (t_unit)
@@ -1053,11 +1280,25 @@ func check_path (ctx Ctx) (parts {str}) -> Type
     if (== (len parts) 2u64)
         let m0 = parts[0]
         let m1 = parts[1]
-        if (map_has ctx.sig.enums m0)
-            if (not (str_in_vec m1 ctx.sig.enums[m0]))
+        # local enum  Enum::Variant
+        if (map_has ctx.cur.enums m0)
+            if (not (str_in_vec m1 ctx.cur.enums[m0]))
                 do (err ctx (strings::concat "no variant " (strings::concat m1 (strings::concat " in enum " m0))))
             end
             return (TEnum name: m0)
+        end
+        # imported enum
+        for alias in (map_keys ctx.cur.imported)
+            let mname = ctx.cur.imported[alias]
+            if (map_has ctx.sigs mname)
+                let osig = ctx.sigs[mname]
+                if (map_has osig.enums m0)
+                    if (not (str_in_vec m1 osig.enums[m0]))
+                        do (err ctx (strings::concat "no variant " (strings::concat m1 (strings::concat " in enum " m0))))
+                    end
+                    return (TEnum name: m0)
+                end
+            end
         end
         # a value in the current module, qualified by its own module name
         if (strings::eq m0 ctx.modname)
@@ -1068,14 +1309,27 @@ func check_path (ctx Ctx) (parts {str}) -> Type
             do (err ctx (strings::concat m0 (strings::concat " has no value " m1)))
             return (t_unit)
         end
-        # builtin module paths, but only if the module was actually imported
-        if (and (is_builtin_module m0) (map_has ctx.sig.imports m0))
-            let bt = (builtin_path_type m0 m1)
-            if (not (is_none bt))
-                return bt
+        # value in an imported/registered module (covers builtins too — they are
+        # loaded into the registry when imported)
+        let target = ""
+        if (map_has ctx.cur.imported m0)
+            set target = ctx.cur.imported[m0]
+        else
+            if (map_has ctx.sigs m0)
+                set target = m0
             end
-            do (err ctx (strings::concat m0 (strings::concat " has no value " m1)))
-            return (t_unit)
+        end
+        if (not (strings::eq target ""))
+            let osig = ctx.sigs[target]
+            if (and (> (len osig.exports) 0u64) (not (map_has osig.exports m1)))
+                do (err ctx (strings::concat m1 (strings::concat " is not exported from " m0)))
+            end
+            let v = (lookup_value_in osig m1)
+            if (is_none v)
+                do (err ctx (strings::concat m0 (strings::concat " has no value " m1)))
+                return (t_unit)
+            end
+            return v
         end
         do (err ctx (strings::concat "cannot resolve path " (strings::concat m0 (strings::concat "::" m1))))
         return (t_unit)
@@ -1165,7 +1419,7 @@ func check_call (ctx Ctx) (callee Expr) (args {Expr}) (scope {str Binding}) -> T
                 return r
             end
         case (EPath parts)
-            if (and (and (== (len parts) 2u64) (strings::eq parts[0] "io")) (map_has ctx.sig.imports "io"))
+            if (and (and (== (len parts) 2u64) (strings::eq parts[0] "io")) (map_has ctx.cur.imports "io"))
                 for a in args
                     do (check_expr ctx a scope TNone)
                 end
@@ -1285,14 +1539,16 @@ end
 
 func check_struct_lit (ctx Ctx) (typ Expr) (fields {Field}) (scope {str Binding}) -> Type
     let name = (head_name typ)
-    if (map_has ctx.sig.variants name)
-        return (check_variant_lit ctx name fields scope)
+    let fv = (find_variant ctx name)
+    if fv.found
+        return (check_variant_lit ctx fv.info fields scope)
     end
-    if (not (map_has ctx.sig.structs name))
+    let sl = (struct_fields ctx name)
+    if (not sl.found)
         do (err ctx (strings::concat "unknown struct or variant " name))
         return (t_unit)
     end
-    let defs = ctx.sig.structs[name]
+    let defs = sl.fields
     let given {str bool} = (map str bool)
     for fld in fields
         if (not (has_field defs fld.name))
@@ -1314,12 +1570,11 @@ func check_struct_lit (ctx Ctx) (typ Expr) (fields {Field}) (scope {str Binding}
     return (TStruct name: name)
 end
 
-func check_variant_lit (ctx Ctx) (vname str) (fields {Field}) (scope {str Binding}) -> Type
-    let vi = ctx.sig.variants[vname]
+func check_variant_lit (ctx Ctx) (vi VarInfo) (fields {Field}) (scope {str Binding}) -> Type
     let given {str bool} = (map str bool)
     for fld in fields
         if (not (has_field vi.fields fld.name))
-            do (err ctx (strings::concat "variant " (strings::concat vname (strings::concat " has no field " fld.name))))
+            do (err ctx (strings::concat "variant " (strings::concat vi.name (strings::concat " has no field " fld.name))))
             do (check_expr ctx fld.value scope TNone)
         else
             let ft = (find_field vi.fields fld.name)
@@ -1330,7 +1585,7 @@ func check_variant_lit (ctx Ctx) (vname str) (fields {Field}) (scope {str Bindin
     let i = 0u64
     while (< i (len vi.fields))
         if (not (map_has given vi.fields[i].name))
-            do (err ctx (strings::concat "missing field " (strings::concat vi.fields[i].name (strings::concat " in " vname))))
+            do (err ctx (strings::concat "missing field " (strings::concat vi.fields[i].name (strings::concat " in " vi.name))))
         end
         set i = (+ i 1)
     end
@@ -1440,13 +1695,15 @@ func check_match (ctx Ctx) (scrut Expr) (arms {Arm}) (orelse {Stmt}) (has_else b
         return
     end
     let sname = (type_name st)
-    let have_table = (map_has ctx.sig.sum_variants sname)
+    let stbl = (sum_table ctx sname)
+    let have_table = stbl.found
     let covered {str bool} = (map str bool)
     for arm in arms
         let inner = (copy_scope scope)
         let known = false
-        if (and have_table (map_has ctx.sig.variants arm.variant))
-            let vi = ctx.sig.variants[arm.variant]
+        let fv = (find_variant ctx arm.variant)
+        if (and have_table fv.found)
+            let vi = fv.info
             if (strings::eq vi.sum_name sname)
                 set known = true
                 if (not (== (len arm.bindings) (len vi.fields)))
@@ -1469,7 +1726,7 @@ func check_match (ctx Ctx) (scrut Expr) (arms {Arm}) (orelse {Stmt}) (has_else b
         do (check_block ctx orelse scope ret)
     else
         if have_table
-            let vnames = ctx.sig.sum_variants[sname]
+            let vnames = stbl.variants
             let missing = ""
             let j = 0u64
             while (< j (len vnames))
@@ -1495,16 +1752,16 @@ func field_type (ctx Ctx) (bt Type) (field str) -> Type
         return (t_unit)
     end
     let sname = (type_name bt)
-    if (not (map_has ctx.sig.structs sname))
+    let sl = (struct_fields ctx sname)
+    if (not sl.found)
         do (err ctx (strings::concat "no field " (strings::concat field (strings::concat " on " sname))))
         return (t_unit)
     end
-    let defs = ctx.sig.structs[sname]
-    if (not (has_field defs field))
+    if (not (has_field sl.fields field))
         do (err ctx (strings::concat "no field " (strings::concat field (strings::concat " on " sname))))
         return (t_unit)
     end
-    return (find_field defs field)
+    return (find_field sl.fields field)
 end
 
 # --------------------------------------------------------------------------- #
