@@ -937,6 +937,35 @@ func sum_table (ctx Ctx) (sname str) -> SumLookup
     return (SumLookup found: false variants: (vec str))
 end
 
+# Look up a variant by name *within a specific sum* (in whichever sig owns that
+# sum). Unlike find_variant (registry-wide, first-match-wins), this binds to the
+# scrutinee's own sum — matching the reference's `table[vname]`.
+func variant_in_sig (sig Sig) (sname str) (vname str) -> VarLookup
+    if (and (map_has sig.sum_variants sname) (str_in_vec vname sig.sum_variants[sname]))
+        if (map_has sig.variants vname)
+            return (VarLookup found: true info: sig.variants[vname])
+        end
+    end
+    return (VarLookup found: false info: (VarInfo name: "" sum_name: "" fields: (vec FieldDef)))
+end
+
+func find_variant_in_sum (ctx Ctx) (sname str) (vname str) -> VarLookup
+    let here = (variant_in_sig ctx.cur sname vname)
+    if here.found
+        return here
+    end
+    for alias in (map_keys ctx.cur.imported)
+        let mname = ctx.cur.imported[alias]
+        if (map_has ctx.sigs mname)
+            let there = (variant_in_sig ctx.sigs[mname] sname vname)
+            if there.found
+                return there
+            end
+        end
+    end
+    return (VarLookup found: false info: (VarInfo name: "" sum_name: "" fields: (vec FieldDef)))
+end
+
 # --------------------------------------------------------------------------- #
 # Sig / Ctx construction
 # --------------------------------------------------------------------------- #
@@ -1419,7 +1448,7 @@ func check_call (ctx Ctx) (callee Expr) (args {Expr}) (scope {str Binding}) -> T
                 return r
             end
         case (EPath parts)
-            if (and (and (== (len parts) 2u64) (strings::eq parts[0] "io")) (map_has ctx.cur.imports "io"))
+            if (and (and (== (len parts) 2u64) (strings::eq parts[0] "io")) (or (map_has ctx.cur.imports "io") (map_has ctx.sigs "io")))
                 for a in args
                     do (check_expr ctx a scope TNone)
                 end
@@ -1701,10 +1730,10 @@ func check_match (ctx Ctx) (scrut Expr) (arms {Arm}) (orelse {Stmt}) (has_else b
     for arm in arms
         let inner = (copy_scope scope)
         let known = false
-        let fv = (find_variant ctx arm.variant)
+        let fv = (find_variant_in_sum ctx sname arm.variant)
         if (and have_table fv.found)
             let vi = fv.info
-            if (strings::eq vi.sum_name sname)
+            if true
                 set known = true
                 if (not (== (len arm.bindings) (len vi.fields)))
                     do (err ctx (strings::concat "variant " (strings::concat arm.variant (strings::concat " has " (strings::concat (convert::int_to_str (as (len vi.fields) i64)) (strings::concat " field(s), pattern binds " (convert::int_to_str (as (len arm.bindings) i64))))))))
