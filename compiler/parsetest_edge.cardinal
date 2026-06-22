@@ -1,0 +1,47 @@
+module parsetest_edge
+
+import io
+import parser
+
+func show (label str) (src str) -> unit
+    do (io::println label)
+    do (io::println (parser::module_str (parser::parse src)))
+    do (io::println "====")
+end
+
+func main () -> i32
+    # 1. Empty param list and a func with NO return type.
+    do (show "1-empty-params-no-ret" "module m\nfunc f () -> i32\n    return 0\nend\nfunc g ()\n    pass\nend\n")
+
+    # 2. Nullary sum variant mixed with field-bearing ones.
+    do (show "2-sum-nullary-mixed" "module m\ntype T\n    Leaf\n    Node (v i32) (l T) (r T)\nend\n")
+
+    # 3. match with nullary case, field case, and else.
+    do (show "3-match-nullary-field-else" "module m\nfunc f (t T) -> i32\n    match t\n        case Leaf\n            return 0\n        case (Node v l r)\n            return v\n        else\n            return (- 1)\n    end\n    return 0\nend\n")
+
+    # 4. return with no value vs return expr.
+    do (show "4-return-bare-vs-expr" "module m\nfunc f () -> i32\n    return\nend\nfunc g () -> i32\n    return 42\nend\n")
+
+    # 5. for numeric with step vs for-in iterator.
+    do (show "5-for-num-step-vs-in" "module m\nfunc f () -> i32\n    for i = 0 to 10 step 2\n        pass\n    end\n    for x in xs\n        pass\n    end\n    return 0\nend\n")
+
+    # 6. Deeply chained postfix and a path call head.
+    do (show "6-chained-postfix-and-path-call" "module m\nfunc f () -> i32\n    set z = a.b[c].d[e]\n    do (mod::f x)\n    return 0\nend\n")
+
+    # 7. struct literal vs call vs no-arg call.
+    do (show "7-struct-vs-call-vs-noarg" "module m\nfunc f () -> i32\n    let p = (Point x: 1 y: 2)\n    let q = (f 1 2)\n    let r = (g)\n    return 0\nend\n")
+
+    # 8. array/vec/map keyword vs module-path call.
+    do (show "8-alloc-kw-vs-modpath" "module m\nfunc f () -> i32\n    let a = (vec i32)\n    let b = (array i32 4)\n    let c = (map str i32)\n    do (array::fill buf 7)\n    return 0\nend\n")
+
+    # 9. Nested collection types and a func-typed param.
+    do (show "9-nested-types-and-functype" "module m\nfunc apply (f func(i32 -> i32)) -> i32\n    let m {str {i32}} = (map str {i32})\n    return 0\nend\n")
+
+    # 10. checked block, loop/break, selective import.
+    do (show "10-checked-loop-selective-import" "module m\nimport array (sum contains)\nfunc f () -> i32\n    checked\n        do (foo)\n    end\n    loop\n        break\n    end\n    return 0\nend\n")
+
+    # 11. Operators: <=, !=, %, bnot, shr.
+    do (show "11-operators" "module m\nfunc f () -> i32\n    let a = (<= 1 2)\n    let b = (!= 1 2)\n    let c = (% 7 3)\n    let d = (bnot 5)\n    let e = (shr 8 1)\n    return 0\nend\n")
+
+    return 0i32
+end

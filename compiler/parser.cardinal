@@ -1199,7 +1199,7 @@ func stmt_str (s Stmt) -> str
         case (SWhile cond body)
             return (strings::concat "(while " (strings::concat (expr_str cond) (strings::concat " " (strings::concat (block_str body) ")"))))
         case (SForNum var start stop stride has_step body)
-            return (strings::concat "(for " (strings::concat var (strings::concat " = " (strings::concat (expr_str start) (strings::concat " to " (strings::concat (expr_str stop) (strings::concat " " (strings::concat (block_str body) ")"))))))))
+            return (strings::concat "(for " (strings::concat var (strings::concat " = " (strings::concat (expr_str start) (strings::concat " to " (strings::concat (expr_str stop) (strings::concat (step_str stride has_step) (strings::concat " " (strings::concat (block_str body) ")")))))))))
         case (SForIn var iter body)
             return (strings::concat "(for " (strings::concat var (strings::concat " in " (strings::concat (expr_str iter) (strings::concat " " (strings::concat (block_str body) ")"))))))
         case (SLoop body)
@@ -1218,9 +1218,16 @@ func stmt_str (s Stmt) -> str
         case (SChecked body)
             return (strings::concat "(checked " (strings::concat (block_str body) ")"))
         case (SMatch scrut arms orelse has_else)
-            return (strings::concat "(match " (strings::concat (expr_str scrut) (strings::concat " " (strings::concat (arms_str arms) ")"))))
+            return (strings::concat "(match " (strings::concat (expr_str scrut) (strings::concat " " (strings::concat (arms_str arms) (strings::concat (else_str orelse has_else) ")")))))
     end
     return "?"
+end
+
+func step_str (stride Expr) (has_step bool) -> str
+    if has_step
+        return (strings::concat " step " (expr_str stride))
+    end
+    return ""
 end
 
 func branches_str (bs {Branch}) -> str
@@ -1306,7 +1313,12 @@ export func module_str (m Module) -> str
     do (push parts (strings::concat "module " m.name))
     let i = 0u64
     while (< i (len m.imports))
-        do (push parts (strings::concat "import " m.imports[i].name))
+        let imp = m.imports[i]
+        let line = (strings::concat "import " imp.name)
+        if imp.selective
+            set line = (strings::concat line (strings::concat " (" (strings::concat (join imp.names " ") ")")))
+        end
+        do (push parts line)
         set i = (+ i 1)
     end
     set i = 0u64
