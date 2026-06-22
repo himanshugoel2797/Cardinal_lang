@@ -133,7 +133,7 @@ end
 - Floats: `f32 f64`.
 - `bool`.
 - `char` — a Unicode scalar value (decode point), distinct from `u8` (raw byte).
-- `str` — text. *Note: not a scalar; a **managed reference type** (array-backed, handle + length, GC'd, reference semantics). Listed here for convenience.*
+- `str` — text. *Note: not a scalar; a **managed reference type** (a single GC'd handle to a managed string object; reference semantics — see §5.3 for the representation). Listed here for convenience.*
 - `handle` — opaque type for the **foreign/raw** case (MMIO, FFI). *See note below on representation vs. static type.*
 
 > **Representation vs. static type:** everything heap-allocated is *represented*
@@ -182,6 +182,26 @@ end
   indexing. Growable "vector" = a library construct on top (allocate + copy).
 - **`str` = immutable, opaque managed type** (UTF-8 internally; representation
   hidden from the language). Mutation only via helpers that return new strings.
+
+  **Representation (ABI, decided):** a `str` value is a **single generational
+  handle to one managed string object** — a header `{ u64 byte-length; UTF-8
+  bytes… }` allocated in the GC heap (the bytes live inline in the same object).
+  This makes a string *just another managed object*: a `str` is a handle word, so
+  the collector traces it exactly like a vector, map, or array reference — no
+  raw-pointer field, no second "static vs owned" ABI, no special scan case. The
+  bytes are immutable for the object's lifetime (helpers allocate a *new* string
+  object), so the handle can be shared freely.
+  - **String literals** are materialized as managed string objects (registered in
+    the handle table at program start / first use), so *every* `str` value —
+    literal or computed — is a uniform handle. There is no separate static-string
+    representation visible to the runtime.
+  - **Consequence for collections:** because a `str` is a handle, a `str` stored
+    as a vector element or a `{str V}` map key is traced through automatically;
+    the string's bytes stay alive as long as the collection does. (This closes the
+    GC hole that a raw-`char*` string field would have opened — an owned string
+    reachable only via a map key or vec element would otherwise be freed underfoot.)
+  - This supersedes the earlier `{const char*, len}` bootstrap shape; see §6.2 for
+    the generational-handle model these objects use.
 
 **Syntax (proposed):**
 
