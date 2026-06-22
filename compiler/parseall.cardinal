@@ -1,0 +1,27 @@
+module parseall
+
+# Parse every file named on the command line and report the module name and
+# declaration count. A panic (parse error) aborts with a message. This is the
+# real integration test: the Cardinal parser chewing on real Cardinal source,
+# including the compiler's own lexer and parser.
+
+import io
+import fs
+import sys
+import convert
+import parser
+
+func main () -> i32
+    let files = (sys::args)
+    for path in files
+        let src = (fs::read_file path)
+        let m = (parser::parse src)
+        do (io::println (strings::concat "OK  "
+                        (strings::concat path
+                        (strings::concat "  module="
+                        (strings::concat m.name
+                        (strings::concat "  decls="
+                        (convert::int_to_str (as (len m.decls) i64))))))))
+    end
+    return 0i32
+end

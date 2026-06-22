@@ -1,0 +1,18 @@
+module parsetest
+
+import io
+import parser
+
+func show (src str) -> unit
+    do (io::println (parser::module_str (parser::parse src)))
+    do (io::println "====")
+end
+
+func main () -> i32
+    do (show "module m\nimport io\nfunc add (a i32) (b i32) -> i32\n    return (+ a b)\nend\n")
+
+    do (show "module m\ntype Expr\n    Num (value i32)\n    Add (lhs Expr) (rhs Expr)\nend\nfunc eval (e Expr) -> i32\n    match e\n        case (Num v)\n            return v\n        case (Add l r)\n            return (+ (eval l) (eval r))\n    end\n    return 0\nend\n")
+
+    do (show "module m\nfunc main () -> i32\n    let xs {i32} = (vec i32)\n    do (push xs 5)\n    let m {str i32} = (map str i32)\n    set m[\"a\"] = 1\n    if (< (len xs) 10)\n        do (io::println xs[0])\n    elsif (> (len xs) 20)\n        pass\n    else\n        return 1\n    end\n    for i = 0 to 10 step 2\n        do (io::println i)\n    end\n    while true\n        break\n    end\n    return (as 3.5 i32)\nend\n")
+    return 0i32
+end

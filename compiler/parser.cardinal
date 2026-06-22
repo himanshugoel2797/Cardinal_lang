@@ -1,0 +1,1318 @@
+module parser
+
+# The Cardinal parser, written in Cardinal.
+#
+# Recursive-descent port of the reference `Parser` in bootstrap/interpreter.py.
+# Consumes the {Tok} stream from the lexer and produces an AST (sum types).
+# The parser threads its position through a 1-element {u64} cell held inside the
+# value-typed `P` struct: copies of `P` share the same cell (and the same token
+# vector), so advancing the position is visible to every recursive call.
+#
+# NOTE: this AST does not yet carry source line numbers on every node (the
+# tokens do); diagnostics from a future Cardinal checker will be coarser until
+# line threading is added. Punted deliberately for the bootstrap milestone.
+
+import strings
+import convert
+import lexer
+
+# --------------------------------------------------------------------------- #
+# AST: types
+# --------------------------------------------------------------------------- #
+
+type Ty
+    TyName (name str)              # "" means "absent" (sentinel)
+    TyArr  (elem Ty)              # [T]
+    TyVec  (elem Ty)              # {T}
+    TyMap  (key Ty) (val Ty)      # {K V}
+    TyFun  (params {Ty}) (ret Ty) # func(...)->R
+end
+
+struct Param
+    name str
+    ty Ty
+end
+
+struct Variant
+    name str
+    fields {Param}
+end
+
+# --------------------------------------------------------------------------- #
+# AST: expressions
+# --------------------------------------------------------------------------- #
+
+struct Field
+    name str
+    value Expr
+end
+
+type Expr
+    EInt    (value i64) (suffix str)
+    EFloat  (text str) (suffix str)
+    EBool   (value bool)
+    EChar   (cp u32)
+    EStr    (value str)
+    ENull
+    EName   (ident str)
+    EPath   (parts {str})
+    EField  (obj Expr) (field str)
+    EIndex  (obj Expr) (index Expr)
+    ECall   (callee Expr) (args {Expr})
+    EOp     (op str) (args {Expr})
+    EStruct (typ Expr) (fields {Field})
+    EArr    (elems {Expr})
+    EArrNew (elem Ty) (count Expr)
+    EVec    (elems {Expr})
+    EVecNew (elem Ty)
+    EMapNew (key Ty) (val Ty)
+    ECast   (expr Expr) (ty Ty)
+    ERef    (place Expr)
+    EFunc   (params {Param}) (ret Ty) (has_ret bool) (body {Stmt})
+end
+
+# --------------------------------------------------------------------------- #
+# AST: statements
+# --------------------------------------------------------------------------- #
+
+struct Branch
+    cond Expr
+    body {Stmt}
+end
+
+struct Arm
+    variant str
+    bindings {str}
+    body {Stmt}
+end
+
+type Stmt
+    SLet     (name str) (ty Ty) (has_ty bool) (expr Expr) (mutable bool)
+    SSet     (target Expr) (expr Expr)
+    SDo      (call Expr)
+    SIf      (branches {Branch}) (orelse {Stmt}) (has_else bool)
+    SWhile   (cond Expr) (body {Stmt})
+    SForNum  (var str) (start Expr) (stop Expr) (stride Expr) (has_step bool) (body {Stmt})
+    SForIn   (var str) (iter Expr) (body {Stmt})
+    SLoop    (body {Stmt})
+    SBreak
+    SContinue
+    SPass
+    SReturn  (expr Expr) (has_expr bool)
+    SChecked (body {Stmt})
+    SMatch   (scrut Expr) (arms {Arm}) (orelse {Stmt}) (has_else bool)
+end
+
+# --------------------------------------------------------------------------- #
+# AST: declarations and module
+# --------------------------------------------------------------------------- #
+
+type Decl
+    DFunc   (name str) (params {Param}) (ret Ty) (has_ret bool) (body {Stmt}) (exported bool)
+    DStruct (name str) (fields {Param}) (is_packed bool) (exported bool)
+    DEnum   (name str) (variants {str}) (exported bool)
+    DSum    (name str) (variants {Variant}) (exported bool)
+    DConst  (name str) (ty Ty) (has_ty bool) (expr Expr) (exported bool)
+end
+
+struct Import
+    name str
+    selective bool
+    names {str}
+end
+
+struct Module
+    name str
+    imports {Import}
+    decls {Decl}
+end
+
+# --------------------------------------------------------------------------- #
+# Sentinels for absent optional fields (guarded by the matching has_* flag)
+# --------------------------------------------------------------------------- #
+
+func no_ty () -> Ty
+    return (TyName name: "")
+end
+
+func no_expr () -> Expr
+    return ENull
+end
+
+# --------------------------------------------------------------------------- #
+# Parser state
+# --------------------------------------------------------------------------- #
+
+struct P
+    toks {Tok}
+    pos  {u64}
+end
+
+func mk_parser (toks {Tok}) -> P
+    let pos {u64} = (vec u64)
+    do (push pos 0u64)
+    return (P toks: toks pos: pos)
+end
+
+func peek (p P) -> Tok
+    return p.toks[p.pos[0]]
+end
+
+func peek_at (p P) (k u64) -> Tok
+    let idx = (+ p.pos[0] k)
+    let n = (len p.toks)
+    if (>= idx n)
+        set idx = (- n 1)        # clamp to the trailing eof
+    end
+    return p.toks[idx]
+end
+
+func adv (p P) -> Tok
+    let t = p.toks[p.pos[0]]
+    set p.pos[0] = (+ p.pos[0] 1)
+    return t
+end
+
+# --------------------------------------------------------------------------- #
+# Token inspection
+# --------------------------------------------------------------------------- #
+
+# A short tag string for a token kind.
+func tk_tag (t Tok) -> str
+    match t.kind
+        case (KInt v s)
+            return "int"
+        case (KFloat x s)
+            return "float"
+        case (KChar cp)
+            return "char"
+        case (KStr v)
+            return "str"
+        case (KIdent nm)
+            return "ident"
+        case (KKw nm)
+            return "kw"
+        case (KType nm)
+            return "type"
+        case (KPunct x)
+            return "punct"
+        case KNewline
+            return "newline"
+        case KEof
+            return "eof"
+    end
+    return "?"
+end
+
+# The string payload for kw/type/ident/punct/str tokens, "" otherwise.
+func tk_text (t Tok) -> str
+    match t.kind
+        case (KIdent nm)
+            return nm
+        case (KKw nm)
+            return nm
+        case (KType nm)
+            return nm
+        case (KPunct x)
+            return x
+        case (KStr v)
+            return v
+        else
+            return ""
+    end
+    return ""
+end
+
+func at_kind (p P) (tag str) -> bool
+    return (strings::eq (tk_tag (peek p)) tag)
+end
+
+func at_punct (p P) (s str) -> bool
+    let t = (peek p)
+    return (and (strings::eq (tk_tag t) "punct") (strings::eq (tk_text t) s))
+end
+
+func at_kw (p P) (s str) -> bool
+    let t = (peek p)
+    return (and (strings::eq (tk_tag t) "kw") (strings::eq (tk_text t) s))
+end
+
+func perr (p P) (msg str) -> unit
+    let ln = (peek p).line
+    do (panic (strings::concat "parse error line "
+              (strings::concat (convert::int_to_str (as ln i64))
+              (strings::concat ": " msg))))
+end
+
+func eat_kw (p P) (s str) -> Tok
+    if (not (at_kw p s))
+        do (perr p (strings::concat "expected keyword " s))
+    end
+    return (adv p)
+end
+
+func eat_punct (p P) (s str) -> Tok
+    if (not (at_punct p s))
+        do (perr p (strings::concat "expected " s))
+    end
+    return (adv p)
+end
+
+func eat_ident (p P) -> str
+    if (not (at_kind p "ident"))
+        do (perr p "expected identifier")
+    end
+    return (tk_text (adv p))
+end
+
+func skip_newlines (p P) -> unit
+    while (at_kind p "newline")
+        do (adv p)
+    end
+end
+
+func eat_terminator (p P) -> unit
+    if (not (at_kind p "eof"))
+        do (eat_punct_nl p)
+        do (skip_newlines p)
+    end
+end
+
+# eat a single newline terminator
+func eat_punct_nl (p P) -> unit
+    if (not (at_kind p "newline"))
+        do (perr p "expected end of line")
+    end
+    do (adv p)
+end
+
+# --------------------------------------------------------------------------- #
+# Operator / keyword classification (mirrors OPERATOR_SYMS / WORD_OPS)
+# --------------------------------------------------------------------------- #
+
+func str_in (s str) (list {str}) -> bool
+    let i = 0u64
+    let n = (len list)
+    while (< i n)
+        if (strings::eq list[i] s)
+            return true
+        end
+        set i = (+ i 1)
+    end
+    return false
+end
+
+func is_op_sym (s str) -> bool
+    let ops {str} = (vec str)
+    do (push ops "+")
+    do (push ops "-")
+    do (push ops "*")
+    do (push ops "/")
+    do (push ops "%")
+    do (push ops "<")
+    do (push ops "<=")
+    do (push ops ">")
+    do (push ops ">=")
+    do (push ops "==")
+    do (push ops "!=")
+    return (str_in s ops)
+end
+
+func is_word_op (s str) -> bool
+    let ops {str} = (vec str)
+    do (push ops "and")
+    do (push ops "or")
+    do (push ops "not")
+    do (push ops "band")
+    do (push ops "bor")
+    do (push ops "bxor")
+    do (push ops "bnot")
+    do (push ops "shl")
+    do (push ops "shr")
+    return (str_in s ops)
+end
+
+func is_operator (p P) -> bool
+    let t = (peek p)
+    let tag = (tk_tag t)
+    if (strings::eq tag "punct")
+        return (is_op_sym (tk_text t))
+    end
+    if (strings::eq tag "kw")
+        return (is_word_op (tk_text t))
+    end
+    return false
+end
+
+func is_word (p P) (w str) -> bool
+    let t = (peek p)
+    return (and (strings::eq (tk_tag t) "ident") (strings::eq (tk_text t) w))
+end
+
+func next_is_path (p P) -> bool
+    let t = (peek_at p 1u64)
+    return (and (strings::eq (tk_tag t) "punct") (strings::eq (tk_text t) "::"))
+end
+
+func next_is_colon (p P) -> bool
+    let t = (peek_at p 1u64)
+    return (and (strings::eq (tk_tag t) "punct") (strings::eq (tk_text t) ":"))
+end
+
+# --------------------------------------------------------------------------- #
+# Block terminator sets
+# --------------------------------------------------------------------------- #
+
+func terms_end () -> {str}
+    let v {str} = (vec str)
+    do (push v "end")
+    return v
+end
+
+func terms_if () -> {str}
+    let v {str} = (vec str)
+    do (push v "elsif")
+    do (push v "else")
+    do (push v "end")
+    return v
+end
+
+func terms_case () -> {str}
+    let v {str} = (vec str)
+    do (push v "case")
+    do (push v "else")
+    do (push v "end")
+    return v
+end
+
+func kw_in (p P) (terms {str}) -> bool
+    if (not (at_kind p "kw"))
+        return false
+    end
+    return (str_in (tk_text (peek p)) terms)
+end
+
+# --------------------------------------------------------------------------- #
+# Types
+# --------------------------------------------------------------------------- #
+
+func parse_type (p P) -> Ty
+    if (at_punct p "[")
+        do (adv p)
+        let elem = (parse_type p)
+        do (eat_punct p "]")
+        return (TyArr elem: elem)
+    end
+    if (at_punct p "{")
+        do (adv p)
+        let t1 = (parse_type p)
+        if (at_punct p "}")
+            do (adv p)
+            return (TyVec elem: t1)
+        end
+        let t2 = (parse_type p)
+        do (eat_punct p "}")
+        return (TyMap key: t1 val: t2)
+    end
+    if (at_kw p "func")
+        do (adv p)
+        do (eat_punct p "(")
+        let params {Ty} = (vec Ty)
+        while (not (at_punct p "->"))
+            do (push params (parse_type p))
+        end
+        do (eat_punct p "->")
+        let ret = (parse_type p)
+        do (eat_punct p ")")
+        return (TyFun params: params ret: ret)
+    end
+    if (or (at_kind p "type") (at_kind p "ident"))
+        return (TyName name: (tk_text (adv p)))
+    end
+    do (perr p "expected type")
+    return (TyName name: "")
+end
+
+func parse_params (p P) -> {Param}
+    let params {Param} = (vec Param)
+    while (at_punct p "(")
+        do (adv p)
+        if (at_punct p ")")
+            do (adv p)
+        else
+            let pname = (eat_ident p)
+            let pty = (parse_type p)
+            do (eat_punct p ")")
+            do (push params (Param name: pname ty: pty))
+        end
+    end
+    return params
+end
+
+# --------------------------------------------------------------------------- #
+# Expressions
+# --------------------------------------------------------------------------- #
+
+func parse_expr (p P) -> Expr
+    if (at_punct p "(")
+        return (parse_paren p)
+    end
+    if (at_punct p "[")
+        return (parse_array_lit p)
+    end
+    if (at_punct p "{")
+        return (parse_vec_lit p)
+    end
+    if (at_kw p "func")
+        return (parse_func_lit p)
+    end
+    return (parse_postfix p (parse_atom p))
+end
+
+func parse_vec_lit (p P) -> Expr
+    do (eat_punct p "{")
+    let elems {Expr} = (vec Expr)
+    while (not (at_punct p "}"))
+        do (push elems (parse_expr p))
+    end
+    do (eat_punct p "}")
+    return (parse_postfix p (EVec elems: elems))
+end
+
+func parse_array_lit (p P) -> Expr
+    do (eat_punct p "[")
+    let elems {Expr} = (vec Expr)
+    while (not (at_punct p "]"))
+        do (push elems (parse_expr p))
+    end
+    do (eat_punct p "]")
+    return (parse_postfix p (EArr elems: elems))
+end
+
+func parse_func_lit (p P) -> Expr
+    do (eat_kw p "func")
+    let params = (parse_params p)
+    let ret = (no_ty)
+    let has_ret = false
+    if (at_punct p "->")
+        do (adv p)
+        set ret = (parse_type p)
+        set has_ret = true
+    end
+    do (eat_terminator p)
+    let body = (parse_block p (terms_end))
+    do (eat_kw p "end")
+    return (EFunc params: params ret: ret has_ret: has_ret body: body)
+end
+
+func parse_paren (p P) -> Expr
+    do (eat_punct p "(")
+
+    # special forms
+    if (at_kw p "as")
+        do (adv p)
+        let val = (parse_expr p)
+        let ty = (parse_type p)
+        do (eat_punct p ")")
+        return (parse_postfix p (ECast expr: val ty: ty))
+    end
+    if (is_word p "ref")
+        do (adv p)
+        let place = (parse_expr p)
+        do (eat_punct p ")")
+        return (parse_postfix p (ERef place: place))
+    end
+    if (and (is_word p "array") (not (next_is_path p)))
+        do (adv p)
+        let elem = (parse_type p)
+        let count = (parse_expr p)
+        do (eat_punct p ")")
+        return (parse_postfix p (EArrNew elem: elem count: count))
+    end
+    if (and (is_word p "vec") (not (next_is_path p)))
+        do (adv p)
+        let elem = (parse_type p)
+        do (eat_punct p ")")
+        return (parse_postfix p (EVecNew elem: elem))
+    end
+    if (and (is_word p "map") (not (next_is_path p)))
+        do (adv p)
+        let kt = (parse_type p)
+        let vt = (parse_type p)
+        do (eat_punct p ")")
+        return (parse_postfix p (EMapNew key: kt val: vt))
+    end
+
+    # operator forms
+    if (is_operator p)
+        let op = (tk_text (adv p))
+        let args {Expr} = (vec Expr)
+        while (not (at_punct p ")"))
+            do (push args (parse_expr p))
+        end
+        do (eat_punct p ")")
+        return (parse_postfix p (EOp op: op args: args))
+    end
+
+    # struct literal vs. ordinary call
+    let head = (parse_postfix p (parse_atom p))
+    if (and (at_kind p "ident") (next_is_colon p))
+        let fields {Field} = (vec Field)
+        while (not (at_punct p ")"))
+            let fname = (eat_ident p)
+            do (eat_punct p ":")
+            let fexpr = (parse_expr p)
+            do (push fields (Field name: fname value: fexpr))
+        end
+        do (eat_punct p ")")
+        return (parse_postfix p (EStruct typ: head fields: fields))
+    end
+
+    let args {Expr} = (vec Expr)
+    while (not (at_punct p ")"))
+        do (push args (parse_expr p))
+    end
+    do (eat_punct p ")")
+    return (parse_postfix p (ECall callee: head args: args))
+end
+
+func parse_atom (p P) -> Expr
+    let t = (adv p)
+    match t.kind
+        case (KInt v s)
+            return (EInt value: v suffix: s)
+        case (KFloat x s)
+            return (EFloat text: x suffix: s)
+        case (KChar cp)
+            return (EChar cp: cp)
+        case (KStr v)
+            return (EStr value: v)
+        case (KKw nm)
+            return (atom_kw p nm)
+        case (KIdent nm)
+            return (atom_name p nm)
+        case (KType nm)
+            return (atom_name p nm)
+        else
+            do (perr p "unexpected token in expression")
+    end
+    return ENull
+end
+
+func atom_kw (p P) (nm str) -> Expr
+    if (strings::eq nm "true")
+        return (EBool value: true)
+    end
+    if (strings::eq nm "false")
+        return (EBool value: false)
+    end
+    if (strings::eq nm "null")
+        return ENull
+    end
+    do (perr p "unexpected keyword in expression")
+    return ENull
+end
+
+func atom_name (p P) (nm str) -> Expr
+    if (at_punct p "::")
+        let parts {str} = (vec str)
+        do (push parts nm)
+        while (at_punct p "::")
+            do (adv p)
+            if (or (at_kind p "ident") (at_kind p "type"))
+                do (push parts (tk_text (adv p)))
+            else
+                do (perr p "expected name after ::")
+            end
+        end
+        return (EPath parts: parts)
+    end
+    return (EName ident: nm)
+end
+
+func parse_postfix (p P) (node Expr) -> Expr
+    let cur = node
+    let go = true
+    while go
+        if (at_punct p ".")
+            do (adv p)
+            let fld = (eat_ident p)
+            set cur = (EField obj: cur field: fld)
+        elsif (at_punct p "[")
+            do (adv p)
+            let idx = (parse_expr p)
+            do (eat_punct p "]")
+            set cur = (EIndex obj: cur index: idx)
+        else
+            set go = false
+        end
+    end
+    return cur
+end
+
+# --------------------------------------------------------------------------- #
+# Statements
+# --------------------------------------------------------------------------- #
+
+func parse_block (p P) (terms {str}) -> {Stmt}
+    let body {Stmt} = (vec Stmt)
+    do (skip_newlines p)
+    while (not (kw_in p terms))
+        if (at_kind p "eof")
+            do (perr p "unexpected end of file in block")
+        end
+        do (push body (parse_stmt p))
+        do (skip_newlines p)
+    end
+    return body
+end
+
+func parse_stmt (p P) -> Stmt
+    if (at_kw p "let")
+        return (parse_let p true)
+    end
+    if (at_kw p "const")
+        return (parse_let p false)
+    end
+    if (at_kw p "set")
+        return (parse_set p)
+    end
+    if (at_kw p "do")
+        return (parse_do p)
+    end
+    if (at_kw p "if")
+        return (parse_if p)
+    end
+    if (at_kw p "while")
+        return (parse_while p)
+    end
+    if (at_kw p "for")
+        return (parse_for p)
+    end
+    if (at_kw p "loop")
+        return (parse_loop p)
+    end
+    if (at_kw p "break")
+        do (adv p)
+        do (eat_terminator p)
+        return SBreak
+    end
+    if (at_kw p "continue")
+        do (adv p)
+        do (eat_terminator p)
+        return SContinue
+    end
+    if (at_kw p "pass")
+        do (adv p)
+        do (eat_terminator p)
+        return SPass
+    end
+    if (at_kw p "return")
+        return (parse_return p)
+    end
+    if (at_kw p "checked")
+        return (parse_checked p)
+    end
+    if (at_kw p "match")
+        return (parse_match p)
+    end
+    do (perr p "expected statement")
+    return SPass
+end
+
+func parse_let (p P) (mutable bool) -> Stmt
+    do (adv p)                       # consume 'let' or 'const'
+    let name = (eat_ident p)
+    let ty = (no_ty)
+    let has_ty = false
+    if (not (at_punct p "="))
+        set ty = (parse_type p)
+        set has_ty = true
+    end
+    do (eat_punct p "=")
+    let expr = (parse_expr p)
+    do (eat_terminator p)
+    return (SLet name: name ty: ty has_ty: has_ty expr: expr mutable: mutable)
+end
+
+func parse_set (p P) -> Stmt
+    do (eat_kw p "set")
+    let target = (parse_expr p)
+    do (eat_punct p "=")
+    let expr = (parse_expr p)
+    do (eat_terminator p)
+    return (SSet target: target expr: expr)
+end
+
+func parse_do (p P) -> Stmt
+    do (eat_kw p "do")
+    let call = (parse_expr p)
+    do (eat_terminator p)
+    return (SDo call: call)
+end
+
+func parse_if (p P) -> Stmt
+    do (eat_kw p "if")
+    let cond = (parse_expr p)
+    do (eat_terminator p)
+    let branches {Branch} = (vec Branch)
+    do (push branches (Branch cond: cond body: (parse_block p (terms_if))))
+    let orelse {Stmt} = (vec Stmt)
+    let has_else = false
+    while (at_kw p "elsif")
+        do (adv p)
+        let c = (parse_expr p)
+        do (eat_terminator p)
+        do (push branches (Branch cond: c body: (parse_block p (terms_if))))
+    end
+    if (at_kw p "else")
+        do (adv p)
+        do (eat_terminator p)
+        set orelse = (parse_block p (terms_end))
+        set has_else = true
+    end
+    do (eat_kw p "end")
+    do (eat_terminator p)
+    return (SIf branches: branches orelse: orelse has_else: has_else)
+end
+
+func parse_while (p P) -> Stmt
+    do (eat_kw p "while")
+    let cond = (parse_expr p)
+    do (eat_terminator p)
+    let body = (parse_block p (terms_end))
+    do (eat_kw p "end")
+    do (eat_terminator p)
+    return (SWhile cond: cond body: body)
+end
+
+func parse_for (p P) -> Stmt
+    do (eat_kw p "for")
+    let var = (eat_ident p)
+    if (at_punct p "=")
+        do (adv p)
+        let start = (parse_expr p)
+        do (eat_kw p "to")
+        let stop = (parse_expr p)
+        let stride = (no_expr)
+        let has_step = false
+        if (at_kw p "step")
+            do (adv p)
+            set stride = (parse_expr p)
+            set has_step = true
+        end
+        do (eat_terminator p)
+        let body = (parse_block p (terms_end))
+        do (eat_kw p "end")
+        do (eat_terminator p)
+        return (SForNum var: var start: start stop: stop stride: stride has_step: has_step body: body)
+    end
+    do (eat_kw p "in")
+    let it = (parse_expr p)
+    do (eat_terminator p)
+    let body = (parse_block p (terms_end))
+    do (eat_kw p "end")
+    do (eat_terminator p)
+    return (SForIn var: var iter: it body: body)
+end
+
+func parse_loop (p P) -> Stmt
+    do (eat_kw p "loop")
+    do (eat_terminator p)
+    let body = (parse_block p (terms_end))
+    do (eat_kw p "end")
+    do (eat_terminator p)
+    return (SLoop body: body)
+end
+
+func parse_return (p P) -> Stmt
+    do (eat_kw p "return")
+    let expr = (no_expr)
+    let has_expr = false
+    if (and (not (at_kind p "newline")) (not (at_kind p "eof")))
+        set expr = (parse_expr p)
+        set has_expr = true
+    end
+    do (eat_terminator p)
+    return (SReturn expr: expr has_expr: has_expr)
+end
+
+func parse_checked (p P) -> Stmt
+    do (eat_kw p "checked")
+    do (eat_terminator p)
+    let body = (parse_block p (terms_end))
+    do (eat_kw p "end")
+    do (eat_terminator p)
+    return (SChecked body: body)
+end
+
+func parse_match (p P) -> Stmt
+    do (eat_kw p "match")
+    let scrut = (parse_expr p)
+    do (eat_terminator p)
+    let arms {Arm} = (vec Arm)
+    let orelse {Stmt} = (vec Stmt)
+    let has_else = false
+    while (at_kw p "case")
+        do (adv p)
+        let vname = ""
+        let bindings {str} = (vec str)
+        if (at_punct p "(")
+            do (adv p)
+            set vname = (eat_ident p)
+            while (not (at_punct p ")"))
+                do (push bindings (eat_ident p))
+            end
+            do (eat_punct p ")")
+        else
+            set vname = (eat_ident p)
+        end
+        do (eat_terminator p)
+        let body = (parse_block p (terms_case))
+        do (push arms (Arm variant: vname bindings: bindings body: body))
+    end
+    if (at_kw p "else")
+        do (adv p)
+        do (eat_terminator p)
+        set orelse = (parse_block p (terms_end))
+        set has_else = true
+    end
+    do (eat_kw p "end")
+    do (eat_terminator p)
+    return (SMatch scrut: scrut arms: arms orelse: orelse has_else: has_else)
+end
+
+# --------------------------------------------------------------------------- #
+# Declarations / module
+# --------------------------------------------------------------------------- #
+
+func parse_import (p P) -> Import
+    do (eat_kw p "import")
+    let name = (eat_ident p)
+    let selective = false
+    let names {str} = (vec str)
+    if (at_punct p "(")
+        do (adv p)
+        set selective = true
+        while (not (at_punct p ")"))
+            do (push names (eat_ident p))
+        end
+        do (eat_punct p ")")
+    end
+    do (eat_terminator p)
+    return (Import name: name selective: selective names: names)
+end
+
+func parse_toplevel (p P) -> Decl
+    let exported = false
+    if (at_kw p "export")
+        do (adv p)
+        set exported = true
+    end
+    if (at_kw p "func")
+        return (parse_func_decl p exported)
+    end
+    if (or (at_kw p "struct") (at_kw p "packed"))
+        return (parse_struct_decl p exported)
+    end
+    if (at_kw p "enum")
+        return (parse_enum_decl p exported)
+    end
+    if (at_kw p "type")
+        return (parse_sum_decl p exported)
+    end
+    if (at_kw p "const")
+        return (parse_const_decl p exported)
+    end
+    do (perr p "unexpected top-level token")
+    return (DEnum name: "" variants: (vec str) exported: false)
+end
+
+func parse_func_decl (p P) (exported bool) -> Decl
+    do (eat_kw p "func")
+    let name = (eat_ident p)
+    let params = (parse_params p)
+    let ret = (no_ty)
+    let has_ret = false
+    if (at_punct p "->")
+        do (adv p)
+        set ret = (parse_type p)
+        set has_ret = true
+    end
+    do (eat_terminator p)
+    let body = (parse_block p (terms_end))
+    do (eat_kw p "end")
+    do (eat_terminator p)
+    return (DFunc name: name params: params ret: ret has_ret: has_ret body: body exported: exported)
+end
+
+func parse_struct_decl (p P) (exported bool) -> Decl
+    let is_packed = false
+    if (at_kw p "packed")
+        do (adv p)
+        set is_packed = true
+    end
+    do (eat_kw p "struct")
+    let name = (eat_ident p)
+    do (eat_terminator p)
+    let fields {Param} = (vec Param)
+    while (not (at_kw p "end"))
+        do (skip_newlines p)
+        if (not (at_kw p "end"))
+            let fname = (eat_ident p)
+            let fty = (parse_type p)
+            do (eat_terminator p)
+            do (push fields (Param name: fname ty: fty))
+        end
+    end
+    do (eat_kw p "end")
+    do (eat_terminator p)
+    return (DStruct name: name fields: fields is_packed: is_packed exported: exported)
+end
+
+func parse_enum_decl (p P) (exported bool) -> Decl
+    do (eat_kw p "enum")
+    let name = (eat_ident p)
+    do (eat_terminator p)
+    let variants {str} = (vec str)
+    while (not (at_kw p "end"))
+        do (skip_newlines p)
+        if (not (at_kw p "end"))
+            do (push variants (eat_ident p))
+            do (eat_terminator p)
+        end
+    end
+    do (eat_kw p "end")
+    do (eat_terminator p)
+    return (DEnum name: name variants: variants exported: exported)
+end
+
+func parse_sum_decl (p P) (exported bool) -> Decl
+    do (eat_kw p "type")
+    let name = (eat_ident p)
+    do (eat_terminator p)
+    let variants {Variant} = (vec Variant)
+    while (not (at_kw p "end"))
+        do (skip_newlines p)
+        if (not (at_kw p "end"))
+            let vname = (eat_ident p)
+            let fields {Param} = (vec Param)
+            while (at_punct p "(")
+                do (adv p)
+                let fname = (eat_ident p)
+                let fty = (parse_type p)
+                do (eat_punct p ")")
+                do (push fields (Param name: fname ty: fty))
+            end
+            do (eat_terminator p)
+            do (push variants (Variant name: vname fields: fields))
+        end
+    end
+    do (eat_kw p "end")
+    do (eat_terminator p)
+    return (DSum name: name variants: variants exported: exported)
+end
+
+func parse_const_decl (p P) (exported bool) -> Decl
+    do (eat_kw p "const")
+    let name = (eat_ident p)
+    let ty = (no_ty)
+    let has_ty = false
+    if (not (at_punct p "="))
+        set ty = (parse_type p)
+        set has_ty = true
+    end
+    do (eat_punct p "=")
+    let expr = (parse_expr p)
+    do (eat_terminator p)
+    return (DConst name: name ty: ty has_ty: has_ty expr: expr exported: exported)
+end
+
+func parse_module (p P) -> Module
+    do (skip_newlines p)
+    do (eat_kw p "module")
+    let name = (eat_ident p)
+    do (eat_terminator p)
+    let imports {Import} = (vec Import)
+    let decls {Decl} = (vec Decl)
+    while (not (at_kind p "eof"))
+        do (skip_newlines p)
+        if (not (at_kind p "eof"))
+            if (at_kw p "import")
+                do (push imports (parse_import p))
+            else
+                do (push decls (parse_toplevel p))
+            end
+        end
+    end
+    return (Module name: name imports: imports decls: decls)
+end
+
+# --------------------------------------------------------------------------- #
+# Entry point
+# --------------------------------------------------------------------------- #
+
+export func parse (src str) -> Module
+    let p = (mk_parser (lexer::lex src))
+    return (parse_module p)
+end
+
+# --------------------------------------------------------------------------- #
+# Pretty-printer (verification): render the AST to an s-expression-ish string
+# --------------------------------------------------------------------------- #
+
+func join (parts {str}) (sep str) -> str
+    let out = ""
+    let i = 0u64
+    let n = (len parts)
+    while (< i n)
+        if (> i 0u64)
+            set out = (strings::concat out sep)
+        end
+        set out = (strings::concat out parts[i])
+        set i = (+ i 1)
+    end
+    return out
+end
+
+func ty_str (t Ty) -> str
+    match t
+        case (TyName n)
+            if (strings::eq n "")
+                return "_"
+            end
+            return n
+        case (TyArr e)
+            return (strings::concat "[" (strings::concat (ty_str e) "]"))
+        case (TyVec e)
+            return (strings::concat "{" (strings::concat (ty_str e) "}"))
+        case (TyMap k v)
+            return (strings::concat "{" (strings::concat (ty_str k) (strings::concat " " (strings::concat (ty_str v) "}"))))
+        case (TyFun ps r)
+            return (strings::concat "func->" (ty_str r))
+    end
+    return "?"
+end
+
+func exprs_str (args {Expr}) -> str
+    let parts {str} = (vec str)
+    let i = 0u64
+    let n = (len args)
+    while (< i n)
+        do (push parts (expr_str args[i]))
+        set i = (+ i 1)
+    end
+    return (join parts " ")
+end
+
+func fields_str (fs {Field}) -> str
+    let parts {str} = (vec str)
+    let i = 0u64
+    let n = (len fs)
+    while (< i n)
+        do (push parts (strings::concat fs[i].name (strings::concat ": " (expr_str fs[i].value))))
+        set i = (+ i 1)
+    end
+    return (join parts " ")
+end
+
+func expr_str (e Expr) -> str
+    match e
+        case (EInt v s)
+            return (strings::concat (convert::int_to_str v) s)
+        case (EFloat x s)
+            return (strings::concat x s)
+        case (EBool v)
+            if v
+                return "true"
+            end
+            return "false"
+        case (EChar cp)
+            return (strings::concat "#" (convert::int_to_str (as cp i64)))
+        case (EStr v)
+            return (strings::concat "\"" (strings::concat v "\""))
+        case ENull
+            return "null"
+        case (EName id)
+            return id
+        case (EPath parts)
+            return (join parts "::")
+        case (EField o f)
+            return (strings::concat "(. " (strings::concat (expr_str o) (strings::concat " " (strings::concat f ")"))))
+        case (EIndex o ix)
+            return (strings::concat "(index " (strings::concat (expr_str o) (strings::concat " " (strings::concat (expr_str ix) ")"))))
+        case (ECall callee args)
+            return (strings::concat "(" (strings::concat (expr_str callee) (strings::concat " " (strings::concat (exprs_str args) ")"))))
+        case (EOp op args)
+            return (strings::concat "(" (strings::concat op (strings::concat " " (strings::concat (exprs_str args) ")"))))
+        case (EStruct typ fs)
+            return (strings::concat "(struct " (strings::concat (expr_str typ) (strings::concat " " (strings::concat (fields_str fs) ")"))))
+        case (EArr elems)
+            return (strings::concat "[" (strings::concat (exprs_str elems) "]"))
+        case (EArrNew elem count)
+            return (strings::concat "(array " (strings::concat (ty_str elem) (strings::concat " " (strings::concat (expr_str count) ")"))))
+        case (EVec elems)
+            return (strings::concat "{" (strings::concat (exprs_str elems) "}"))
+        case (EVecNew elem)
+            return (strings::concat "(vec " (strings::concat (ty_str elem) ")"))
+        case (EMapNew k v)
+            return (strings::concat "(map " (strings::concat (ty_str k) (strings::concat " " (strings::concat (ty_str v) ")"))))
+        case (ECast ex ty)
+            return (strings::concat "(as " (strings::concat (expr_str ex) (strings::concat " " (strings::concat (ty_str ty) ")"))))
+        case (ERef place)
+            return (strings::concat "(ref " (strings::concat (expr_str place) ")"))
+        case (EFunc params ret has_ret body)
+            return (strings::concat "(lambda " (strings::concat (block_str body) ")"))
+    end
+    return "?"
+end
+
+func stmts_to_parts (body {Stmt}) -> {str}
+    let parts {str} = (vec str)
+    let i = 0u64
+    let n = (len body)
+    while (< i n)
+        do (push parts (stmt_str body[i]))
+        set i = (+ i 1)
+    end
+    return parts
+end
+
+func block_str (body {Stmt}) -> str
+    return (strings::concat "[" (strings::concat (join (stmts_to_parts body) "; ") "]"))
+end
+
+func stmt_str (s Stmt) -> str
+    match s
+        case (SLet name ty has_ty expr mutable)
+            let kw = "let"
+            if (not mutable)
+                set kw = "const"
+            end
+            return (strings::concat "(" (strings::concat kw (strings::concat " " (strings::concat name (strings::concat " = " (strings::concat (expr_str expr) ")"))))))
+        case (SSet target expr)
+            return (strings::concat "(set " (strings::concat (expr_str target) (strings::concat " = " (strings::concat (expr_str expr) ")"))))
+        case (SDo call)
+            return (strings::concat "(do " (strings::concat (expr_str call) ")"))
+        case (SIf branches orelse has_else)
+            return (strings::concat "(if " (strings::concat (branches_str branches) (strings::concat (else_str orelse has_else) ")")))
+        case (SWhile cond body)
+            return (strings::concat "(while " (strings::concat (expr_str cond) (strings::concat " " (strings::concat (block_str body) ")"))))
+        case (SForNum var start stop stride has_step body)
+            return (strings::concat "(for " (strings::concat var (strings::concat " = " (strings::concat (expr_str start) (strings::concat " to " (strings::concat (expr_str stop) (strings::concat " " (strings::concat (block_str body) ")"))))))))
+        case (SForIn var iter body)
+            return (strings::concat "(for " (strings::concat var (strings::concat " in " (strings::concat (expr_str iter) (strings::concat " " (strings::concat (block_str body) ")"))))))
+        case (SLoop body)
+            return (strings::concat "(loop " (strings::concat (block_str body) ")"))
+        case SBreak
+            return "break"
+        case SContinue
+            return "continue"
+        case SPass
+            return "pass"
+        case (SReturn expr has_expr)
+            if has_expr
+                return (strings::concat "(return " (strings::concat (expr_str expr) ")"))
+            end
+            return "(return)"
+        case (SChecked body)
+            return (strings::concat "(checked " (strings::concat (block_str body) ")"))
+        case (SMatch scrut arms orelse has_else)
+            return (strings::concat "(match " (strings::concat (expr_str scrut) (strings::concat " " (strings::concat (arms_str arms) ")"))))
+    end
+    return "?"
+end
+
+func branches_str (bs {Branch}) -> str
+    let parts {str} = (vec str)
+    let i = 0u64
+    let n = (len bs)
+    while (< i n)
+        do (push parts (strings::concat "(" (strings::concat (expr_str bs[i].cond) (strings::concat " => " (strings::concat (block_str bs[i].body) ")")))))
+        set i = (+ i 1)
+    end
+    return (join parts " ")
+end
+
+func else_str (orelse {Stmt}) (has_else bool) -> str
+    if has_else
+        return (strings::concat " else " (block_str orelse))
+    end
+    return ""
+end
+
+func arms_str (arms {Arm}) -> str
+    let parts {str} = (vec str)
+    let i = 0u64
+    let n = (len arms)
+    while (< i n)
+        let head = arms[i].variant
+        if (> (len arms[i].bindings) 0u64)
+            set head = (strings::concat head (strings::concat "(" (strings::concat (join arms[i].bindings " ") ")")))
+        end
+        do (push parts (strings::concat "(case " (strings::concat head (strings::concat " " (strings::concat (block_str arms[i].body) ")")))))
+        set i = (+ i 1)
+    end
+    return (join parts " ")
+end
+
+func params_str (ps {Param}) -> str
+    let parts {str} = (vec str)
+    let i = 0u64
+    let n = (len ps)
+    while (< i n)
+        do (push parts (strings::concat ps[i].name (strings::concat ":" (ty_str ps[i].ty))))
+        set i = (+ i 1)
+    end
+    return (join parts " ")
+end
+
+func variants_str (vs {Variant}) -> str
+    let parts {str} = (vec str)
+    let i = 0u64
+    let n = (len vs)
+    while (< i n)
+        do (push parts (strings::concat vs[i].name (strings::concat "(" (strings::concat (params_str vs[i].fields) ")"))))
+        set i = (+ i 1)
+    end
+    return (join parts " ")
+end
+
+func pfx (exported bool) -> str
+    if exported
+        return "export "
+    end
+    return ""
+end
+
+func decl_str (d Decl) -> str
+    match d
+        case (DFunc name params ret has_ret body exported)
+            return (strings::concat (pfx exported) (strings::concat "func " (strings::concat name (strings::concat " (" (strings::concat (params_str params) (strings::concat ") " (block_str body)))))))
+        case (DStruct name fields is_packed exported)
+            return (strings::concat (pfx exported) (strings::concat "struct " (strings::concat name (strings::concat " {" (strings::concat (params_str fields) "}")))))
+        case (DEnum name variants exported)
+            return (strings::concat (pfx exported) (strings::concat "enum " (strings::concat name (strings::concat " " (join variants " ")))))
+        case (DSum name variants exported)
+            return (strings::concat (pfx exported) (strings::concat "type " (strings::concat name (strings::concat " " (variants_str variants)))))
+        case (DConst name ty has_ty expr exported)
+            return (strings::concat (pfx exported) (strings::concat "const " (strings::concat name (strings::concat " = " (expr_str expr)))))
+    end
+    return "?"
+end
+
+export func module_str (m Module) -> str
+    let parts {str} = (vec str)
+    do (push parts (strings::concat "module " m.name))
+    let i = 0u64
+    while (< i (len m.imports))
+        do (push parts (strings::concat "import " m.imports[i].name))
+        set i = (+ i 1)
+    end
+    set i = 0u64
+    while (< i (len m.decls))
+        do (push parts (decl_str m.decls[i]))
+        set i = (+ i 1)
+    end
+    return (join parts "\n")
+end
