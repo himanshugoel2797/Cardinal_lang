@@ -1,0 +1,53 @@
+module checktest
+
+import io
+import checker
+
+func run (label str) (src str) -> unit
+    do (io::println label)
+    let errs = (checker::check src)
+    if (== (len errs) 0u64)
+        do (io::println "  ok")
+    else
+        for e in errs
+            do (io::println (strings::concat "  ERR " e))
+        end
+    end
+    do (io::println "----")
+end
+
+func main () -> i32
+    # 1. clean program — should be ok
+    do (run "[ok-basic]" "module m\nfunc add (a i32) (b i32) -> i32\n    return (+ a b)\nend\n")
+
+    # 2. mixed int types — no implicit promotion
+    do (run "[mismatch-int]" "module m\nfunc f () -> i32\n    let a = 1i32\n    let b = 2i64\n    return (+ a b)\nend\n")
+
+    # 3. condition not bool
+    do (run "[cond]" "module m\nfunc f () -> i32\n    if 5\n        return 1\n    end\n    return 0\nend\n")
+
+    # 4. non-exhaustive match
+    do (run "[match-exh]" "module m\ntype T\n    A\n    B\nend\nfunc f (t T) -> i32\n    match t\n        case A\n            return 1\n    end\n    return 0\nend\n")
+
+    # 5. exhaustive match — ok
+    do (run "[match-ok]" "module m\ntype T\n    A\n    B\nend\nfunc f (t T) -> i32\n    match t\n        case A\n            return 1\n        case B\n            return 2\n    end\n    return 0\nend\n")
+
+    # 6. assign to immutable const
+    do (run "[immutable]" "module m\nfunc f () -> i32\n    const x = 5i32\n    set x = 6i32\n    return x\nend\n")
+
+    # 7. unknown field
+    do (run "[field]" "module m\nstruct P\n    x i32\nend\nfunc f () -> i32\n    let p = (P x: 1)\n    return p.y\nend\n")
+
+    # 8. map key not hashable
+    do (run "[mapkey]" "module m\nstruct P\n    x i32\nend\nfunc f () -> unit\n    let m {P i32} = (map P i32)\nend\n")
+
+    # 9. return type mismatch
+    do (run "[ret]" "module m\nfunc f () -> i32\n    return true\nend\n")
+
+    # 10. wrong arg count
+    do (run "[argc]" "module m\nfunc g (a i32) -> i32\n    return a\nend\nfunc f () -> i32\n    return (g 1 2)\nend\n")
+
+    # 11. cast ok + builtins (len/push/vec)
+    do (run "[vec-ok]" "module m\nimport io\nfunc f () -> i32\n    let xs {i32} = (vec i32)\n    do (push xs 5)\n    do (io::println (len xs))\n    return (as 3.5 i32)\nend\n")
+    return 0i32
+end

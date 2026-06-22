@@ -1,0 +1,1677 @@
+module checker
+
+# The Cardinal type checker, written in Cardinal.
+#
+# Port of bootstrap/typecheck.py. Consumes a parser::Module and enforces the
+# static rules (no implicit numeric promotion, context-typed literals, null
+# assignable to reference types, field/element/arg/return type agreement, bool
+# conditions, mutable + compatible `set` targets, match exhaustiveness, map-key
+# hashability).
+#
+# MILESTONE A: single-module checking + builtin module/global signatures
+# (io/strings/convert/fs/sys, plus len/push/pop/panic/map_*). Cross-module USER
+# import resolution (loading other .cardinal files, recursive sig building) is
+# deferred — a `mod::value` path to a non-builtin module reports
+# "cannot resolve path" for now. Errors do not yet carry line numbers (the AST
+# does not thread them).
+
+import strings
+import convert
+import parser
+
+# --------------------------------------------------------------------------- #
+# Type representation
+# --------------------------------------------------------------------------- #
+
+type Type
+    TInt    (name str)            # i8..u64
+    TFloat  (name str)            # f32, f64
+    TPrim   (name str)            # bool, char, str, unit, handle
+    TStruct (name str)
+    TEnum   (name str)
+    TSum    (name str)
+    TArray  (elem Type)
+    TVec    (elem Type)
+    TMap    (key Type) (val Type)
+    TFunc   (params {Type}) (ret Type)
+    TUInt                         # untyped integer literal
+    TUFloat                       # untyped float literal
+    TNull                         # type of `null`
+    TNever                        # bottom type (panic)
+    TNone                         # "absent" sentinel (Python's None)
+end
+
+# value-carrying records --------------------------------------------------- #
+
+struct FieldDef
+    name str
+    ty Type
+end
+
+struct VarInfo
+    sum_name str
+    fields {FieldDef}
+end
+
+struct Binding
+    ty Type
+    mutable bool
+end
+
+struct PlaceRes
+    ok bool
+    ty Type
+    mutable bool
+end
+
+struct Sig
+    name str
+    funcs {str Type}             # name -> TFunc
+    consts {str Type}            # name -> Type (TNone until resolved)
+    structs {str {FieldDef}}     # struct name -> field list
+    enums {str {str}}            # enum name -> variant names
+    sum_variants {str {str}}     # sum name -> variant names
+    variants {str VarInfo}       # variant name -> (sum, fields)
+    exports {str bool}
+end
+
+struct Ctx
+    sig Sig
+    errors {str}
+    modname str
+end
+
+# --------------------------------------------------------------------------- #
+# Type constructors / constants
+# --------------------------------------------------------------------------- #
+
+func t_bool () -> Type
+    return (TPrim name: "bool")
+end
+func t_char () -> Type
+    return (TPrim name: "char")
+end
+func t_str () -> Type
+    return (TPrim name: "str")
+end
+func t_unit () -> Type
+    return (TPrim name: "unit")
+end
+func t_handle () -> Type
+    return (TPrim name: "handle")
+end
+func t_u64 () -> Type
+    return (TInt name: "u64")
+end
+
+# --------------------------------------------------------------------------- #
+# Type tag + accessors
+# --------------------------------------------------------------------------- #
+
+func type_tag (t Type) -> str
+    match t
+        case (TInt n)
+            return "int"
+        case (TFloat n)
+            return "float"
+        case (TPrim n)
+            return "prim"
+        case (TStruct n)
+            return "struct"
+        case (TEnum n)
+            return "enum"
+        case (TSum n)
+            return "sum"
+        case (TArray e)
+            return "array"
+        case (TVec e)
+            return "vec"
+        case (TMap k v)
+            return "map"
+        case (TFunc p r)
+            return "func"
+        case TUInt
+            return "uint"
+        case TUFloat
+            return "ufloat"
+        case TNull
+            return "null"
+        case TNever
+            return "never"
+        case TNone
+            return "none"
+    end
+    return "?"
+end
+
+func type_name (t Type) -> str
+    match t
+        case (TInt n)
+            return n
+        case (TFloat n)
+            return n
+        case (TPrim n)
+            return n
+        case (TStruct n)
+            return n
+        case (TEnum n)
+            return n
+        case (TSum n)
+            return n
+        else
+            return ""
+    end
+    return ""
+end
+
+func elem_of (t Type) -> Type
+    match t
+        case (TArray e)
+            return e
+        case (TVec e)
+            return e
+        else
+            return (t_unit)
+    end
+    return (t_unit)
+end
+
+func map_key (t Type) -> Type
+    match t
+        case (TMap k v)
+            return k
+        else
+            return (t_unit)
+    end
+    return (t_unit)
+end
+
+func map_val (t Type) -> Type
+    match t
+        case (TMap k v)
+            return v
+        else
+            return (t_unit)
+    end
+    return (t_unit)
+end
+
+func func_params (t Type) -> {Type}
+    match t
+        case (TFunc p r)
+            return p
+        else
+            return (vec Type)
+    end
+    return (vec Type)
+end
+
+func func_ret (t Type) -> Type
+    match t
+        case (TFunc p r)
+            return r
+        else
+            return (t_unit)
+    end
+    return (t_unit)
+end
+
+# --------------------------------------------------------------------------- #
+# Tag predicates
+# --------------------------------------------------------------------------- #
+
+func is_tag (t Type) (tag str) -> bool
+    return (strings::eq (type_tag t) tag)
+end
+func is_int (t Type) -> bool
+    return (is_tag t "int")
+end
+func is_float (t Type) -> bool
+    return (is_tag t "float")
+end
+func is_uint (t Type) -> bool
+    return (is_tag t "uint")
+end
+func is_ufloat (t Type) -> bool
+    return (is_tag t "ufloat")
+end
+func is_struct (t Type) -> bool
+    return (is_tag t "struct")
+end
+func is_enum (t Type) -> bool
+    return (is_tag t "enum")
+end
+func is_sum (t Type) -> bool
+    return (is_tag t "sum")
+end
+func is_array (t Type) -> bool
+    return (is_tag t "array")
+end
+func is_vec (t Type) -> bool
+    return (is_tag t "vec")
+end
+func is_map (t Type) -> bool
+    return (is_tag t "map")
+end
+func is_func (t Type) -> bool
+    return (is_tag t "func")
+end
+func is_null (t Type) -> bool
+    return (is_tag t "null")
+end
+func is_never (t Type) -> bool
+    return (is_tag t "never")
+end
+func is_none (t Type) -> bool
+    return (is_tag t "none")
+end
+func is_prim_named (t Type) (nm str) -> bool
+    return (and (is_tag t "prim") (strings::eq (type_name t) nm))
+end
+func is_str (t Type) -> bool
+    return (is_prim_named t "str")
+end
+
+func is_numish (t Type) -> bool
+    return (or (or (is_int t) (is_float t)) (or (is_uint t) (is_ufloat t)))
+end
+
+func is_hashable (t Type) -> bool
+    if (or (is_int t) (is_enum t))
+        return true
+    end
+    if (and (is_tag t "prim") (or (or (strings::eq (type_name t) "str") (strings::eq (type_name t) "char")) (strings::eq (type_name t) "bool")))
+        return true
+    end
+    return false
+end
+
+func is_ref_target (t Type) -> bool
+    if (or (or (is_struct t) (is_enum t)) (or (is_sum t) (is_array t)))
+        return true
+    end
+    if (or (or (is_vec t) (is_map t)) (is_func t))
+        return true
+    end
+    if (and (is_tag t "prim") (or (strings::eq (type_name t) "str") (strings::eq (type_name t) "handle")))
+        return true
+    end
+    return false
+end
+
+# --------------------------------------------------------------------------- #
+# Type equality and rendering
+# --------------------------------------------------------------------------- #
+
+func name_tag (tag str) -> bool
+    return (or (or (strings::eq tag "int") (strings::eq tag "float")) (or (or (strings::eq tag "prim") (strings::eq tag "struct")) (or (strings::eq tag "enum") (strings::eq tag "sum"))))
+end
+
+func type_eq (a Type) (b Type) -> bool
+    let ta = (type_tag a)
+    let tb = (type_tag b)
+    if (not (strings::eq ta tb))
+        return false
+    end
+    if (name_tag ta)
+        return (strings::eq (type_name a) (type_name b))
+    end
+    if (or (strings::eq ta "array") (strings::eq ta "vec"))
+        return (type_eq (elem_of a) (elem_of b))
+    end
+    if (strings::eq ta "map")
+        return (and (type_eq (map_key a) (map_key b)) (type_eq (map_val a) (map_val b)))
+    end
+    if (strings::eq ta "func")
+        let pa = (func_params a)
+        let pb = (func_params b)
+        if (not (== (len pa) (len pb)))
+            return false
+        end
+        let i = 0u64
+        while (< i (len pa))
+            if (not (type_eq pa[i] pb[i]))
+                return false
+            end
+            set i = (+ i 1)
+        end
+        return (type_eq (func_ret a) (func_ret b))
+    end
+    return true
+end
+
+func tystr_list (ts {Type}) -> str
+    let out = ""
+    let i = 0u64
+    while (< i (len ts))
+        if (> i 0u64)
+            set out = (strings::concat out " ")
+        end
+        set out = (strings::concat out (tystr ts[i]))
+        set i = (+ i 1)
+    end
+    return out
+end
+
+func tystr (t Type) -> str
+    let tag = (type_tag t)
+    if (name_tag tag)
+        return (type_name t)
+    end
+    if (strings::eq tag "array")
+        return (strings::concat "[" (strings::concat (tystr (elem_of t)) "]"))
+    end
+    if (strings::eq tag "vec")
+        return (strings::concat "{" (strings::concat (tystr (elem_of t)) "}"))
+    end
+    if (strings::eq tag "map")
+        return (strings::concat "{" (strings::concat (tystr (map_key t)) (strings::concat " " (strings::concat (tystr (map_val t)) "}"))))
+    end
+    if (strings::eq tag "func")
+        return (strings::concat "func(" (strings::concat (tystr_list (func_params t)) (strings::concat " -> " (strings::concat (tystr (func_ret t)) ")"))))
+    end
+    if (strings::eq tag "uint")
+        return "{untyped int}"
+    end
+    if (strings::eq tag "ufloat")
+        return "{untyped float}"
+    end
+    if (strings::eq tag "null")
+        return "null"
+    end
+    if (strings::eq tag "never")
+        return "never"
+    end
+    return "?"
+end
+
+# --------------------------------------------------------------------------- #
+# Builtin type-name predicates
+# --------------------------------------------------------------------------- #
+
+func is_int_name (s str) -> bool
+    let v {str} = (vec str)
+    do (push v "i8")
+    do (push v "i16")
+    do (push v "i32")
+    do (push v "i64")
+    do (push v "u8")
+    do (push v "u16")
+    do (push v "u32")
+    do (push v "u64")
+    return (str_in_vec s v)
+end
+
+func is_float_name (s str) -> bool
+    return (or (strings::eq s "f32") (strings::eq s "f64"))
+end
+
+func is_prim_name (s str) -> bool
+    let v {str} = (vec str)
+    do (push v "bool")
+    do (push v "char")
+    do (push v "str")
+    do (push v "unit")
+    do (push v "handle")
+    return (str_in_vec s v)
+end
+
+# --------------------------------------------------------------------------- #
+# Small helpers
+# --------------------------------------------------------------------------- #
+
+func str_in_vec (s str) (v {str}) -> bool
+    let i = 0u64
+    while (< i (len v))
+        if (strings::eq v[i] s)
+            return true
+        end
+        set i = (+ i 1)
+    end
+    return false
+end
+
+func copy_scope (m {str Binding}) -> {str Binding}
+    let out {str Binding} = (map str Binding)
+    for k in (map_keys m)
+        set out[k] = m[k]
+    end
+    return out
+end
+
+func empty_scope () -> {str Binding}
+    return (map str Binding)
+end
+
+func has_field (defs {FieldDef}) (name str) -> bool
+    let i = 0u64
+    while (< i (len defs))
+        if (strings::eq defs[i].name name)
+            return true
+        end
+        set i = (+ i 1)
+    end
+    return false
+end
+
+func find_field (defs {FieldDef}) (name str) -> Type
+    let i = 0u64
+    while (< i (len defs))
+        if (strings::eq defs[i].name name)
+            return defs[i].ty
+        end
+        set i = (+ i 1)
+    end
+    return (t_unit)
+end
+
+func mark_export (sig Sig) (name str) (exported bool) -> unit
+    if exported
+        set sig.exports[name] = true
+    end
+end
+
+func mk_fn0 (r Type) -> Type
+    return (TFunc params: (vec Type) ret: r)
+end
+func mk_fn1 (a Type) (r Type) -> Type
+    let ps {Type} = (vec Type)
+    do (push ps a)
+    return (TFunc params: ps ret: r)
+end
+func mk_fn2 (a Type) (b Type) (r Type) -> Type
+    let ps {Type} = (vec Type)
+    do (push ps a)
+    do (push ps b)
+    return (TFunc params: ps ret: r)
+end
+func mk_fn3 (a Type) (b Type) (c Type) (r Type) -> Type
+    let ps {Type} = (vec Type)
+    do (push ps a)
+    do (push ps b)
+    do (push ps c)
+    return (TFunc params: ps ret: r)
+end
+
+func err (ctx Ctx) (msg str) -> unit
+    if (strings::eq ctx.modname "")
+        do (push ctx.errors msg)
+    else
+        do (push ctx.errors (strings::concat ctx.modname (strings::concat ": " msg)))
+    end
+end
+
+# --------------------------------------------------------------------------- #
+# Type resolution (AST Ty -> Type)
+# --------------------------------------------------------------------------- #
+
+func resolve_name (ctx Ctx) (n str) -> Type
+    if (strings::eq n "")
+        return (t_unit)
+    end
+    if (is_int_name n)
+        return (TInt name: n)
+    end
+    if (is_float_name n)
+        return (TFloat name: n)
+    end
+    if (is_prim_name n)
+        return (TPrim name: n)
+    end
+    if (map_has ctx.sig.structs n)
+        return (TStruct name: n)
+    end
+    if (map_has ctx.sig.enums n)
+        return (TEnum name: n)
+    end
+    if (map_has ctx.sig.sum_variants n)
+        return (TSum name: n)
+    end
+    do (err ctx (strings::concat "unknown type " n))
+    return (t_unit)
+end
+
+func resolve (ctx Ctx) (node Ty) -> Type
+    match node
+        case (TyName n)
+            return (resolve_name ctx n)
+        case (TyArr e)
+            return (TArray elem: (resolve ctx e))
+        case (TyVec e)
+            return (TVec elem: (resolve ctx e))
+        case (TyMap k v)
+            let kt = (resolve ctx k)
+            let vt = (resolve ctx v)
+            if (not (is_hashable kt))
+                do (err ctx (strings::concat "map key type " (strings::concat (tystr kt) " is not hashable (use str/int/char/bool/enum)")))
+            end
+            return (TMap key: kt val: vt)
+        case (TyFun params ret)
+            let ps {Type} = (vec Type)
+            for p in params
+                do (push ps (resolve ctx p))
+            end
+            return (TFunc params: ps ret: (resolve ctx ret))
+    end
+    return (t_unit)
+end
+
+# --------------------------------------------------------------------------- #
+# Builtin module signatures
+# --------------------------------------------------------------------------- #
+
+func builtin_path_type (m str) (f str) -> Type
+    if (strings::eq m "strings")
+        if (strings::eq f "chars")
+            return (mk_fn1 (t_str) (TArray elem: (t_char)))
+        end
+        if (strings::eq f "concat")
+            return (mk_fn2 (t_str) (t_str) (t_str))
+        end
+        if (strings::eq f "substr")
+            return (mk_fn3 (t_str) (t_u64) (t_u64) (t_str))
+        end
+        if (strings::eq f "from_char")
+            return (mk_fn1 (t_char) (t_str))
+        end
+        if (strings::eq f "eq")
+            return (mk_fn2 (t_str) (t_str) (t_bool))
+        end
+        return TNone
+    end
+    if (strings::eq m "convert")
+        if (strings::eq f "ord")
+            return (mk_fn1 (t_char) (TInt name: "u32"))
+        end
+        if (strings::eq f "chr")
+            return (mk_fn1 (TInt name: "u32") (t_char))
+        end
+        if (strings::eq f "int_to_str")
+            return (mk_fn1 (TInt name: "i64") (t_str))
+        end
+        if (strings::eq f "str_to_int")
+            return (mk_fn1 (t_str) (TInt name: "i64"))
+        end
+        return TNone
+    end
+    if (strings::eq m "fs")
+        if (strings::eq f "read_file")
+            return (mk_fn1 (t_str) (t_str))
+        end
+        if (strings::eq f "write_file")
+            return (mk_fn2 (t_str) (t_str) (t_unit))
+        end
+        if (strings::eq f "read_file_cb")
+            return (mk_fn2 (t_str) (mk_fn1 (t_str) (t_unit)) (t_unit))
+        end
+        if (strings::eq f "write_file_cb")
+            return (mk_fn3 (t_str) (t_str) (mk_fn1 (t_bool) (t_unit)) (t_unit))
+        end
+        return TNone
+    end
+    if (strings::eq m "sys")
+        if (strings::eq f "args")
+            return (mk_fn0 (TVec elem: (t_str)))
+        end
+        return TNone
+    end
+    if (strings::eq m "io")
+        if (or (strings::eq f "println") (strings::eq f "print"))
+            return (mk_fn0 (t_unit))
+        end
+        return TNone
+    end
+    return TNone
+end
+
+func is_builtin_module (m str) -> bool
+    let v {str} = (vec str)
+    do (push v "io")
+    do (push v "strings")
+    do (push v "convert")
+    do (push v "fs")
+    do (push v "sys")
+    return (str_in_vec m v)
+end
+
+# --------------------------------------------------------------------------- #
+# Signature building
+# --------------------------------------------------------------------------- #
+
+func build_sig (ctx Ctx) (mod Module) -> unit
+    let sig = ctx.sig
+
+    # register type names first so recursive/mutual references resolve
+    for d in mod.decls
+        match d
+            case (DStruct name fields is_packed exported)
+                set sig.structs[name] = (vec FieldDef)
+                do (mark_export sig name exported)
+            case (DEnum name variants exported)
+                let vs {str} = (vec str)
+                for v in variants
+                    do (push vs v)
+                end
+                set sig.enums[name] = vs
+                do (mark_export sig name exported)
+            case (DSum name variants exported)
+                set sig.sum_variants[name] = (vec str)
+                do (mark_export sig name exported)
+            else
+                pass
+        end
+    end
+
+    # resolve struct fields
+    for d in mod.decls
+        match d
+            case (DStruct name fields is_packed exported)
+                let fds {FieldDef} = (vec FieldDef)
+                for pf in fields
+                    do (push fds (FieldDef name: pf.name ty: (resolve ctx pf.ty)))
+                end
+                set sig.structs[name] = fds
+            else
+                pass
+        end
+    end
+
+    # resolve sum variant fields
+    for d in mod.decls
+        match d
+            case (DSum name variants exported)
+                let vnames {str} = (vec str)
+                for vr in variants
+                    let fds {FieldDef} = (vec FieldDef)
+                    for pf in vr.fields
+                        do (push fds (FieldDef name: pf.name ty: (resolve ctx pf.ty)))
+                    end
+                    do (push vnames vr.name)
+                    if (map_has sig.variants vr.name)
+                        do (err ctx (strings::concat "duplicate variant name " vr.name))
+                    end
+                    set sig.variants[vr.name] = (VarInfo sum_name: name fields: fds)
+                end
+                set sig.sum_variants[name] = vnames
+            else
+                pass
+        end
+    end
+
+    # functions and consts
+    for d in mod.decls
+        match d
+            case (DFunc name params ret has_ret body exported)
+                let ps {Type} = (vec Type)
+                for pf in params
+                    do (push ps (resolve ctx pf.ty))
+                end
+                let rt = (t_unit)
+                if has_ret
+                    set rt = (resolve ctx ret)
+                end
+                set sig.funcs[name] = (TFunc params: ps ret: rt)
+                do (mark_export sig name exported)
+            case (DConst name ty has_ty expr exported)
+                if has_ty
+                    set sig.consts[name] = (resolve ctx ty)
+                else
+                    set sig.consts[name] = TNone
+                end
+                do (mark_export sig name exported)
+            else
+                pass
+        end
+    end
+end
+
+func lookup_value (ctx Ctx) (id str) -> Type
+    if (map_has ctx.sig.funcs id)
+        return ctx.sig.funcs[id]
+    end
+    if (map_has ctx.sig.consts id)
+        return ctx.sig.consts[id]
+    end
+    return TNone
+end
+
+# --------------------------------------------------------------------------- #
+# Entry point
+# --------------------------------------------------------------------------- #
+
+export func check (src str) -> {str}
+    let mod = (parser::parse src)
+    let sig = (Sig name: mod.name
+                   funcs: (map str Type)
+                   consts: (map str Type)
+                   structs: (map str {FieldDef})
+                   enums: (map str {str})
+                   sum_variants: (map str {str})
+                   variants: (map str VarInfo)
+                   exports: (map str bool))
+    let errors {str} = (vec str)
+    let ctx = (Ctx sig: sig errors: errors modname: mod.name)
+    do (build_sig ctx mod)
+    do (check_module_bodies ctx mod)
+    return ctx.errors
+end
+
+# --------------------------------------------------------------------------- #
+# Module bodies
+# --------------------------------------------------------------------------- #
+
+func check_module_bodies (ctx Ctx) (mod Module) -> unit
+    for d in mod.decls
+        match d
+            case (DConst name ty has_ty expr exported)
+                let expected = ctx.sig.consts[name]
+                let t = (check_expr ctx expr (empty_scope) expected)
+                if (is_none expected)
+                    set ctx.sig.consts[name] = (concrete ctx t name)
+                else
+                    set ctx.sig.consts[name] = (coerce ctx t expected)
+                end
+            case (DFunc name params ret has_ret body exported)
+                let scope = (empty_scope)
+                for pf in params
+                    set scope[pf.name] = (Binding ty: (resolve ctx pf.ty) mutable: true)
+                end
+                let rt = (func_ret ctx.sig.funcs[name])
+                do (check_block ctx body scope rt)
+            else
+                pass
+        end
+    end
+end
+
+# --------------------------------------------------------------------------- #
+# Statements
+# --------------------------------------------------------------------------- #
+
+func check_block (ctx Ctx) (body {Stmt}) (scope {str Binding}) (ret Type) -> unit
+    let inner = (copy_scope scope)
+    for s in body
+        do (check_stmt ctx s inner ret)
+    end
+end
+
+func check_stmt (ctx Ctx) (s Stmt) (scope {str Binding}) (ret Type) -> unit
+    match s
+        case (SLet name ty has_ty expr mutable)
+            let expected = TNone
+            if has_ty
+                set expected = (resolve ctx ty)
+            end
+            let t = (check_expr ctx expr scope expected)
+            let final = t
+            if has_ty
+                set final = (coerce ctx t expected)
+            else
+                set final = (concrete ctx t name)
+            end
+            set scope[name] = (Binding ty: final mutable: mutable)
+        case (SSet target expr)
+            do (check_set ctx target expr scope)
+        case (SDo call)
+            do (check_expr ctx call scope TNone)
+        case (SIf branches orelse has_else)
+            for br in branches
+                do (expect_bool ctx (check_expr ctx br.cond scope (t_bool)))
+                do (check_block ctx br.body scope ret)
+            end
+            if has_else
+                do (check_block ctx orelse scope ret)
+            end
+        case (SWhile cond body)
+            do (expect_bool ctx (check_expr ctx cond scope (t_bool)))
+            do (check_block ctx body scope ret)
+        case (SForNum var start stop stride has_step body)
+            let types {Type} = (vec Type)
+            do (push types (check_expr ctx start scope TNone))
+            do (push types (check_expr ctx stop scope TNone))
+            if has_step
+                do (push types (check_expr ctx stride scope TNone))
+            end
+            let ity = (unify_num ctx types)
+            if (is_uint ity)
+                set ity = (TInt name: "i32")
+            end
+            let inner = (copy_scope scope)
+            set inner[var] = (Binding ty: ity mutable: true)
+            do (check_block ctx body inner ret)
+        case (SForIn var iter body)
+            let it = (check_expr ctx iter scope TNone)
+            let elem = (t_unit)
+            if (or (is_array it) (is_vec it))
+                set elem = (elem_of it)
+            else
+                do (err ctx "for-in requires an array or vector")
+            end
+            let inner = (copy_scope scope)
+            set inner[var] = (Binding ty: elem mutable: true)
+            do (check_block ctx body inner ret)
+        case (SLoop body)
+            do (check_block ctx body scope ret)
+        case SBreak
+            pass
+        case SContinue
+            pass
+        case SPass
+            pass
+        case (SReturn expr has_expr)
+            let t = (t_unit)
+            if has_expr
+                set t = (check_expr ctx expr scope ret)
+            end
+            do (coerce ctx t ret)
+        case (SChecked body)
+            do (check_block ctx body scope ret)
+        case (SMatch scrut arms orelse has_else)
+            do (check_match ctx scrut arms orelse has_else scope ret)
+    end
+end
+
+func check_set (ctx Ctx) (target Expr) (expr Expr) (scope {str Binding}) -> unit
+    let pr = (check_place ctx target scope)
+    if (not pr.ok)
+        return
+    end
+    if (not pr.mutable)
+        do (err ctx "cannot assign to an immutable binding")
+    end
+    let vt = (check_expr ctx expr scope pr.ty)
+    do (coerce ctx vt pr.ty)
+end
+
+func check_place (ctx Ctx) (node Expr) (scope {str Binding}) -> PlaceRes
+    match node
+        case (EName id)
+            if (map_has scope id)
+                let b = scope[id]
+                return (PlaceRes ok: true ty: b.ty mutable: b.mutable)
+            end
+            let v = (lookup_value ctx id)
+            if (not (is_none v))
+                return (PlaceRes ok: true ty: v mutable: false)
+            end
+            do (err ctx (strings::concat "undefined name " id))
+            return (PlaceRes ok: false ty: (t_unit) mutable: false)
+        case (EField obj field)
+            let base = (check_place ctx obj scope)
+            let bt = (t_unit)
+            let mut = true
+            if base.ok
+                set bt = base.ty
+                set mut = base.mutable
+            else
+                set bt = (check_expr ctx obj scope TNone)
+            end
+            return (PlaceRes ok: true ty: (field_type ctx bt field) mutable: mut)
+        case (EIndex obj index)
+            let base = (check_place ctx obj scope)
+            let bt = (t_unit)
+            let mut = true
+            if base.ok
+                set bt = base.ty
+                set mut = base.mutable
+            else
+                set bt = (check_expr ctx obj scope TNone)
+            end
+            if (is_map bt)
+                do (coerce ctx (check_expr ctx index scope (map_key bt)) (map_key bt))
+                return (PlaceRes ok: true ty: (map_val bt) mutable: mut)
+            end
+            if (not (or (is_array bt) (is_vec bt)))
+                do (err ctx "indexing a non-array/vector/map")
+                return (PlaceRes ok: true ty: (t_unit) mutable: mut)
+            end
+            let it = (check_expr ctx index scope (t_u64))
+            if (not (or (is_int it) (is_uint it)))
+                do (err ctx (strings::concat "index must be an integer, got " (tystr it)))
+            end
+            return (PlaceRes ok: true ty: (elem_of bt) mutable: mut)
+        else
+            do (err ctx "invalid assignment target")
+            return (PlaceRes ok: false ty: (t_unit) mutable: false)
+    end
+    return (PlaceRes ok: false ty: (t_unit) mutable: false)
+end
+
+# --------------------------------------------------------------------------- #
+# Expressions
+# --------------------------------------------------------------------------- #
+
+func check_expr (ctx Ctx) (e Expr) (scope {str Binding}) (expected Type) -> Type
+    match e
+        case (EInt value suffix)
+            if (strings::eq suffix "")
+                return TUInt
+            end
+            return (TInt name: suffix)
+        case (EFloat text suffix)
+            if (strings::eq suffix "")
+                return TUFloat
+            end
+            return (TFloat name: suffix)
+        case (EBool value)
+            return (t_bool)
+        case (EChar cp)
+            return (t_char)
+        case (EStr value)
+            return (t_str)
+        case ENull
+            return TNull
+        case (EName ident)
+            return (check_name ctx ident scope)
+        case (EPath parts)
+            return (check_path ctx parts)
+        case (EField obj field)
+            return (field_type ctx (check_expr ctx obj scope TNone) field)
+        case (EIndex obj index)
+            return (check_index ctx obj index scope)
+        case (EOp op args)
+            return (check_op ctx op args scope)
+        case (ECast ex ty)
+            return (check_cast ctx ex ty scope)
+        case (ERef place)
+            do (check_expr ctx place scope TNone)
+            return (t_handle)
+        case (ECall callee args)
+            return (check_call ctx callee args scope)
+        case (EStruct typ fields)
+            return (check_struct_lit ctx typ fields scope)
+        case (EArr elems)
+            return (check_array_lit ctx elems scope expected)
+        case (EArrNew elem count)
+            do (check_expr ctx count scope (t_u64))
+            return (TArray elem: (resolve ctx elem))
+        case (EVecNew elem)
+            return (TVec elem: (resolve ctx elem))
+        case (EVec elems)
+            return (check_vec_lit ctx elems scope expected)
+        case (EMapNew key val)
+            return (TMap key: (resolve ctx key) val: (resolve ctx val))
+        case (EFunc params ret has_ret body)
+            return (check_func_lit ctx params ret has_ret body scope)
+    end
+    return (t_unit)
+end
+
+func check_index (ctx Ctx) (obj Expr) (index Expr) (scope {str Binding}) -> Type
+    let bt = (check_expr ctx obj scope TNone)
+    if (is_map bt)
+        do (coerce ctx (check_expr ctx index scope (map_key bt)) (map_key bt))
+        return (map_val bt)
+    end
+    let it = (check_expr ctx index scope (t_u64))
+    if (not (or (is_array bt) (is_vec bt)))
+        do (err ctx "indexing a non-array/vector/map")
+        return (t_unit)
+    end
+    if (not (or (is_int it) (is_uint it)))
+        do (err ctx (strings::concat "index must be an integer, got " (tystr it)))
+    end
+    return (elem_of bt)
+end
+
+func check_name (ctx Ctx) (id str) (scope {str Binding}) -> Type
+    if (map_has scope id)
+        return scope[id].ty
+    end
+    let v = (lookup_value ctx id)
+    if (not (is_none v))
+        return v
+    end
+    if (strings::eq id "len")
+        return (mk_fn0 (t_u64))
+    end
+    if (strings::eq id "panic")
+        return (mk_fn0 TNever)
+    end
+    if (map_has ctx.sig.variants id)
+        let vi = ctx.sig.variants[id]
+        if (> (len vi.fields) 0u64)
+            do (err ctx (strings::concat "variant " (strings::concat id (strings::concat " needs fields; use (" (strings::concat id " ...)")))))
+        end
+        return (TSum name: vi.sum_name)
+    end
+    do (err ctx (strings::concat "undefined name " id))
+    return (t_unit)
+end
+
+func check_path (ctx Ctx) (parts {str}) -> Type
+    if (== (len parts) 2u64)
+        let m0 = parts[0]
+        let m1 = parts[1]
+        if (map_has ctx.sig.enums m0)
+            if (not (str_in_vec m1 ctx.sig.enums[m0]))
+                do (err ctx (strings::concat "no variant " (strings::concat m1 (strings::concat " in enum " m0))))
+            end
+            return (TEnum name: m0)
+        end
+        let bt = (builtin_path_type m0 m1)
+        if (not (is_none bt))
+            return bt
+        end
+        do (err ctx (strings::concat "cannot resolve path " (strings::concat m0 (strings::concat "::" m1))))
+        return (t_unit)
+    end
+    do (err ctx "cannot resolve path")
+    return (t_unit)
+end
+
+func is_arith_op (op str) -> bool
+    let v {str} = (vec str)
+    do (push v "+")
+    do (push v "-")
+    do (push v "*")
+    do (push v "/")
+    do (push v "%")
+    return (str_in_vec op v)
+end
+
+func is_cmp_op (op str) -> bool
+    let v {str} = (vec str)
+    do (push v "<")
+    do (push v "<=")
+    do (push v ">")
+    do (push v ">=")
+    do (push v "==")
+    do (push v "!=")
+    return (str_in_vec op v)
+end
+
+func is_bit_op (op str) -> bool
+    let v {str} = (vec str)
+    do (push v "band")
+    do (push v "bor")
+    do (push v "bxor")
+    do (push v "shl")
+    do (push v "shr")
+    do (push v "bnot")
+    return (str_in_vec op v)
+end
+
+func check_op (ctx Ctx) (op str) (args {Expr}) (scope {str Binding}) -> Type
+    if (or (strings::eq op "and") (strings::eq op "or"))
+        for a in args
+            do (expect_bool ctx (check_expr ctx a scope (t_bool)))
+        end
+        return (t_bool)
+    end
+    if (strings::eq op "not")
+        do (expect_bool ctx (check_expr ctx args[0] scope (t_bool)))
+        return (t_bool)
+    end
+    let argts {Type} = (vec Type)
+    for a in args
+        do (push argts (check_expr ctx a scope TNone))
+    end
+    if (is_arith_op op)
+        return (unify_num ctx argts)
+    end
+    if (is_cmp_op op)
+        do (unify_comparable ctx op argts)
+        return (t_bool)
+    end
+    if (is_bit_op op)
+        return (unify_int_only ctx argts)
+    end
+    do (err ctx (strings::concat "unknown operator " op))
+    return (t_unit)
+end
+
+func check_cast (ctx Ctx) (ex Expr) (ty Ty) (scope {str Binding}) -> Type
+    let src = (check_expr ctx ex scope TNone)
+    let target = (resolve ctx ty)
+    if (not (or (is_int target) (is_float target)))
+        do (err ctx "cast target must be a numeric type")
+    end
+    if (not (is_numish src))
+        do (err ctx (strings::concat "cannot cast " (strings::concat (tystr src) (strings::concat " to " (tystr target)))))
+    end
+    return target
+end
+
+func check_call (ctx Ctx) (callee Expr) (args {Expr}) (scope {str Binding}) -> Type
+    match callee
+        case (EName id)
+            let r = (check_builtin_call ctx id args scope)
+            if (not (is_none r))
+                return r
+            end
+        case (EPath parts)
+            if (and (== (len parts) 2u64) (strings::eq parts[0] "io"))
+                for a in args
+                    do (check_expr ctx a scope TNone)
+                end
+                return (t_unit)
+            end
+        else
+            pass
+    end
+    let ft = (check_expr ctx callee scope TNone)
+    if (not (is_func ft))
+        do (err ctx (strings::concat "calling a non-function value of type " (tystr ft)))
+        for a in args
+            do (check_expr ctx a scope TNone)
+        end
+        return (t_unit)
+    end
+    let params = (func_params ft)
+    if (not (== (len args) (len params)))
+        do (err ctx (strings::concat "expected " (strings::concat (convert::int_to_str (as (len params) i64)) (strings::concat " arguments, got " (convert::int_to_str (as (len args) i64))))))
+    end
+    let i = 0u64
+    while (and (< i (len args)) (< i (len params)))
+        do (coerce ctx (check_expr ctx args[i] scope params[i]) params[i])
+        set i = (+ i 1)
+    end
+    return (func_ret ft)
+end
+
+func check_builtin_call (ctx Ctx) (id str) (args {Expr}) (scope {str Binding}) -> Type
+    if (strings::eq id "len")
+        if (not (== (len args) 1u64))
+            do (err ctx "len takes 1 argument")
+        else
+            let at = (check_expr ctx args[0] scope TNone)
+            if (not (or (or (is_array at) (is_vec at)) (or (is_map at) (is_str at))))
+                do (err ctx (strings::concat "len expects array/vector/map/str, got " (tystr at)))
+            end
+        end
+        return (t_u64)
+    end
+    if (strings::eq id "panic")
+        for a in args
+            do (check_expr ctx a scope TNone)
+        end
+        return TNever
+    end
+    if (strings::eq id "push")
+        if (not (== (len args) 2u64))
+            do (err ctx "push takes (vector, value)")
+            return (t_unit)
+        end
+        let vt = (check_expr ctx args[0] scope TNone)
+        if (not (is_vec vt))
+            do (err ctx (strings::concat "push expects a vector, got " (tystr vt)))
+        else
+            do (coerce ctx (check_expr ctx args[1] scope (elem_of vt)) (elem_of vt))
+        end
+        return (t_unit)
+    end
+    if (strings::eq id "pop")
+        if (not (== (len args) 1u64))
+            do (err ctx "pop takes (vector)")
+            return (t_unit)
+        end
+        let vt = (check_expr ctx args[0] scope TNone)
+        if (not (is_vec vt))
+            do (err ctx (strings::concat "pop expects a vector, got " (tystr vt)))
+            return (t_unit)
+        end
+        return (elem_of vt)
+    end
+    if (or (or (strings::eq id "map_has") (strings::eq id "map_del")) (strings::eq id "map_keys"))
+        let nargs = 2u64
+        if (strings::eq id "map_keys")
+            set nargs = 1u64
+        end
+        if (not (== (len args) nargs))
+            do (err ctx (strings::concat id (strings::concat " takes " (strings::concat (convert::int_to_str (as nargs i64)) " argument(s)"))))
+            if (strings::eq id "map_has")
+                return (t_bool)
+            end
+            return (t_unit)
+        end
+        let mt = (check_expr ctx args[0] scope TNone)
+        if (not (is_map mt))
+            do (err ctx (strings::concat id (strings::concat " expects a map, got " (tystr mt))))
+            if (strings::eq id "map_has")
+                return (t_bool)
+            end
+            return (t_unit)
+        end
+        if (== nargs 2u64)
+            do (coerce ctx (check_expr ctx args[1] scope (map_key mt)) (map_key mt))
+        end
+        if (strings::eq id "map_has")
+            return (t_bool)
+        end
+        if (strings::eq id "map_keys")
+            return (TVec elem: (map_key mt))
+        end
+        return (t_unit)
+    end
+    return TNone
+end
+
+func head_name (typ Expr) -> str
+    match typ
+        case (EName id)
+            return id
+        case (EPath parts)
+            return parts[(- (len parts) 1u64)]
+        else
+            return ""
+    end
+    return ""
+end
+
+func check_struct_lit (ctx Ctx) (typ Expr) (fields {Field}) (scope {str Binding}) -> Type
+    let name = (head_name typ)
+    if (map_has ctx.sig.variants name)
+        return (check_variant_lit ctx name fields scope)
+    end
+    if (not (map_has ctx.sig.structs name))
+        do (err ctx (strings::concat "unknown struct or variant " name))
+        return (t_unit)
+    end
+    let defs = ctx.sig.structs[name]
+    let given {str bool} = (map str bool)
+    for fld in fields
+        if (not (has_field defs fld.name))
+            do (err ctx (strings::concat "struct " (strings::concat name (strings::concat " has no field " fld.name))))
+            do (check_expr ctx fld.value scope TNone)
+        else
+            let ft = (find_field defs fld.name)
+            do (coerce ctx (check_expr ctx fld.value scope ft) ft)
+            set given[fld.name] = true
+        end
+    end
+    let i = 0u64
+    while (< i (len defs))
+        if (not (map_has given defs[i].name))
+            do (err ctx (strings::concat "missing field " (strings::concat defs[i].name (strings::concat " in " name))))
+        end
+        set i = (+ i 1)
+    end
+    return (TStruct name: name)
+end
+
+func check_variant_lit (ctx Ctx) (vname str) (fields {Field}) (scope {str Binding}) -> Type
+    let vi = ctx.sig.variants[vname]
+    let given {str bool} = (map str bool)
+    for fld in fields
+        if (not (has_field vi.fields fld.name))
+            do (err ctx (strings::concat "variant " (strings::concat vname (strings::concat " has no field " fld.name))))
+            do (check_expr ctx fld.value scope TNone)
+        else
+            let ft = (find_field vi.fields fld.name)
+            do (coerce ctx (check_expr ctx fld.value scope ft) ft)
+            set given[fld.name] = true
+        end
+    end
+    let i = 0u64
+    while (< i (len vi.fields))
+        if (not (map_has given vi.fields[i].name))
+            do (err ctx (strings::concat "missing field " (strings::concat vi.fields[i].name (strings::concat " in " vname))))
+        end
+        set i = (+ i 1)
+    end
+    return (TSum name: vi.sum_name)
+end
+
+func check_array_lit (ctx Ctx) (elems {Expr}) (scope {str Binding}) (expected Type) -> Type
+    let has_elem = (is_array expected)
+    let elem = (t_unit)
+    if has_elem
+        set elem = (elem_of expected)
+    end
+    let found = false
+    let inferred = (t_unit)
+    let multi = false
+    for el in elems
+        let ann = TNone
+        if has_elem
+            set ann = elem
+        end
+        let t = (check_expr ctx el scope ann)
+        if has_elem
+            do (coerce ctx t elem)
+        else
+            if (not (or (is_uint t) (is_ufloat t)))
+                if found
+                    if (not (type_eq t inferred))
+                        set multi = true
+                    end
+                else
+                    set found = true
+                    set inferred = t
+                end
+            end
+        end
+    end
+    if has_elem
+        return (TArray elem: elem)
+    end
+    if (or (== (len elems) 0u64) (or (not found) multi))
+        do (err ctx "cannot infer array element type — annotate, e.g. let xs [i32] = [...]")
+        return (TArray elem: (t_unit))
+    end
+    return (TArray elem: inferred)
+end
+
+func check_vec_lit (ctx Ctx) (elems {Expr}) (scope {str Binding}) (expected Type) -> Type
+    let has_elem = (is_vec expected)
+    let elem = (t_unit)
+    if has_elem
+        set elem = (elem_of expected)
+    end
+    let found = false
+    let inferred = (t_unit)
+    let multi = false
+    for el in elems
+        let ann = TNone
+        if has_elem
+            set ann = elem
+        end
+        let t = (check_expr ctx el scope ann)
+        if has_elem
+            do (coerce ctx t elem)
+        else
+            if (not (or (is_uint t) (is_ufloat t)))
+                if found
+                    if (not (type_eq t inferred))
+                        set multi = true
+                    end
+                else
+                    set found = true
+                    set inferred = t
+                end
+            end
+        end
+    end
+    if has_elem
+        return (TVec elem: elem)
+    end
+    if (or (== (len elems) 0u64) (or (not found) multi))
+        do (err ctx "cannot infer vector element type — annotate, e.g. let xs {i32} = {...}")
+        return (TVec elem: (t_unit))
+    end
+    return (TVec elem: inferred)
+end
+
+func check_func_lit (ctx Ctx) (params {Param}) (ret Ty) (has_ret bool) (body {Stmt}) (scope {str Binding}) -> Type
+    let ps {Type} = (vec Type)
+    let inner = (copy_scope scope)
+    for pf in params
+        let pt = (resolve ctx pf.ty)
+        do (push ps pt)
+        set inner[pf.name] = (Binding ty: pt mutable: true)
+    end
+    let rt = (t_unit)
+    if has_ret
+        set rt = (resolve ctx ret)
+    end
+    do (check_block ctx body inner rt)
+    return (TFunc params: ps ret: rt)
+end
+
+func check_match (ctx Ctx) (scrut Expr) (arms {Arm}) (orelse {Stmt}) (has_else bool) (scope {str Binding}) (ret Type) -> unit
+    let st = (check_expr ctx scrut scope TNone)
+    if (not (is_sum st))
+        do (err ctx (strings::concat "match on a non-sum value of type " (tystr st)))
+        return
+    end
+    let sname = (type_name st)
+    let have_table = (map_has ctx.sig.sum_variants sname)
+    let covered {str bool} = (map str bool)
+    for arm in arms
+        let inner = (copy_scope scope)
+        let known = false
+        if (and have_table (map_has ctx.sig.variants arm.variant))
+            let vi = ctx.sig.variants[arm.variant]
+            if (strings::eq vi.sum_name sname)
+                set known = true
+                if (not (== (len arm.bindings) (len vi.fields)))
+                    do (err ctx (strings::concat "variant " (strings::concat arm.variant (strings::concat " has " (strings::concat (convert::int_to_str (as (len vi.fields) i64)) (strings::concat " field(s), pattern binds " (convert::int_to_str (as (len arm.bindings) i64))))))))
+                end
+                let i = 0u64
+                while (and (< i (len arm.bindings)) (< i (len vi.fields)))
+                    set inner[arm.bindings[i]] = (Binding ty: vi.fields[i].ty mutable: false)
+                    set i = (+ i 1)
+                end
+                set covered[arm.variant] = true
+            end
+        end
+        if (not known)
+            do (err ctx (strings::concat arm.variant (strings::concat " is not a variant of " sname)))
+        end
+        do (check_block ctx arm.body inner ret)
+    end
+    if has_else
+        do (check_block ctx orelse scope ret)
+    else
+        if have_table
+            let vnames = ctx.sig.sum_variants[sname]
+            let missing = ""
+            let j = 0u64
+            while (< j (len vnames))
+                if (not (map_has covered vnames[j]))
+                    if (strings::eq missing "")
+                        set missing = vnames[j]
+                    else
+                        set missing = (strings::concat missing (strings::concat ", " vnames[j]))
+                    end
+                end
+                set j = (+ j 1)
+            end
+            if (not (strings::eq missing ""))
+                do (err ctx (strings::concat "non-exhaustive match on " (strings::concat sname (strings::concat "; missing: " missing))))
+            end
+        end
+    end
+end
+
+func field_type (ctx Ctx) (bt Type) (field str) -> Type
+    if (not (is_struct bt))
+        do (err ctx (strings::concat "field access ." (strings::concat field (strings::concat " on non-struct " (tystr bt)))))
+        return (t_unit)
+    end
+    let sname = (type_name bt)
+    if (not (map_has ctx.sig.structs sname))
+        do (err ctx (strings::concat "no field " (strings::concat field (strings::concat " on " sname))))
+        return (t_unit)
+    end
+    let defs = ctx.sig.structs[sname]
+    if (not (has_field defs field))
+        do (err ctx (strings::concat "no field " (strings::concat field (strings::concat " on " sname))))
+        return (t_unit)
+    end
+    return (find_field defs field)
+end
+
+# --------------------------------------------------------------------------- #
+# Unification / coercion
+# --------------------------------------------------------------------------- #
+
+func unify_num (ctx Ctx) (types {Type}) -> Type
+    let all_intish = true
+    let any_floatish = false
+    for t in types
+        if (not (or (is_int t) (is_uint t)))
+            set all_intish = false
+        end
+        if (or (is_float t) (is_ufloat t))
+            set any_floatish = true
+        end
+    end
+    if any_floatish
+        for t in types
+            if (is_int t)
+                do (err ctx "cannot mix int and float without a cast")
+                return (t_unit)
+            end
+        end
+        let found = false
+        let fname = ""
+        let mism = false
+        for t in types
+            if (is_float t)
+                if found
+                    if (not (strings::eq (type_name t) fname))
+                        set mism = true
+                    end
+                else
+                    set found = true
+                    set fname = (type_name t)
+                end
+            end
+        end
+        if mism
+            do (err ctx "mismatched float types")
+        end
+        if found
+            return (TFloat name: fname)
+        end
+        return TUFloat
+    end
+    if all_intish
+        let found = false
+        let iname = ""
+        let mism = false
+        for t in types
+            if (is_int t)
+                if found
+                    if (not (strings::eq (type_name t) iname))
+                        set mism = true
+                    end
+                else
+                    set found = true
+                    set iname = (type_name t)
+                end
+            end
+        end
+        if mism
+            do (err ctx "mismatched integer types (no implicit promotion)")
+        end
+        if found
+            return (TInt name: iname)
+        end
+        return TUInt
+    end
+    do (err ctx (strings::concat "arithmetic on non-numeric operands (" (strings::concat (tystr_list types) ")")))
+    return (t_unit)
+end
+
+func unify_int_only (ctx Ctx) (types {Type}) -> Type
+    for t in types
+        if (not (or (is_int t) (is_uint t)))
+            do (err ctx (strings::concat "bitwise op needs integers, got " (tystr t)))
+            return (t_unit)
+        end
+    end
+    let found = false
+    let iname = ""
+    let mism = false
+    for t in types
+        if (is_int t)
+            if found
+                if (not (strings::eq (type_name t) iname))
+                    set mism = true
+                end
+            else
+                set found = true
+                set iname = (type_name t)
+            end
+        end
+    end
+    if mism
+        do (err ctx "mismatched integer types")
+    end
+    if found
+        return (TInt name: iname)
+    end
+    return TUInt
+end
+
+func unify_comparable (ctx Ctx) (op str) (types {Type}) -> unit
+    if (< (len types) 2u64)
+        do (err ctx "comparison needs two operands")
+        return
+    end
+    let a = types[0]
+    let b = types[1]
+    if (and (is_numish a) (is_numish b))
+        do (unify_num ctx types)
+        return
+    end
+    if (and (is_prim_named a "char") (is_prim_named b "char"))
+        return
+    end
+    if (or (strings::eq op "==") (strings::eq op "!="))
+        if (or (or (type_eq a b) (is_null a)) (is_null b))
+            return
+        end
+        do (err ctx (strings::concat "cannot compare " (strings::concat (tystr a) (strings::concat " and " (tystr b)))))
+    else
+        do (err ctx (strings::concat "ordering comparison needs numbers, got " (strings::concat (tystr a) (strings::concat " and " (tystr b)))))
+    end
+end
+
+func coerce (ctx Ctx) (got Type) (expected Type) -> Type
+    if (is_none expected)
+        return got
+    end
+    if (is_never got)
+        return expected
+    end
+    if (is_int expected)
+        if (is_uint got)
+            return expected
+        end
+        if (and (is_int got) (strings::eq (type_name got) (type_name expected)))
+            return expected
+        end
+        if (is_int got)
+            do (err ctx (strings::concat "expected " (strings::concat (type_name expected) (strings::concat ", got " (strings::concat (tystr got) " (use a cast)")))))
+        else
+            do (err ctx (strings::concat "expected " (strings::concat (type_name expected) (strings::concat ", got " (tystr got)))))
+        end
+        return expected
+    end
+    if (is_float expected)
+        if (is_ufloat got)
+            return expected
+        end
+        if (and (is_float got) (strings::eq (type_name got) (type_name expected)))
+            return expected
+        end
+        do (err ctx (strings::concat "expected " (strings::concat (type_name expected) (strings::concat ", got " (tystr got)))))
+        return expected
+    end
+    if (and (is_ref_target expected) (is_null got))
+        return expected
+    end
+    if (type_eq expected got)
+        return expected
+    end
+    if (is_prim_named expected "unit")
+        return expected
+    end
+    if (is_prim_named expected "handle")
+        return expected
+    end
+    do (err ctx (strings::concat "expected " (strings::concat (tystr expected) (strings::concat ", got " (tystr got)))))
+    return expected
+end
+
+func concrete (ctx Ctx) (t Type) (name str) -> Type
+    if (or (is_uint t) (is_ufloat t))
+        do (err ctx (strings::concat "cannot infer type of " (strings::concat name " (untyped numeric literal needs context)")))
+        return (TInt name: "i32")
+    end
+    if (or (is_null t) (is_never t))
+        do (err ctx (strings::concat "cannot infer type of " (strings::concat name (strings::concat " from " (tystr t)))))
+        return (t_unit)
+    end
+    return t
+end
+
+func expect_bool (ctx Ctx) (t Type) -> unit
+    if (not (is_prim_named t "bool"))
+        do (err ctx (strings::concat "condition must be bool, got " (tystr t)))
+    end
+end
