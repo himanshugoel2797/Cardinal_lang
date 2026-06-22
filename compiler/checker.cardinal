@@ -24,7 +24,7 @@ import parser
 # Type representation
 # --------------------------------------------------------------------------- #
 
-type Type
+export type Type
     TInt    (name str)            # i8..u64
     TFloat  (name str)            # f32, f64
     TPrim   (name str)            # bool, char, str, unit, handle

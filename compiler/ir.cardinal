@@ -1,0 +1,213 @@
+module ir
+
+# Target-independent intermediate representation for the Cardinal compiler.
+#
+# A small linear, typed, block-based IR (port of bootstrap/ir.py): functions are
+# lists of basic blocks; each block is a list of instructions ending in a
+# terminator (Br / CondBr / Ret / Panic). Operands are IVals (temporaries,
+# locals, immediates). This is the SWAP POINT: every backend (C now, x86_64
+# later) consumes an IRModule, so target-independent passes live on the IR, not
+# inside a backend.
+#
+# Types reuse the checker's `Type` lattice so the whole pipeline speaks one type
+# language. Pointers (for closure boxes/envs) exist ONLY here, wrapped in IRType
+# so the verified checker `Type` is never touched.
+#
+# Cardinal adaptations vs the Python reference:
+#  - "no value" cases use explicit has_* flags (no null sentinels).
+#  - Imm is a sum (one variant per scalar kind) rather than an `object` field.
+#  - FuncBuilder's counters / current-block index live in 1-element vec cells so
+#    deep helper calls mutate shared state (value-struct fields wouldn't carry).
+
+import strings
+import convert
+import checker
+
+# --------------------------------------------------------------------------- #
+# IR-only types (pointers live here, not in the checker's Type)
+# --------------------------------------------------------------------------- #
+
+type IRType
+    TyOf    (t Type)        # a source type
+    Ptr     (p IRType)      # pointer to (closure boxes / env slots)
+    VoidPtr                 # void*
+end
+
+# --------------------------------------------------------------------------- #
+# Operands
+# --------------------------------------------------------------------------- #
+
+type IVal
+    Temp     (id i64) (ty IRType)
+    Local    (name str) (ty IRType)
+    ImmInt   (val i64) (ty IRType)
+    ImmFloat (text str) (ty IRType)
+    ImmBool  (b bool)
+    ImmChar  (cp i64)
+    ImmStr   (s str)
+    ImmUnit
+    ImmNull  (ty IRType)
+end
+
+# --------------------------------------------------------------------------- #
+# Places (lvalues)
+# --------------------------------------------------------------------------- #
+
+type IPlace
+    PLocal (name str) (ty IRType)
+    PField (base IPlace) (field str) (ty IRType)
+    PDeref (ptr IVal) (ty IRType)
+end
+
+# --------------------------------------------------------------------------- #
+# Instructions (terminators included; sorted into one sum)
+# --------------------------------------------------------------------------- #
+
+type Instr
+    IConst     (dst IVal) (val IVal) (ty IRType)
+    IBin       (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk bool)
+    IUn        (dst IVal) (op str) (val IVal) (ty IRType) (chk bool)
+    ICast      (dst IVal) (val IVal) (toty IRType)
+    IAssign    (place IPlace) (src IVal)
+    ILoadField (dst IVal) (base IVal) (field str) (ty IRType)
+    ICall      (has_dst bool) (dst IVal) (callee str) (args {IVal}) (ty IRType)
+    IStructNew (dst IVal) (struct_name str) (fnames {str}) (fvals {IVal})
+    IArrNew    (dst IVal) (elem IRType) (count IVal)
+    IArrLit    (dst IVal) (elem IRType) (elems {IVal})
+    IArrGet    (dst IVal) (arr IVal) (idx IVal) (ty IRType)
+    IArrSet    (arr IVal) (idx IVal) (val IVal) (elem IRType)
+    IArrLen    (dst IVal) (arr IVal)
+    IEnumConst (dst IVal) (enum_name str) (variant str) (intval i64)
+    # closure ops (closure-converted)
+    IAlloc     (dst IVal) (ty IRType)
+    ILoad      (dst IVal) (ptr IVal) (ty IRType)
+    IEnvNew    (dst IVal) (n i64)
+    IEnvStore  (env IVal) (idx i64) (ptr IVal)
+    IEnvLoad   (dst IVal) (env IVal) (idx i64) (ty IRType)
+    IMakeClosure (dst IVal) (fn str) (env IVal)
+    ICallClosure (has_dst bool) (dst IVal) (clos IVal) (args {IVal}) (ret IRType)
+    # terminators
+    IBr        (target str)
+    ICondBr    (cond IVal) (then_l str) (else_l str)
+    IRet       (has_val bool) (val IVal)
+    IPanic     (msg IVal)
+end
+
+func is_terminator (ins Instr) -> bool
+    match ins
+        case (IBr t)
+            return true
+        case (ICondBr c a b)
+            return true
+        case (IRet h v)
+            return true
+        case (IPanic m)
+            return true
+        else
+            return false
+    end
+    return false
+end
+
+# --------------------------------------------------------------------------- #
+# Containers
+# --------------------------------------------------------------------------- #
+
+struct Block
+    label str
+    instrs {Instr}
+end
+
+# (name, ty) pairs for params/locals
+struct IRParam
+    name str
+    ty IRType
+end
+
+struct IRFunc
+    name str            # mangled, target-ready
+    params {IRParam}
+    ret IRType
+    blocks {Block}
+    temps {IVal}        # all Temp values (for declaration)
+    locals {IRParam}    # non-param locals
+end
+
+struct IRStruct
+    name str
+    fields {IRParam}
+end
+
+struct IRModule
+    name str
+    structs {IRStruct}
+    funcs {IRFunc}
+    externs {str bool}      # runtime symbols used (set)
+    thunks {str Type}       # mangled fn name -> its FuncT (function-as-value)
+end
+
+# --------------------------------------------------------------------------- #
+# FuncBuilder — mutable helper used by lowering. Counters/current-block index
+# live in 1-element cells so helpers mutate shared state.
+# --------------------------------------------------------------------------- #
+
+struct FuncBuilder
+    fn IRFunc
+    tc {i64}        # temp counter (cell)
+    bc {i64}        # label counter (cell)
+    cur {i64}       # current block index (cell)
+end
+
+func new_builder (name str) (params {IRParam}) (ret IRType) -> FuncBuilder
+    let f = (IRFunc name: name params: params ret: ret blocks: (vec Block) temps: (vec IVal) locals: (vec IRParam))
+    let tc {i64} = (vec i64)
+    do (push tc 0)
+    let bc {i64} = (vec i64)
+    do (push bc 0)
+    let cur {i64} = (vec i64)
+    do (push cur 0)
+    let b = (FuncBuilder fn: f tc: tc bc: bc cur: cur)
+    do (new_block b "entry")
+    return b
+end
+
+func fresh_temp (b FuncBuilder) (ty IRType) -> IVal
+    let id = b.tc[0]
+    set b.tc[0] = (+ id 1)
+    let t = (Temp id: id ty: ty)
+    do (push b.fn.temps t)
+    return t
+end
+
+func add_local (b FuncBuilder) (name str) (ty IRType) -> IVal
+    do (push b.fn.locals (IRParam name: name ty: ty))
+    return (Local name: name ty: ty)
+end
+
+func fresh_label (b FuncBuilder) (hint str) -> str
+    set b.bc[0] = (+ b.bc[0] 1)
+    return (strings::concat hint (convert::int_to_str b.bc[0]))
+end
+
+func new_block (b FuncBuilder) (label str) -> unit
+    do (push b.fn.blocks (Block label: label instrs: (vec Instr)))
+    set b.cur[0] = (as (- (len b.fn.blocks) 1) i64)
+end
+
+func cur_terminated (b FuncBuilder) -> bool
+    let blk = b.fn.blocks[b.cur[0]]
+    if (== (len blk.instrs) 0u64)
+        return false
+    end
+    return (is_terminator blk.instrs[(- (len blk.instrs) 1)])
+end
+
+# Append an instruction; if the current block is already terminated, start a
+# fresh dead block first (matches the reference's unreachable-code handling).
+func emit (b FuncBuilder) (ins Instr) -> unit
+    if (cur_terminated b)
+        do (new_block b (fresh_label b "dead"))
+    end
+    let blk = b.fn.blocks[b.cur[0]]
+    do (push blk.instrs ins)
+end
