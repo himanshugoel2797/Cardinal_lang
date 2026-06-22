@@ -889,7 +889,7 @@ end
 
 # Cross-module lookups: current module first, then every imported module.
 
-func struct_fields (ctx Ctx) (name str) -> StructLookup
+export func struct_fields (ctx Ctx) (name str) -> StructLookup
     if (map_has ctx.cur.structs name)
         return (StructLookup found: true fields: ctx.cur.structs[name])
     end

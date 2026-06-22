@@ -187,6 +187,66 @@ func t_func_ret (t Type) -> Type
     end
     return (unit_ty)
 end
+func t_is_array (t Type) -> bool
+    match t
+        case (TArray e)
+            return true
+        else
+            return false
+    end
+    return false
+end
+func t_is_vec (t Type) -> bool
+    match t
+        case (TVec e)
+            return true
+        else
+            return false
+    end
+    return false
+end
+func t_is_map (t Type) -> bool
+    match t
+        case (TMap k v)
+            return true
+        else
+            return false
+    end
+    return false
+end
+func t_is_struct (t Type) -> bool
+    match t
+        case (TStruct n)
+            return true
+        else
+            return false
+    end
+    return false
+end
+func t_elem (t Type) -> Type
+    match t
+        case (TArray e)
+            return e
+        case (TVec e)
+            return e
+        else
+            do (panic "lower: element type of a non-array/vector")
+    end
+    return (unit_ty)
+end
+
+# The struct/variant head name of a construction-literal target (EName or EPath).
+func head_name (typ Expr) -> str
+    match typ
+        case (EName id)
+            return id
+        case (EPath parts)
+            return parts[(- (len parts) 1u64)]
+        else
+            return ""
+    end
+    return ""
+end
 
 func pick_int (ts {Type}) -> Type
     let i = 0u64
@@ -317,15 +377,32 @@ func lower_expr (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (expected Ty
         case (ECall callee args)
             return (lower_call lx vs ts callee args)
         case (EField obj field)
-            do (panic "lower: field access (stage 2)")
+            let base = (lower_expr lx vs ts obj TNone)
+            let fty = (checker::check_expr lx.ctx e ts TNone)
+            let dst = (ir::fresh_temp lx.b (irt fty))
+            do (ir::emit lx.b (ILoadField dst: dst base: base field: field ty: (irt fty)))
+            return dst
         case (EIndex obj index)
-            do (panic "lower: indexing (stage 2)")
+            let bt = (checker::check_expr lx.ctx obj ts TNone)
+            if (not (t_is_array bt))
+                do (panic "lower: vec/map indexing (stage 3)")
+            end
+            let arr = (lower_expr lx vs ts obj TNone)
+            let idx = (lower_expr lx vs ts index (u64_ty))
+            let elem = (t_elem bt)
+            let dst = (ir::fresh_temp lx.b (irt elem))
+            do (ir::emit lx.b (IArrGet dst: dst arr: arr idx: idx ty: (irt elem)))
+            return dst
         case (EStruct typ fields)
-            do (panic "lower: struct literal (stage 2)")
+            return (lower_struct_lit lx vs ts typ fields)
         case (EArr elems)
-            do (panic "lower: array literal (stage 2)")
+            return (lower_array_lit lx vs ts e elems expected)
         case (EArrNew elem count)
-            do (panic "lower: array new (stage 2)")
+            let cnt = (lower_expr lx vs ts count (u64_ty))
+            let et = (checker::resolve lx.ctx elem)
+            let dst = (ir::fresh_temp lx.b (irt (TArray elem: et)))
+            do (ir::emit lx.b (IArrNew dst: dst elem: (irt et) count: cnt))
+            return dst
         case (EVecNew elem)
             do (panic "lower: vec (stage 3)")
         case (EVec elems)
@@ -472,7 +549,14 @@ func lower_call (lx LX) (vs {str IVal}) (ts {str Binding}) (callee Expr) (args {
                 return ImmUnit
             end
             if (strings::eq id "len")
-                do (panic "lower: len (stage 2/3)")
+                let at = (checker::check_expr lx.ctx args[0] ts TNone)
+                if (not (t_is_array at))
+                    do (panic "lower: len of str/vec/map (stage 3)")
+                end
+                let arg = (lower_expr lx vs ts args[0] TNone)
+                let dst = (ir::fresh_temp lx.b (irt (u64_ty)))
+                do (ir::emit lx.b (IArrLen dst: dst arr: arg))
+                return dst
             end
         case (EPath parts)
             if (strings::eq parts[0] "io")
@@ -542,6 +626,93 @@ func lower_io (lx LX) (vs {str IVal}) (ts {str Binding}) (fn str) (args {Expr}) 
     return ImmUnit
 end
 
+# Lower the value for struct field `fname` (declared type `fty`) from the
+# literal's provided fields. The checker has already validated presence/types.
+func find_and_lower (lx LX) (vs {str IVal}) (ts {str Binding}) (fields {Field}) (fname str) (fty Type) -> IVal
+    let i = 0u64
+    while (< i (len fields))
+        if (strings::eq fields[i].name fname)
+            return (lower_expr lx vs ts fields[i].value fty)
+        end
+        set i = (+ i 1)
+    end
+    do (panic (strings::concat "lower: missing struct field " fname))
+    return ImmUnit
+end
+
+func lower_struct_lit (lx LX) (vs {str IVal}) (ts {str Binding}) (typ Expr) (fields {Field}) -> IVal
+    let name = (head_name typ)
+    let sl = (checker::struct_fields lx.ctx name)
+    if (not sl.found)
+        # A sum-variant construction literal — sum types are stage 4.
+        do (panic "lower: sum variant literal (stage 4)")
+    end
+    let defs = sl.fields
+    let fnames {str} = (vec str)
+    let fvals {IVal} = (vec IVal)
+    let i = 0u64
+    while (< i (len defs))
+        let v = (find_and_lower lx vs ts fields defs[i].name defs[i].ty)
+        do (push fnames defs[i].name)
+        do (push fvals v)
+        set i = (+ i 1)
+    end
+    let dst = (ir::fresh_temp lx.b (irt (TStruct name: name)))
+    do (ir::emit lx.b (IStructNew dst: dst struct_name: name fnames: fnames fvals: fvals))
+    return dst
+end
+
+func lower_array_lit (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (elems {Expr}) (expected Type) -> IVal
+    let elem = (unit_ty)
+    if (t_is_array expected)
+        set elem = (t_elem expected)
+    else
+        let at = (checker::check_expr lx.ctx e ts expected)
+        if (not (t_is_array at))
+            do (panic "lower: cannot infer array element type — annotate it")
+        end
+        set elem = (t_elem at)
+    end
+    let vals {IVal} = (vec IVal)
+    let i = 0u64
+    while (< i (len elems))
+        do (push vals (lower_expr lx vs ts elems[i] elem))
+        set i = (+ i 1)
+    end
+    let dst = (ir::fresh_temp lx.b (irt (TArray elem: elem)))
+    do (ir::emit lx.b (IArrLit dst: dst elem: (irt elem) elems: vals))
+    return dst
+end
+
+# Resolve an assignable place (EName / EField) to an IPlace plus its checker type.
+func lower_place (lx LX) (vs {str IVal}) (ts {str Binding}) (node Expr) -> PlaceR
+    match node
+        case (EName id)
+            let loc = vs[id]
+            let pty = ts[id].ty
+            return (PlaceR place: (PLocal name: (ival_name loc) ty: (irt pty)) ty: pty)
+        case (EField obj field)
+            let base = (lower_place lx vs ts obj)
+            let fty = (checker::check_expr lx.ctx node ts TNone)
+            return (PlaceR place: (PField base: base.place field: field ty: (irt fty)) ty: fty)
+        case (EIndex obj index)
+            # An array element used as an lvalue base (e.g. `set arr[i].x = v`).
+            # Arrays are reference-semantic, so the element address is computed
+            # from the array value (cl_array_at), not from a place.
+            let bt = (checker::check_expr lx.ctx obj ts TNone)
+            if (not (t_is_array bt))
+                do (panic "lower: vec/map element assignment (stage 3)")
+            end
+            let arr = (lower_expr lx vs ts obj TNone)
+            let idx = (lower_expr lx vs ts index (u64_ty))
+            let elem = (t_elem bt)
+            return (PlaceR place: (PArrElem arr: arr idx: idx ty: (irt elem)) ty: elem)
+        else
+            do (panic "lower: invalid assignment target")
+    end
+    return (PlaceR place: (PLocal name: "" ty: (irt (unit_ty))) ty: (unit_ty))
+end
+
 # --------------------------------------------------------------------------- #
 # Statements
 # --------------------------------------------------------------------------- #
@@ -581,7 +752,7 @@ func lower_stmt (lx LX) (vs {str IVal}) (ts {str Binding}) (s Stmt) -> unit
         case (SForNum var start stop stride has_step body)
             do (lower_fornum lx vs ts var start stop stride has_step body)
         case (SForIn var iter body)
-            do (panic "lower: for-in (stage 2)")
+            do (lower_forin lx vs ts var iter body)
         case (SLoop body)
             do (lower_loop lx vs ts body)
         case SBreak
@@ -609,18 +780,20 @@ end
 
 func lower_set (lx LX) (vs {str IVal}) (ts {str Binding}) (target Expr) (expr Expr) -> unit
     match target
-        case (EName id)
-            let loc = vs[id]
-            let pty = ts[id].ty
-            let un = (ival_name loc)
-            let v = (lower_expr lx vs ts expr pty)
-            do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt pty)) src: v))
         case (EIndex obj index)
-            do (panic "lower: array/map assignment (stage 2/3)")
-        case (EField obj field)
-            do (panic "lower: field assignment (stage 2)")
+            let bt = (checker::check_expr lx.ctx obj ts TNone)
+            if (not (t_is_array bt))
+                do (panic "lower: vec/map assignment (stage 3)")
+            end
+            let arr = (lower_expr lx vs ts obj TNone)
+            let idx = (lower_expr lx vs ts index (u64_ty))
+            let elem = (t_elem bt)
+            let v = (lower_expr lx vs ts expr elem)
+            do (ir::emit lx.b (IArrSet arr: arr idx: idx val: v elem: (irt elem)))
         else
-            do (panic "lower: invalid assignment target")
+            let pr = (lower_place lx vs ts target)
+            let v = (lower_expr lx vs ts expr pr.ty)
+            do (ir::emit lx.b (IAssign place: pr.place src: v))
     end
 end
 
@@ -733,6 +906,53 @@ func lower_fornum (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (startE E
     do (ir::new_block lx.b fin)
 end
 
+func lower_forin (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (iter Expr) (body {Stmt}) -> unit
+    let bt = (checker::check_expr lx.ctx iter ts TNone)
+    if (not (t_is_array bt))
+        do (panic "lower: for-in over vec (stage 3)")
+    end
+    let elem = (t_elem bt)
+    let arr = (lower_expr lx vs ts iter TNone)
+    let idxn = (uniq lx "i")
+    let idx = (ir::add_local lx.b idxn (irt (u64_ty)))
+    let n = (ir::fresh_temp lx.b (irt (u64_ty)))
+    do (ir::emit lx.b (IAssign place: (PLocal name: idxn ty: (irt (u64_ty))) src: (ImmInt val: 0i64 ty: (irt (u64_ty)))))
+    do (ir::emit lx.b (IArrLen dst: n arr: arr))
+    let head = (ir::fresh_label lx.b "fi_head")
+    let bodyl = (ir::fresh_label lx.b "fi_body")
+    let post = (ir::fresh_label lx.b "fi_post")
+    let fin = (ir::fresh_label lx.b "fi_end")
+    do (ir::emit lx.b (IBr target: head))
+    do (ir::new_block lx.b head)
+    let cond = (ir::fresh_temp lx.b (irt (bool_ty)))
+    do (ir::emit lx.b (IBin dst: cond op: "<" lhs: idx rhs: n ty: (irt (u64_ty)) chk: false))
+    do (ir::emit lx.b (ICondBr cond: cond then_l: bodyl else_l: fin))
+    do (ir::new_block lx.b bodyl)
+    let elemv = (ir::fresh_temp lx.b (irt elem))
+    do (ir::emit lx.b (IArrGet dst: elemv arr: arr idx: idx ty: (irt elem)))
+    let varn = (uniq lx var)
+    let varloc = (ir::add_local lx.b varn (irt elem))
+    do (ir::emit lx.b (IAssign place: (PLocal name: varn ty: (irt elem)) src: elemv))
+    let vs2 = (copy_iv vs)
+    let ts2 = (copy_bind ts)
+    set vs2[var] = varloc
+    set ts2[var] = (Binding ty: elem mutable: true)
+    do (push lx.brk fin)
+    do (push lx.cont post)
+    do (lower_block lx vs2 ts2 body)
+    do (pop lx.brk)
+    do (pop lx.cont)
+    if (not (ir::cur_terminated lx.b))
+        do (ir::emit lx.b (IBr target: post))
+    end
+    do (ir::new_block lx.b post)
+    let nxt = (ir::fresh_temp lx.b (irt (u64_ty)))
+    do (ir::emit lx.b (IBin dst: nxt op: "+" lhs: idx rhs: (ImmInt val: 1i64 ty: (irt (u64_ty))) ty: (irt (u64_ty)) chk: false))
+    do (ir::emit lx.b (IAssign place: (PLocal name: idxn ty: (irt (u64_ty))) src: nxt))
+    do (ir::emit lx.b (IBr target: head))
+    do (ir::new_block lx.b fin)
+end
+
 # --------------------------------------------------------------------------- #
 # Functions / driver
 # --------------------------------------------------------------------------- #
@@ -840,6 +1060,36 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
     do (push uq 0i64)
     let lx = (LX ctx: ctx irm: m b: (ir::new_builder "__init" (vec IRParam) (irt (unit_ty))) chk: chk brk: (vec str) cont: (vec str) uq: uq callmap: (map str str) ret: (unit_ty))
     let names = (sorted_sig_names ctx.sigs)
+    # Pass 1: collect value-struct typedefs (sorted module order = deterministic).
+    # Struct names must be globally unique — the C backend mangles them as
+    # cl_struct_<name> with no module prefix, consistent with the checker's bare
+    # type-name resolution (module-qualified type names are unsupported).
+    let seen {str bool} = (map str bool)
+    let si = 0u64
+    while (< si (len names))
+        let ssig = ctx.sigs[names[si]]
+        if ssig.has_module
+            set lx.ctx.cur = ssig
+            for d in ssig.decls
+                match d
+                    case (DStruct sname sfields is_packed exported)
+                        if (map_has seen sname)
+                            do (panic (strings::concat "lower: C backend needs globally-unique struct names; duplicated: " sname))
+                        end
+                        set seen[sname] = true
+                        let irfields {IRParam} = (vec IRParam)
+                        for pf in sfields
+                            do (push irfields (IRParam name: pf.name ty: (irt (checker::resolve lx.ctx pf.ty))))
+                        end
+                        do (push lx.irm.structs (IRStruct name: sname fields: irfields))
+                    else
+                        pass
+                end
+            end
+        end
+        set si = (+ si 1)
+    end
+    # Pass 2: lower functions.
     let ni = 0u64
     while (< ni (len names))
         let sig = ctx.sigs[names[ni]]

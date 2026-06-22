@@ -57,6 +57,7 @@ type IPlace
     PLocal (name str) (ty IRType)
     PField (base IPlace) (field str) (ty IRType)
     PDeref (ptr IVal) (ty IRType)
+    PArrElem (arr IVal) (idx IVal) (ty IRType)   # lvalue arr[idx] (for nested set)
 end
 
 # --------------------------------------------------------------------------- #

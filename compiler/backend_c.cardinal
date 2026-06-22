@@ -309,6 +309,16 @@ func place (p IPlace) -> str
             return (strings::concat (place base) (strings::concat "." field))
         case (PDeref ptr ty)
             return (strings::concat "(*(" (strings::concat (ctype ty) (strings::concat "*)cl_gc_deref(" (strings::concat (val ptr) "))"))))
+        case (PArrElem arr idx ty)
+            let p {str} = (vec str)
+            do (push p "(*(")
+            do (push p (ctype ty))
+            do (push p "*)cl_array_at(")
+            do (push p (val arr))
+            do (push p ", ")
+            do (push p (val idx))
+            do (push p "))")
+            return (cat p)
     end
     return ""
 end
@@ -442,6 +452,78 @@ func emit_instr (ins Instr) (nroots i64) -> {str}
             return out
         case (IPanic msg)
             return (line1 (strings::concat "cl_panic(" (strings::concat (val msg) ");")))
+        case (IStructNew dst struct_name fnames fvals)
+            let inits = ""
+            let i = 0u64
+            while (< i (len fnames))
+                if (> i 0u64)
+                    set inits = (strings::concat inits ", ")
+                end
+                set inits = (strings::concat inits (strings::concat "." (strings::concat fnames[i] (strings::concat "=" (val fvals[i])))))
+                set i = (+ i 1)
+            end
+            return (line1 (strings::concat (val dst) (strings::concat " = (cl_struct_" (strings::concat struct_name (strings::concat "){" (strings::concat inits "};"))))))
+        case (IArrNew dst elem count)
+            let p {str} = (vec str)
+            do (push p (val dst))
+            do (push p " = cl_array_new(sizeof(")
+            do (push p (ctype elem))
+            do (push p "), ")
+            do (push p (val count))
+            do (push p ");")
+            return (line1 (cat p))
+        case (IArrLit dst elem elems)
+            let ec = (ctype elem)
+            let out {str} = (vec str)
+            let h {str} = (vec str)
+            do (push h (val dst))
+            do (push h " = cl_array_new(sizeof(")
+            do (push h ec)
+            do (push h "), ")
+            do (push h (convert::int_to_str (as (len elems) i64)))
+            do (push h ");")
+            do (push out (cat h))
+            let i = 0u64
+            while (< i (len elems))
+                let p {str} = (vec str)
+                do (push p "*(")
+                do (push p ec)
+                do (push p "*)cl_array_at(")
+                do (push p (val dst))
+                do (push p ", ")
+                do (push p (convert::int_to_str (as i i64)))
+                do (push p ") = ")
+                do (push p (val elems[i]))
+                do (push p ";")
+                do (push out (cat p))
+                set i = (+ i 1)
+            end
+            return out
+        case (IArrGet dst arr idx ty)
+            let p {str} = (vec str)
+            do (push p (val dst))
+            do (push p " = *(")
+            do (push p (ctype ty))
+            do (push p "*)cl_array_at(")
+            do (push p (val arr))
+            do (push p ", ")
+            do (push p (val idx))
+            do (push p ");")
+            return (line1 (cat p))
+        case (IArrSet arr idx sval elem)
+            let p {str} = (vec str)
+            do (push p "*(")
+            do (push p (ctype elem))
+            do (push p "*)cl_array_at(")
+            do (push p (val arr))
+            do (push p ", ")
+            do (push p (val idx))
+            do (push p ") = ")
+            do (push p (val sval))
+            do (push p ";")
+            return (line1 (cat p))
+        case (IArrLen dst arr)
+            return (line1 (strings::concat (val dst) (strings::concat " = (" (strings::concat (val arr) ").len;"))))
         else
             do (panic "backend_c: unsupported instruction (later stage)")
     end
@@ -623,8 +705,78 @@ end
 # Module
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# Struct typedefs — emitted in dependency order so an embedded value struct is
+# declared before the struct that contains it.
+# --------------------------------------------------------------------------- #
+
+func struct_dep (ty IRType) -> str
+    match ty
+        case (TyOf st)
+            match st
+                case (TStruct n)
+                    return n
+                else
+                    return ""
+            end
+        else
+            return ""
+    end
+    return ""
+end
+
+func visit_struct (s IRStruct) (by_name {str IRStruct}) (seen {str bool}) (ordered {IRStruct}) -> unit
+    if (map_has seen s.name)
+        return
+    end
+    set seen[s.name] = true
+    let i = 0u64
+    while (< i (len s.fields))
+        let dep = (struct_dep s.fields[i].ty)
+        if (and (not (strings::eq dep "")) (map_has by_name dep))
+            do (visit_struct by_name[dep] by_name seen ordered)
+        end
+        set i = (+ i 1)
+    end
+    do (push ordered s)
+end
+
+func order_structs (structs {IRStruct}) -> {IRStruct}
+    let by_name {str IRStruct} = (map str IRStruct)
+    let i = 0u64
+    while (< i (len structs))
+        set by_name[structs[i].name] = structs[i]
+        set i = (+ i 1)
+    end
+    let ordered {IRStruct} = (vec IRStruct)
+    let seen {str bool} = (map str bool)
+    set i = 0u64
+    while (< i (len structs))
+        do (visit_struct structs[i] by_name seen ordered)
+        set i = (+ i 1)
+    end
+    return ordered
+end
+
+func emit_struct (s IRStruct) -> str
+    let out = "typedef struct {\n"
+    let i = 0u64
+    while (< i (len s.fields))
+        set out = (strings::concat out (strings::concat "    " (strings::concat (ctype s.fields[i].ty) (strings::concat " " (strings::concat s.fields[i].name ";\n")))))
+        set i = (+ i 1)
+    end
+    return (strings::concat out (strings::concat "} cl_struct_" (strings::concat s.name ";\n\n")))
+end
+
 export func emit (m IRModule) -> str
     let out = "#include \"cardinal_rt.h\"\n\n"
+    # struct typedefs (dependency-ordered)
+    let ordered = (order_structs m.structs)
+    let oi = 0u64
+    while (< oi (len ordered))
+        set out = (strings::concat out (emit_struct ordered[oi]))
+        set oi = (+ oi 1)
+    end
     # prototypes
     let i = 0u64
     while (< i (len m.funcs))
