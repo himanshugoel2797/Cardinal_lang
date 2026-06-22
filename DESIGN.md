@@ -219,6 +219,12 @@ end
   symbol-table case), integers, `char`, `bool`, `enum`; others rejected. This is
   the "bounds" problem solved by builtin special-casing rather than a constraint
   system. (Pointer/identity-keyed maps for arbitrary references: possible later.)
+  **Maps preserve insertion order** — `map_keys` and `for k in m` iterate keys in
+  the order they were first inserted. Overwriting an existing key keeps its
+  position; deleting a key and re-inserting it appends at the end. This is part
+  of the language contract (not an implementation accident): it makes map-driven
+  output deterministic, which the self-hosting fixed point (§11) depends on, so
+  every backend MUST honor it. `m[k]` on an absent key traps (`map key not found`).
 - **Field/index access** — `p.x`, `buf[i]` (§7 access sugar).
 - **Enums = simple C-style named integer constants** (no payloads). Variants are
   accessed with `::` (scope resolution): `Status::NotFound`.

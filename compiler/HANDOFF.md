@@ -105,13 +105,33 @@ Any checker change in `checker.cardinal` MUST be mirrored in
 The compiler uses str/`{T}`/`{K V}` everywhere; it cannot self-compile without
 them. **This is bigger than a port: the C RUNTIME has no vec/map and only
 immutable static `cl_str`.** You must:
-1. **Extend the runtime** `bootstrap/runtime/cardinal_rt.{h,c}` (and maybe
-   `cardinal_gc.c`): GC-managed growable vector (`cl_vec_new/push/pop/at/len`,
-   element-size-aware), hashable map (`cl_map_new/get/set/has/del/keys/len` —
-   keys restricted to str(content)/int/char/bool/enum per §5.3), and heap
-   strings (`strings::concat`/`substr`/`from_char`/`chars` need GC-allocated
-   `cl_str`; today `cl_str` is `{const char*, len}` static). Decide the cl_str
-   ABI for owned vs static and keep `cl_print_str`/`cl_str_len` working.
+1. **Extend the runtime** `bootstrap/runtime/cardinal_rt.{h,c}`:
+   - **vec/map runtime — DONE** (in `cardinal_rt.{h,c}`; test
+     `bootstrap/runtime/vecmap_test.c`, passes under ASan+UBSan incl. a
+     tiny-GC-threshold stress). `cl_vec`/`cl_map` are bare `cl_handle`s to a
+     header object (reference semantics: copy = share; growth/rehash mutate the
+     shared header in place). API: `cl_vec_new(elemsz)/push/pop/at/len`;
+     `cl_map_new(keysz,valsz,kind)/set/get/has/del/keys/len` with
+     `CL_MAP_SCALAR` (raw keysz bytes) vs `CL_MAP_STR` (content hash/eq) — the
+     two kinds the fixed per-map key type collapses to. Map is an
+     insertion-ordered compact-dict (open-addr index + ordered entries w/
+     tombstones) so `map_keys`/for-in match the interpreter's order, incl.
+     del+reinsert moving a key to the end. Parity panics wired: `m[k]` missing →
+     `"map key not found"`, `pop` empty → `"pop from empty vector"`, vec OOB →
+     `"index out of bounds: i (len n)"`. Element/key/val bytes are 8-byte
+     aligned in GC buffers so embedded handles are traced by the conservative
+     object scan. Rooting rule respected (GC scans shadow stack + live objects,
+     NOT the C stack): ≤1 un-rooted alloc in flight, stored into the
+     caller-rooted header before the next alloc; `cl_map_keys` push-roots its
+     result vec across the build loop.
+   - **STILL TODO: heap strings.** `strings::concat`/`substr`/`from_char`/`chars`
+     need GC-allocated `cl_str`; today `cl_str` is `{const char*, len}` static.
+     Decide the cl_str ABI for owned vs static and keep `cl_print_str`/
+     `cl_str_len` working. NOTE: map STR keys currently store `cl_str` by value
+     and compare by content — that works for static AND owned strings, but owned
+     char buffers held only as map keys/vec elements are NOT GC-traced (cl_str
+     `.data` is a raw `const char*`, not a handle). Resolve when the owned-cl_str
+     ABI lands (e.g. back owned strings with a handle the scanner can see).
 2. **Lower** them in `lower.cardinal`: replace the `(stage 3)` panics — EVecNew/
    EVec/EMapNew, vec/map index read+write, `len` of str/vec/map, for-in over
    vec, `push`/`pop`/`map_has`/`map_del`/`map_keys` builtins (see
