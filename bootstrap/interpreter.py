@@ -2089,10 +2089,13 @@ def builtin_fs():
             ok = False
         interp.call(args[2], [ok], interp.current)         # cb: func(bool -> unit)
         return UNIT
+    def _exists(interp, args):
+        return os.path.exists(args[0])
     ms.env.define("read_file", Builtin("fs::read_file", _read), mutable=False)
     ms.env.define("write_file", Builtin("fs::write_file", _write), mutable=False)
     ms.env.define("read_file_cb", Builtin("fs::read_file_cb", _read_cb), mutable=False)
     ms.env.define("write_file_cb", Builtin("fs::write_file_cb", _write_cb), mutable=False)
+    ms.env.define("exists", Builtin("fs::exists", _exists), mutable=False)
     return ms
 
 

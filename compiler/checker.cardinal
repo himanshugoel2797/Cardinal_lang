@@ -608,6 +608,9 @@ func builtin_path_type (m str) (f str) -> Type
         if (strings::eq f "write_file_cb")
             return (mk_fn3 (t_str) (t_str) (mk_fn1 (t_bool) (t_unit)) (t_unit))
         end
+        if (strings::eq f "exists")
+            return (mk_fn1 (t_str) (t_bool))
+        end
         return TNone
     end
     if (strings::eq m "sys")

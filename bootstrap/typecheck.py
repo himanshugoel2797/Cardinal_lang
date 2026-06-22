@@ -200,6 +200,7 @@ class Checker:
             sig.funcs["write_file"] = FuncT((STR, STR), UNIT)
             sig.funcs["read_file_cb"] = FuncT((STR, FuncT((STR,), UNIT)), UNIT)
             sig.funcs["write_file_cb"] = FuncT((STR, STR, FuncT((BOOL,), UNIT)), UNIT)
+            sig.funcs["exists"] = FuncT((STR,), BOOL)
             self.sigs[name] = sig
             return sig
         if name == "sys":
