@@ -768,9 +768,28 @@ check.
   Python reference: float literals keep verbatim mantissa **text** (not a parsed
   float — no precision loss; the parser parses it), int literals accumulate in
   `i64` (the language's max int), and identifiers/suffixes are ASCII-only.
-- [ ] **Parser** — next: `{Tok}` → AST (a sum type mirroring the Python AST nodes).
-- [ ] **Type checker** in Cardinal.
+- [x] **Parser** — `compiler/parser.cardinal`. Recursive-descent port of
+  `bootstrap/interpreter.py:Parser`. Defines the AST as sum types
+  (`Ty`/`Expr`/`Stmt`/`Decl` + `Param`/`Variant`/`Field`/`Branch`/`Arm`/`Import`/
+  `Module`), threads the cursor through a shared 1-element `{u64}` cell inside a
+  value struct, and exposes `parse(str) -> Module` plus an AST pretty-printer
+  (`module_str`). **Self-parses** (parses the lexer and the parser's own source),
+  all examples, and the stdlib. Tested (`compiler/parsetest.cardinal`,
+  `compiler/parsetest_edge.cardinal`, `compiler/parseall.cardinal`) and
+  adversarially reviewed as behaviorally equivalent to the reference. Punt: AST
+  nodes carry no source line numbers yet (tokens do — can be threaded later).
+- [ ] **Type checker** in Cardinal — next: consume `Module` and port
+  `bootstrap/typecheck.py` (sum types, bidirectional checking, the builtin
+  collection/`{…}` rules, match exhaustiveness).
 - [ ] **Backend** in Cardinal.
+
+Implementation notes learned porting to Cardinal (apply to the checker too):
+keyword-colliding identifiers are illegal, so field/var names like `step`/`packed`
+must be renamed (used `stride`/`is_packed`); nullary sum variants construct **bare**
+(`ENull`, not `(ENull)`); module-qualified **type names** (`lexer::Tok`) are not
+supported in type position — use the bare imported name (`Tok`); cross-module
+`match` uses bare variant names; `if`/`case` bodies must start on the next line;
+optional fields are encoded as a `has_*` bool + sentinel.
 
 Note: `compiler/parser.clp` is a stale artifact from the original Lisp-syntax design
 and is unrelated to the current port (safe to delete).
