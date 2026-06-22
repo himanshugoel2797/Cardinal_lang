@@ -176,11 +176,27 @@ immutable static `cl_str`.** You must:
    str->str). 3-auditor committee: GC-safety + parity APPROVE; design
    APPROVE-WITH-FIXES (the map-field hole below).
    STILL PENDING for full vec/map UX (NOT data-op blockers):
-   * **`io::println` of a whole vec/map/array/struct** — the interpreter
-     `_display`s aggregates (`{0 1 4}` etc.); native panics "cannot io::print
-     this type". This is a recursive, type-driven DISPLAY feature, its own
-     milestone — not vec/map lowering. (examples/vectest prints a whole vec, so
-     it needs this; examples/maptest also needs Stage-4 callbacks.)
+   * **Aggregate display — DONE (committee-gated, unanimous APPROVE).**
+     `io::print`/`println` of array/vector/map/struct now emits the interpreter's
+     `_display` form recursively: `[..]`, `{..}`, `{k: v ..}`, `(Name f: v ..)`,
+     single-space separators. `lower_io` routes every arg through `lower_display`
+     (in lower.cardinal) which dispatches on type and hand-emits the loops
+     (lower_display_seq/map/struct; disp_str/disp_sep/disp_call helpers; bare_name
+     strips the `mod::`). Map display uses `cl_map_keys`+`cl_map_get` (insertion
+     order). Added runtime `cl_print_char`. Tightened the INTERPRETER: struct
+     fields now display in DECLARATION order (eval_struct_lit builds the field
+     dict in declaration order) so it matches the compiled struct layout — a
+     canonical/deterministic choice (literal order was a host accident; only
+     _display observed it). Verified byte-identical incl. deep nesting, multibyte
+     chars, raw (unescaped) strings, map del+reinsert order, non-str keys, empties;
+     ASan/UBSan clean at CARDINAL_GC_THRESHOLD=0 (nested cl_map_keys get distinct
+     rooted slots). examples/vectest now PASSES natively. DESIGN §12 gap-list
+     updated. REMAINING display gaps: **enum-value display** (`Enum::Variant`)
+     still panics cleanly "display of enum values not yet supported" (needs an
+     int->variant-name reverse map emitted from the enum def); **float display**
+     diverges (interpreter uses Python `repr`, native `cl_print_f64` uses `%g`,
+     e.g. `1.0` vs `1`) — a PRE-EXISTING scalar-float issue, not introduced here,
+     inherited by aggregate floats. maptest still needs Stage-4 callbacks.
    * **`set m[k].field = v` — RESOLVED (user ruling): rejected in BOTH checkers.**
      Maps hold value-semantic copies, so taking a mutable field reference into a
      map element has no faithful semantics. `check_place` now threads a `via_map`

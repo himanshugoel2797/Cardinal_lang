@@ -1492,15 +1492,19 @@ class Interp:
         if sd is None:
             raise CardinalError(f"unknown struct '{tyname}'")
         fld_types = dict(sd.fields)
-        given = {}
+        vals = {}
         for fname, fexpr in e.fields:
             if fname not in fld_types:
                 raise CardinalError(f"struct {tyname} has no field '{fname}'")
             v = self.eval(fexpr, env, ms, expected=fld_types[fname])
-            given[fname] = self.copy_value(self.coerce(v, fld_types[fname], ms))
+            vals[fname] = self.copy_value(self.coerce(v, fld_types[fname], ms))
+        # Store fields in DECLARATION order (not literal order) so display is
+        # canonical and deterministic, matching the compiled struct layout.
+        given = {}
         for fname, _ in sd.fields:
-            if fname not in given:
+            if fname not in vals:
                 raise CardinalError(f"missing field '{fname}' in {tyname}")
+            given[fname] = vals[fname]
         return StructV(tyname, given)
 
     def eval_array_lit(self, e, env, ms, expected):

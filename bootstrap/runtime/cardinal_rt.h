@@ -81,6 +81,7 @@ void cl_print_u64(uint64_t v);
 void cl_print_f64(double v);
 void cl_print_bool(int v);
 void cl_print_str(cl_str s);
+void cl_print_char(int32_t cp);     /* the UTF-8 character itself (for aggregate display) */
 void cl_print_nl(void);
 
 #endif

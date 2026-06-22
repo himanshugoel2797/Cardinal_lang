@@ -407,6 +407,13 @@ static int utf8_encode(uint32_t cp, char *buf) {
     return 4;
 }
 
+/* Print the UTF-8 encoding of a codepoint (used by aggregate display). */
+void cl_print_char(int32_t cp) {
+    char b[4];
+    int n = utf8_encode((uint32_t)cp, b);
+    fwrite(b, 1, (size_t)n, stdout);
+}
+
 /* Decode one codepoint at b[i..nbytes); advance *i past it. */
 static uint32_t utf8_decode(const char *b, uint64_t nbytes, uint64_t *i) {
     unsigned char c = (unsigned char)b[*i];
