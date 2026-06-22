@@ -257,6 +257,24 @@ func t_elem (t Type) -> Type
     end
     return (unit_ty)
 end
+func t_map_key (t Type) -> Type
+    match t
+        case (TMap k v)
+            return k
+        else
+            do (panic "lower: key type of a non-map")
+    end
+    return (unit_ty)
+end
+func t_map_val (t Type) -> Type
+    match t
+        case (TMap k v)
+            return v
+        else
+            do (panic "lower: value type of a non-map")
+    end
+    return (unit_ty)
+end
 
 # The struct/variant head name of a construction-literal target (EName or EPath).
 func head_name (typ Expr) -> str
@@ -407,14 +425,25 @@ func lower_expr (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (expected Ty
             return dst
         case (EIndex obj index)
             let bt = (checker::check_expr lx.ctx obj ts TNone)
-            if (not (t_is_array bt))
-                do (panic "lower: vec/map indexing (stage 3)")
+            if (t_is_map bt)
+                # m[k]: index is the key; result is the value type.
+                let mp = (lower_expr lx vs ts obj TNone)
+                let kty = (t_map_key bt)
+                let vty = (t_map_val bt)
+                let kv = (lower_expr lx vs ts index kty)
+                let dst = (ir::fresh_temp lx.b (irt vty))
+                do (ir::emit lx.b (IMapGet dst: dst map: mp key: kv kty: (irt kty) vty: (irt vty)))
+                return dst
             end
-            let arr = (lower_expr lx vs ts obj TNone)
+            let obv = (lower_expr lx vs ts obj TNone)
             let idx = (lower_expr lx vs ts index (u64_ty))
             let elem = (t_elem bt)
             let dst = (ir::fresh_temp lx.b (irt elem))
-            do (ir::emit lx.b (IArrGet dst: dst arr: arr idx: idx ty: (irt elem)))
+            if (t_is_vec bt)
+                do (ir::emit lx.b (IVecGet dst: dst vec: obv idx: idx ty: (irt elem)))
+            else
+                do (ir::emit lx.b (IArrGet dst: dst arr: obv idx: idx ty: (irt elem)))
+            end
             return dst
         case (EStruct typ fields)
             return (lower_struct_lit lx vs ts e fields)
@@ -427,11 +456,18 @@ func lower_expr (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (expected Ty
             do (ir::emit lx.b (IArrNew dst: dst elem: (irt et) count: cnt))
             return dst
         case (EVecNew elem)
-            do (panic "lower: vec (stage 3)")
+            let et = (checker::resolve lx.ctx elem)
+            let dst = (ir::fresh_temp lx.b (irt (TVec elem: et)))
+            do (ir::emit lx.b (IVecNew dst: dst elem: (irt et)))
+            return dst
         case (EVec elems)
-            do (panic "lower: vec literal (stage 3)")
+            return (lower_vec_lit lx vs ts e elems expected)
         case (EMapNew key val)
-            do (panic "lower: map (stage 3)")
+            let kt = (checker::resolve lx.ctx key)
+            let vt = (checker::resolve lx.ctx val)
+            let dst = (ir::fresh_temp lx.b (irt (TMap key: kt val: vt)))
+            do (ir::emit lx.b (IMapNew dst: dst key: (irt kt) val: (irt vt)))
+            return dst
         case (ERef place)
             do (panic "lower: (ref ...) not supported yet")
         case (EFunc params ret has_ret body)
@@ -596,12 +632,65 @@ func lower_call (lx LX) (vs {str IVal}) (ts {str Binding}) (callee Expr) (args {
                     do (ir::emit lx.b (ICall has_dst: true dst: sd callee: "cl_str_len" args: a1 ty: (irt (u64_ty))))
                     return sd
                 end
+                if (t_is_vec at)
+                    let arg = (lower_expr lx vs ts args[0] TNone)
+                    let dst = (ir::fresh_temp lx.b (irt (u64_ty)))
+                    do (ir::emit lx.b (IVecLen dst: dst vec: arg))
+                    return dst
+                end
+                if (t_is_map at)
+                    let arg = (lower_expr lx vs ts args[0] TNone)
+                    let dst = (ir::fresh_temp lx.b (irt (u64_ty)))
+                    do (ir::emit lx.b (IMapLen dst: dst map: arg))
+                    return dst
+                end
                 if (not (t_is_array at))
-                    do (panic "lower: len of vec/map (stage 3)")
+                    do (panic "lower: len of unsupported type")
                 end
                 let arg = (lower_expr lx vs ts args[0] TNone)
                 let dst = (ir::fresh_temp lx.b (irt (u64_ty)))
                 do (ir::emit lx.b (IArrLen dst: dst arr: arg))
+                return dst
+            end
+            if (strings::eq id "push")
+                let vt = (checker::check_expr lx.ctx args[0] ts TNone)
+                let elem = (t_elem vt)
+                let vv = (lower_expr lx vs ts args[0] TNone)
+                let ev = (lower_expr lx vs ts args[1] elem)
+                do (ir::emit lx.b (IVecPush vec: vv val: ev elem: (irt elem)))
+                return ImmUnit
+            end
+            if (strings::eq id "pop")
+                let vt = (checker::check_expr lx.ctx args[0] ts TNone)
+                let elem = (t_elem vt)
+                let vv = (lower_expr lx vs ts args[0] TNone)
+                let dst = (ir::fresh_temp lx.b (irt elem))
+                do (ir::emit lx.b (IVecPop dst: dst vec: vv elem: (irt elem)))
+                return dst
+            end
+            if (strings::eq id "map_has")
+                let mt = (checker::check_expr lx.ctx args[0] ts TNone)
+                let kty = (t_map_key mt)
+                let mv = (lower_expr lx vs ts args[0] TNone)
+                let kv = (lower_expr lx vs ts args[1] kty)
+                let dst = (ir::fresh_temp lx.b (irt (bool_ty)))
+                do (ir::emit lx.b (IMapHas dst: dst map: mv key: kv kty: (irt kty)))
+                return dst
+            end
+            if (strings::eq id "map_del")
+                let mt = (checker::check_expr lx.ctx args[0] ts TNone)
+                let kty = (t_map_key mt)
+                let mv = (lower_expr lx vs ts args[0] TNone)
+                let kv = (lower_expr lx vs ts args[1] kty)
+                do (ir::emit lx.b (IMapDel map: mv key: kv kty: (irt kty)))
+                return ImmUnit
+            end
+            if (strings::eq id "map_keys")
+                let mt = (checker::check_expr lx.ctx args[0] ts TNone)
+                let kty = (t_map_key mt)
+                let mv = (lower_expr lx vs ts args[0] TNone)
+                let dst = (ir::fresh_temp lx.b (irt (TVec elem: kty)))
+                do (ir::emit lx.b (IMapKeys dst: dst map: mv))
                 return dst
             end
         case (EPath parts)
@@ -734,6 +823,28 @@ func lower_array_lit (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (elems 
     return dst
 end
 
+func lower_vec_lit (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (elems {Expr}) (expected Type) -> IVal
+    let elem = (unit_ty)
+    if (t_is_vec expected)
+        set elem = (t_elem expected)
+    else
+        let at = (checker::check_expr lx.ctx e ts expected)
+        if (not (t_is_vec at))
+            do (panic "lower: cannot infer vector element type — annotate it")
+        end
+        set elem = (t_elem at)
+    end
+    let vals {IVal} = (vec IVal)
+    let i = 0u64
+    while (< i (len elems))
+        do (push vals (lower_expr lx vs ts elems[i] elem))
+        set i = (+ i 1)
+    end
+    let dst = (ir::fresh_temp lx.b (irt (TVec elem: elem)))
+    do (ir::emit lx.b (IVecLit dst: dst elem: (irt elem) elems: vals))
+    return dst
+end
+
 # Resolve an assignable place (EName / EField) to an IPlace plus its checker type.
 func lower_place (lx LX) (vs {str IVal}) (ts {str Binding}) (node Expr) -> PlaceR
     match node
@@ -746,12 +857,20 @@ func lower_place (lx LX) (vs {str IVal}) (ts {str Binding}) (node Expr) -> Place
             let fty = (checker::check_expr lx.ctx node ts TNone)
             return (PlaceR place: (PField base: base.place field: field ty: (irt fty)) ty: fty)
         case (EIndex obj index)
-            # An array element used as an lvalue base (e.g. `set arr[i].x = v`).
-            # Arrays are reference-semantic, so the element address is computed
-            # from the array value (cl_array_at), not from a place.
+            # An array/vector element used as an lvalue base (e.g. `set arr[i].x = v`).
+            # Both are reference-semantic, so the element address is computed from
+            # the collection value (cl_array_at / cl_vec_at), not from a place.
             let bt = (checker::check_expr lx.ctx obj ts TNone)
+            if (t_is_vec bt)
+                let vc = (lower_expr lx vs ts obj TNone)
+                let idx = (lower_expr lx vs ts index (u64_ty))
+                let elem = (t_elem bt)
+                return (PlaceR place: (PVecElem vec: vc idx: idx ty: (irt elem)) ty: elem)
+            end
             if (not (t_is_array bt))
-                do (panic "lower: vec/map element assignment (stage 3)")
+                # `set m[k].field = v` on a map is not supported: maps store value
+                # copies, so an in-place element mutation has no faithful semantics.
+                do (panic "lower: composable element assignment on a map is unsupported")
             end
             let arr = (lower_expr lx vs ts obj TNone)
             let idx = (lower_expr lx vs ts index (u64_ty))
@@ -832,14 +951,25 @@ func lower_set (lx LX) (vs {str IVal}) (ts {str Binding}) (target Expr) (expr Ex
     match target
         case (EIndex obj index)
             let bt = (checker::check_expr lx.ctx obj ts TNone)
-            if (not (t_is_array bt))
-                do (panic "lower: vec/map assignment (stage 3)")
+            if (t_is_map bt)
+                # set m[k] = v : insert-or-update by key.
+                let mp = (lower_expr lx vs ts obj TNone)
+                let kty = (t_map_key bt)
+                let vty = (t_map_val bt)
+                let kv = (lower_expr lx vs ts index kty)
+                let v = (lower_expr lx vs ts expr vty)
+                do (ir::emit lx.b (IMapSet map: mp key: kv val: v kty: (irt kty) vty: (irt vty)))
+            else
+                let obv = (lower_expr lx vs ts obj TNone)
+                let idx = (lower_expr lx vs ts index (u64_ty))
+                let elem = (t_elem bt)
+                let v = (lower_expr lx vs ts expr elem)
+                if (t_is_vec bt)
+                    do (ir::emit lx.b (IVecSet vec: obv idx: idx val: v elem: (irt elem)))
+                else
+                    do (ir::emit lx.b (IArrSet arr: obv idx: idx val: v elem: (irt elem)))
+                end
             end
-            let arr = (lower_expr lx vs ts obj TNone)
-            let idx = (lower_expr lx vs ts index (u64_ty))
-            let elem = (t_elem bt)
-            let v = (lower_expr lx vs ts expr elem)
-            do (ir::emit lx.b (IArrSet arr: arr idx: idx val: v elem: (irt elem)))
         else
             let pr = (lower_place lx vs ts target)
             let v = (lower_expr lx vs ts expr pr.ty)
@@ -958,8 +1088,9 @@ end
 
 func lower_forin (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (iter Expr) (body {Stmt}) -> unit
     let bt = (checker::check_expr lx.ctx iter ts TNone)
-    if (not (t_is_array bt))
-        do (panic "lower: for-in over vec (stage 3)")
+    let is_v = (t_is_vec bt)
+    if (not (or (t_is_array bt) is_v))
+        do (panic "lower: for-in expects an array or vector")
     end
     let elem = (t_elem bt)
     let arr = (lower_expr lx vs ts iter TNone)
@@ -967,7 +1098,11 @@ func lower_forin (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (iter Expr
     let idx = (ir::add_local lx.b idxn (irt (u64_ty)))
     let n = (ir::fresh_temp lx.b (irt (u64_ty)))
     do (ir::emit lx.b (IAssign place: (PLocal name: idxn ty: (irt (u64_ty))) src: (ImmInt val: 0i64 ty: (irt (u64_ty)))))
-    do (ir::emit lx.b (IArrLen dst: n arr: arr))
+    if is_v
+        do (ir::emit lx.b (IVecLen dst: n vec: arr))
+    else
+        do (ir::emit lx.b (IArrLen dst: n arr: arr))
+    end
     let head = (ir::fresh_label lx.b "fi_head")
     let bodyl = (ir::fresh_label lx.b "fi_body")
     let post = (ir::fresh_label lx.b "fi_post")
@@ -979,7 +1114,11 @@ func lower_forin (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (iter Expr
     do (ir::emit lx.b (ICondBr cond: cond then_l: bodyl else_l: fin))
     do (ir::new_block lx.b bodyl)
     let elemv = (ir::fresh_temp lx.b (irt elem))
-    do (ir::emit lx.b (IArrGet dst: elemv arr: arr idx: idx ty: (irt elem)))
+    if is_v
+        do (ir::emit lx.b (IVecGet dst: elemv vec: arr idx: idx ty: (irt elem)))
+    else
+        do (ir::emit lx.b (IArrGet dst: elemv arr: arr idx: idx ty: (irt elem)))
+    end
     let varn = (uniq lx var)
     let varloc = (ir::add_local lx.b varn (irt elem))
     do (ir::emit lx.b (IAssign place: (PLocal name: varn ty: (irt elem)) src: elemv))

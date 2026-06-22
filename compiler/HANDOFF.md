@@ -156,18 +156,50 @@ immutable static `cl_str`.** You must:
      literal emit invalid C (pre-existing). `str_to_int` panic-message text is
      best-effort, not byte-identical to Python's `repr` (stderr only; stdout
      parity holds).
-2. **Lower** them in `lower.cardinal`: replace the `(stage 3)` panics — EVecNew/
-   EVec/EMapNew, vec/map index read+write, `len` of str/vec/map, for-in over
-   vec, `push`/`pop`/`map_has`/`map_del`/`map_keys` builtins (see
-   `checker::check_builtin_call` for the exact signatures). Emit `ICall` to the
-   new runtime symbols; element/key/val types come from `check_expr` (never
-   invent). Mirror the array path; vecs/maps are reference-semantic.
-3. **Backend** emit those ICalls (mostly already generic) + `ctype_t` for TVec
-   (`cl_vec`) / TMap (`cl_map`); ensure `managed()` covers TVec/TMap (TVec is in;
-   ADD TMap — auditor flagged it missing). GC rooting must root vec/map slots.
-4. Verify against the interpreter on str/vec/map programs (see examples/
-   strtest, vectest, maptest, usestd) and add to the regression sweep.
-DESIGN refs: §5.1, §5.3 (vec/map as builtin generics; map-key hashability).
+2. **vec/map LOWERING — DONE (committee-gated).** New IR (`ir.cardinal`):
+   `PVecElem` lvalue + `IVecNew/IVecLit/IVecGet/IVecSet/IVecLen/IVecPush/IVecPop`
+   and `IMapNew/IMapGet/IMapSet/IMapLen/IMapHas/IMapDel/IMapKeys`. Backend
+   (`backend_c.cardinal`) emits the cl_vec_*/cl_map_* calls; ops that pass a
+   key/val/elem BY POINTER emit a block-temp-and-&address:
+   `{ KT _k = <key>; VT _v = <val>; cl_map_set(<m>, &_k, &_v); }` — GC-safe
+   because the SOURCE IVals are rooted function temps/locals (the runtime copies
+   bytes into the rooted collection; the throwaway temp need not be rooted).
+   `map_kind` picks CL_MAP_STR for str keys else CL_MAP_SCALAR. Lowerer
+   (`lower.cardinal`): `t_map_key/t_map_val`; EIndex/len/`set`/for-in dispatch on
+   array-vs-vec-vs-map; EVecNew/EVec(`lower_vec_lit`)/EMapNew; push/pop/map_has/
+   map_del/map_keys builtins. No checker change -> difftest stays AGREE=13.
+   Verified byte-identical to the interpreter on a broad vec/map battery
+   (push/pop/index/len/for-in/literals, vec-of-struct w/ `set v[i].field`,
+   nested {{i32}}/{str {i32}}, map str/int/char/bool/enum keys, update-in-place,
+   has/del, map_keys insertion order incl. del+reinsert) AND under ASan/UBSan at
+   CARDINAL_GC_THRESHOLD=0 with managed elements/values (vec of str, map
+   str->str). 3-auditor committee: GC-safety + parity APPROVE; design
+   APPROVE-WITH-FIXES (the map-field hole below).
+   STILL PENDING for full vec/map UX (NOT data-op blockers):
+   * **`io::println` of a whole vec/map/array/struct** — the interpreter
+     `_display`s aggregates (`{0 1 4}` etc.); native panics "cannot io::print
+     this type". This is a recursive, type-driven DISPLAY feature, its own
+     milestone — not vec/map lowering. (examples/vectest prints a whole vec, so
+     it needs this; examples/maptest also needs Stage-4 callbacks.)
+   * **DESIGN HOLE — `set m[k].field = v`** (composable field-set on a map
+     element). Checker ACCEPTS it; the interpreter MUTATES IN PLACE via an
+     aliased struct ref (interpreter.py eval_place Index->MapV returns the stored
+     StructV by reference); native PANICS cleanly at lowering
+     (`lower.cardinal` lower_place EIndex map branch). DIVERGENCE on a
+     type-valid program. NOT used by the compiler itself (only whole-value
+     `set m[k]=v`), so not self-host-blocking. The interpreter's in-place
+     mutation arguably contradicts map value-copy semantics (DESIGN §5.3/§6.3).
+     User decision needed: (a) reject in BOTH checkers (recommended — makes them
+     agree, pins "no mutable ref into a value-semantic map element"); or (b)
+     support natively via the cl_map_get pointer (commits to in-place mutability).
+   * **`for k in m` directly over a map** is rejected by BOTH checkers today
+     (only `for k in (map_keys m)` works); DESIGN §5.3 lists `for k in m` as a
+     contract, so spec leads impl — a future wiring item.
+3. Verify against the interpreter on str/vec/map programs and add to the
+   regression sweep. (examples/vectest, maptest need the aggregate-display +
+   closures items above before they go green natively.)
+DESIGN refs: §5.1, §5.3 (vec/map as builtin generics; map-key hashability;
+insertion-order contract).
 
 ### B. Step 2 — `mod::Type` qualified SYNTAX (finishes §10)
 Additive; nothing currently needs it (no collisions; cross-module structs work
