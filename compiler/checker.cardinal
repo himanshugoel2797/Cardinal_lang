@@ -73,6 +73,7 @@ struct Sig
     sum_variants {str {str}}     # sum name -> variant names
     variants {str VarInfo}       # variant name -> (sum, fields)
     exports {str bool}
+    imports {str bool}           # set of imported module names (gates path resolution)
 end
 
 struct Ctx
@@ -641,6 +642,11 @@ end
 func build_sig (ctx Ctx) (mod Module) -> unit
     let sig = ctx.sig
 
+    # record imported module names (gates path resolution; see check_path)
+    for imp in mod.imports
+        set sig.imports[imp.name] = true
+    end
+
     # register type names first so recursive/mutual references resolve
     for d in mod.decls
         match d
@@ -748,7 +754,8 @@ export func check (src str) -> {str}
                    enums: (map str {str})
                    sum_variants: (map str {str})
                    variants: (map str VarInfo)
-                   exports: (map str bool))
+                   exports: (map str bool)
+                   imports: (map str bool))
     let errors {str} = (vec str)
     let ctx = (Ctx sig: sig errors: errors modname: mod.name)
     do (build_sig ctx mod)
@@ -1049,9 +1056,23 @@ func check_path (ctx Ctx) (parts {str}) -> Type
             end
             return (TEnum name: m0)
         end
-        let bt = (builtin_path_type m0 m1)
-        if (not (is_none bt))
-            return bt
+        # a value in the current module, qualified by its own module name
+        if (strings::eq m0 ctx.modname)
+            let v = (lookup_value ctx m1)
+            if (not (is_none v))
+                return v
+            end
+            do (err ctx (strings::concat m0 (strings::concat " has no value " m1)))
+            return (t_unit)
+        end
+        # builtin module paths, but only if the module was actually imported
+        if (and (is_builtin_module m0) (map_has ctx.sig.imports m0))
+            let bt = (builtin_path_type m0 m1)
+            if (not (is_none bt))
+                return bt
+            end
+            do (err ctx (strings::concat m0 (strings::concat " has no value " m1)))
+            return (t_unit)
         end
         do (err ctx (strings::concat "cannot resolve path " (strings::concat m0 (strings::concat "::" m1))))
         return (t_unit)
@@ -1141,7 +1162,7 @@ func check_call (ctx Ctx) (callee Expr) (args {Expr}) (scope {str Binding}) -> T
                 return r
             end
         case (EPath parts)
-            if (and (== (len parts) 2u64) (strings::eq parts[0] "io"))
+            if (and (and (== (len parts) 2u64) (strings::eq parts[0] "io")) (map_has ctx.sig.imports "io"))
                 for a in args
                     do (check_expr ctx a scope TNone)
                 end
