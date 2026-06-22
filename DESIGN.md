@@ -801,9 +801,20 @@ check.
     half of self-hosting. Reproduce with `sh compiler/difftest.sh`. Added the
     `fs::exists` builtin (needed for module-file probing without try/catch).
     Remaining nit: errors don't carry source line numbers yet.
-- [ ] **Backend** in Cardinal — next: lower the checked AST to an output
-  (e.g. C, or the interpreter's own evaluation), enabling end-to-end
-  self-compilation.
+- [~] **Backend** in Cardinal — `compiler/codegen.cardinal`: a Cardinal→C code
+  generator emitting standalone C (linked against `runtime/cardinal_rt.c`), the
+  path to retiring the Python bootstrap. Direct AST→C (s-expressions→C
+  expressions, blocks→C brace blocks). **Stage 1 done:** single module, sized
+  ints/bool/char, functions + recursion, full control flow, prefix operators,
+  casts, `io::println`/`print` of scalars — a recursive `fib` compiles to a
+  native binary byte-identical to the interpreter. Harnesses:
+  `compiler/emitc.cardinal`, `compiler/ccrun.sh`.
+  - [ ] Stage 2: structs + arrays. Stage 3: strings/vectors/maps. Stage 4: sum
+    types + `match` and closures (the constructs the compiler's own source uses).
+    Then self-compile the compiler and reach the fixed point.
+  - Note: a tree-walking evaluator in Cardinal is **not** on this path (it runs
+    hosted, borrowing the host runtime); it only becomes worthwhile *after* the
+    compiler exists, when the compiler can compile it to a native interpreter.
 
 Implementation notes learned porting to Cardinal (apply to the checker too):
 keyword-colliding identifiers are illegal, so field/var names like `step`/`packed`
