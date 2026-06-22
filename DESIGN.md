@@ -778,9 +778,24 @@ check.
   `compiler/parsetest_edge.cardinal`, `compiler/parseall.cardinal`) and
   adversarially reviewed as behaviorally equivalent to the reference. Punt: AST
   nodes carry no source line numbers yet (tokens do — can be threaded later).
-- [ ] **Type checker** in Cardinal — next: consume `Module` and port
-  `bootstrap/typecheck.py` (sum types, bidirectional checking, the builtin
-  collection/`{…}` rules, match exhaustiveness).
+- [~] **Type checker** in Cardinal — `compiler/checker.cardinal`. Port of
+  `bootstrap/typecheck.py`. `Type` sum type; signatures
+  (structs/enums/sums/variants/funcs/consts); `resolve`; bidirectional
+  `check_expr`/`check_stmt` with expected-type propagation; coercion (no
+  implicit numeric promotion, null→ref, never/unit/handle); `unify_num`/
+  `unify_int_only`/`unify_comparable`; match exhaustiveness; map-key
+  hashability; builtin signatures (io/strings/convert/fs/sys + len/push/pop/
+  panic/map_*). `check(src) -> {str}`. **Milestone A = single-module.**
+  Verified: agrees with the Python checker on all single-module/builtin
+  examples and a 110-program differential test (zero verdict disagreements),
+  adversarially reviewed. Tests: `compiler/checktest.cardinal`,
+  `compiler/checkall.cardinal`.
+  - [ ] **Milestone B (next): cross-module USER imports** — load other
+    `.cardinal` files (via `fs`), recursive sig building, the `imported`/
+    `selective`/`sigs` registry, imported type/enum/variant resolution. This
+    is what unlocks self-checking (the compiler modules import each other).
+    Currently a `mod::value` path to a non-builtin module reports
+    "cannot resolve path"; errors don't carry line numbers yet.
 - [ ] **Backend** in Cardinal.
 
 Implementation notes learned porting to Cardinal (apply to the checker too):
