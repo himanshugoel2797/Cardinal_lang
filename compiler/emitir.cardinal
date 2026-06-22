@@ -8,6 +8,7 @@ import io
 import fs
 import sys
 import strings
+import checker
 import lower
 import backend
 
@@ -34,7 +35,19 @@ func main () -> i32
     let dirs {str} = (vec str)
     do (push dirs (dirname a[0]))
     do (push dirs ".")
-    let m = (lower::lower_program (fs::read_file a[0]) dirs)
+    let src = (fs::read_file a[0])
+    # Type-error gate: never lower/emit a program the checker rejects. Errors go
+    # to stdout (the driver emits no C and exits non-zero); ccrun surfaces them.
+    let errs = (checker::check_file src dirs)
+    if (> (len errs) 0u64)
+        let i = 0u64
+        while (< i (len errs))
+            do (io::println errs[i])
+            set i = (+ i 1)
+        end
+        return 1i32
+    end
+    let m = (lower::lower_program src dirs)
     do (io::print (backend::emit_with "c" m))
     return 0i32
 end

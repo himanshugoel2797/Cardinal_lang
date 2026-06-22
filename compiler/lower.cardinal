@@ -755,8 +755,19 @@ func lower_func (lx LX) (name str) (params {Param}) (ret Ty) (has_ret bool) (bod
     set lx.ret = rty
     set lx.uq[0] = 0i64
     do (lower_block lx vscope tscope body)
+    # Synthetic tail terminator for a block that falls through. For a unit
+    # function that is a bare `return;`. For a value-returning function the tail
+    # is either unreachable (all paths already returned) or a checker-permitted
+    # missing-return; the interpreter treats falling off a value-returning
+    # function as a runtime error, so we emit a trap (valid C, faithful abort)
+    # rather than an illegal bare `return;` in a non-void function.
     if (not (ir::cur_terminated lx.b))
-        do (ir::emit lx.b (IRet has_val: false val: ImmUnit))
+        if (t_is_unit rty)
+            do (ir::emit lx.b (IRet has_val: false val: ImmUnit))
+        else
+            set lx.irm.externs["cl_panic"] = true
+            do (ir::emit lx.b (IPanic msg: (ImmStr s: "fell off the end of a value-returning function")))
+        end
     end
     do (push lx.irm.funcs lx.b.fn)
 end
@@ -774,6 +785,50 @@ func build_callmap (sig Sig) -> {str str}
     return m
 end
 
+# Lexicographic string order (by codepoint), so emission order is independent of
+# map iteration order — a prerequisite for the byte-identical self-host fixed
+# point (DESIGN §11). map_keys order must NOT drive output.
+func str_lt (a str) (b str) -> bool
+    let ca = (strings::chars a)
+    let cb = (strings::chars b)
+    let n = (len ca)
+    if (< (len cb) n)
+        set n = (len cb)
+    end
+    let i = 0u64
+    while (< i n)
+        let xa = (convert::ord ca[i])
+        let xb = (convert::ord cb[i])
+        if (< xa xb)
+            return true
+        end
+        if (> xa xb)
+            return false
+        end
+        set i = (+ i 1)
+    end
+    return (< (len ca) (len cb))
+end
+
+func sorted_sig_names (m {str Sig}) -> {str}
+    let ks {str} = (vec str)
+    for k in (map_keys m)
+        do (push ks k)
+    end
+    let i = 1u64
+    while (< i (len ks))
+        let j = i
+        while (and (> j 0u64) (str_lt ks[j] ks[(- j 1u64)]))
+            let tmp = ks[j]
+            set ks[j] = ks[(- j 1u64)]
+            set ks[(- j 1u64)] = tmp
+            set j = (- j 1u64)
+        end
+        set i = (+ i 1)
+    end
+    return ks
+end
+
 export func lower_program (src str) (searchdirs {str}) -> IRModule
     let mainmod = (parser::parse src)
     let ctx = (checker::new_ctx searchdirs)
@@ -784,8 +839,10 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
     let uq {i64} = (vec i64)
     do (push uq 0i64)
     let lx = (LX ctx: ctx irm: m b: (ir::new_builder "__init" (vec IRParam) (irt (unit_ty))) chk: chk brk: (vec str) cont: (vec str) uq: uq callmap: (map str str) ret: (unit_ty))
-    for name in (map_keys ctx.sigs)
-        let sig = ctx.sigs[name]
+    let names = (sorted_sig_names ctx.sigs)
+    let ni = 0u64
+    while (< ni (len names))
+        let sig = ctx.sigs[names[ni]]
         if sig.has_module
             set lx.ctx.cur = sig
             set lx.callmap = (build_callmap sig)
@@ -798,6 +855,7 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
                 end
             end
         end
+        set ni = (+ ni 1)
     end
     return m
 end

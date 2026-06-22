@@ -1079,7 +1079,11 @@ func check_stmt (ctx Ctx) (s Stmt) (scope {str Binding}) (ret Type) -> unit
         case (SSet target expr)
             do (check_set ctx target expr scope)
         case (SDo call)
-            do (check_expr ctx call scope TNone)
+            let dt = (check_expr ctx call scope TNone)
+            # DESIGN §7.2: a discarded untyped numeric literal is uninferable.
+            if (or (is_uint dt) (is_ufloat dt))
+                do (err ctx "untyped numeric literal has no inferable type; annotate it (e.g. 4i64) — DESIGN §7.2 (no fallback literal type)")
+            end
         case (SIf branches orelse has_else)
             for br in branches
                 do (expect_bool ctx (check_expr ctx br.cond scope (t_bool)))
@@ -1450,7 +1454,12 @@ func check_call (ctx Ctx) (callee Expr) (args {Expr}) (scope {str Binding}) -> T
         case (EPath parts)
             if (and (and (== (len parts) 2u64) (strings::eq parts[0] "io")) (or (map_has ctx.cur.imports "io") (map_has ctx.sigs "io")))
                 for a in args
-                    do (check_expr ctx a scope TNone)
+                    let at = (check_expr ctx a scope TNone)
+                    # io accepts any CONCRETE type, but DESIGN §7.2 forbids an
+                    # uninferable untyped literal (e.g. `(io::println 4)`).
+                    if (or (is_uint at) (is_ufloat at))
+                        do (err ctx "untyped numeric literal has no inferable type; annotate it (e.g. 4i64) — DESIGN §7.2 (no fallback literal type)")
+                    end
                 end
                 return (t_unit)
             end
@@ -1905,7 +1914,12 @@ func unify_comparable (ctx Ctx) (op str) (types {Type}) -> unit
     let a = types[0]
     let b = types[1]
     if (and (is_numish a) (is_numish b))
-        do (unify_num ctx types)
+        let r = (unify_num ctx types)
+        # DESIGN §7.2: no fallback literal type. If neither operand pins a
+        # concrete numeric type, the literals are uninferable -> compile error.
+        if (or (is_uint r) (is_ufloat r))
+            do (err ctx "comparison operands are untyped literals; annotate one (e.g. 4i64) — DESIGN §7.2 (no fallback literal type)")
+        end
         return
     end
     if (and (is_prim_named a "char") (is_prim_named b "char"))

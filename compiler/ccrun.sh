@@ -28,8 +28,17 @@ while [ $# -gt 0 ]; do
   esac
 done
 cfile="$(mktemp /tmp/cardinal_XXXXXX.c)"
-# emit C via the Cardinal compiler pipeline
-( cd "$root/compiler" && python3 "$root/bootstrap/cardinal.py" emitir.cardinal "$abssrc" ) > "$cfile"
+errfile="$(mktemp /tmp/cardinal_XXXXXX.err)"
+# emit C via the Cardinal compiler pipeline. The driver type-checks first and
+# refuses to emit (non-zero exit) on a type error; surface diagnostics instead
+# of feeding them to cc. Type errors land on stdout (cfile), panics on stderr.
+if ! ( cd "$root/compiler" && python3 "$root/bootstrap/cardinal.py" emitir.cardinal "$abssrc" ) > "$cfile" 2>"$errfile"; then
+  echo "cardinal: compilation failed:" >&2
+  cat "$cfile" "$errfile" >&2
+  rm -f "$cfile" "$errfile"
+  exit 1
+fi
+rm -f "$errfile"
 if [ "$run" = emit ]; then cat "$cfile"; rm -f "$cfile"; exit 0; fi
 cc -O2 -fwrapv -I "$root/bootstrap/runtime" -o "$out" "$cfile" \
    "$root/bootstrap/runtime/cardinal_rt.c" "$root/bootstrap/runtime/cardinal_gc.c"

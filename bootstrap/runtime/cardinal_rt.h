@@ -22,8 +22,8 @@ cl_array cl_array_new(uint32_t elemsz, uint64_t len);
 void    *cl_array_at(cl_array a, uint64_t i);   /* bounds-checked; panics on OOB */
 uint64_t cl_str_len(cl_str s);                  /* codepoint count */
 
-void cl_panic(cl_str msg);
-void cl_panic_cstr(const char *msg);
+_Noreturn void cl_panic(cl_str msg);
+_Noreturn void cl_panic_cstr(const char *msg);
 
 void cl_print_i64(int64_t v);
 void cl_print_u64(uint64_t v);

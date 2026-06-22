@@ -359,7 +359,11 @@ class Checker:
         elif k is Set:
             self.check_set(s, scope, sig)
         elif k is Do:
-            self.check_expr(s.call, scope, sig, None)
+            dt = self.check_expr(s.call, scope, sig, None)
+            # DESIGN §7.2: a discarded untyped numeric literal is uninferable.
+            if isinstance(dt, (UntypedIntT, UntypedFloatT)):
+                self.err("untyped numeric literal has no inferable type; annotate "
+                         "it (e.g. 4i64) — DESIGN §7.2 (no fallback literal type)", s.call)
         elif k is If:
             for cond, body in s.branches:
                 ct = self.check_expr(cond, scope, sig, BOOL)
@@ -640,7 +644,11 @@ class Checker:
         if isinstance(callee, Path) and callee.parts[0] in ("io",) \
                 and (sig.imported.get("io") or self.sigs.get("io")):
             for a in e.args:
-                self.check_expr(a, scope, sig, None)   # io accepts anything
+                at = self.check_expr(a, scope, sig, None)   # io accepts any concrete type
+                # DESIGN §7.2: but not an uninferable untyped literal.
+                if isinstance(at, (UntypedIntT, UntypedFloatT)):
+                    self.err("untyped numeric literal has no inferable type; annotate "
+                             "it (e.g. 4i64) — DESIGN §7.2 (no fallback literal type)", a)
             return UNIT
 
         ft = self.check_expr(callee, scope, sig, None)
@@ -838,7 +846,12 @@ class Checker:
         numa = isinstance(a, (IntT, FloatT, UntypedIntT, UntypedFloatT))
         numb = isinstance(b, (IntT, FloatT, UntypedIntT, UntypedFloatT))
         if numa and numb:
-            self.unify_num([a, b], node)
+            res = self.unify_num([a, b], node)
+            # DESIGN §7.2: no fallback literal type. If neither operand pins a
+            # concrete numeric type, the literals are uninferable -> compile error.
+            if isinstance(res, (UntypedIntT, UntypedFloatT)):
+                self.err("comparison operands are untyped literals; annotate one "
+                         "(e.g. 4i64) — DESIGN §7.2 (no fallback literal type)", node)
             return
         if a == CHAR and b == CHAR:        # chars compare by codepoint
             return
