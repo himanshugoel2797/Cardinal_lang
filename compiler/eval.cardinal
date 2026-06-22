@@ -1,0 +1,1095 @@
+module eval
+
+# A tree-walking evaluator for Cardinal, written in Cardinal.
+#
+# Port of the eval/exec core of bootstrap/interpreter.py. Consumes the AST from
+# parser.cardinal and runs it. Runtime support is DELEGATED to the host: this
+# program runs under the bootstrap interpreter, so io/strings/convert/fs/sys and
+# panic are reachable as ordinary calls. Runtime errors call the host `panic`
+# (which aborts with `panic: <msg>` / exit 101, matching the reference), so the
+# Flow type only needs break/continue/return.
+#
+# Closes the loop lex -> parse -> check -> eval, all in Cardinal.
+#
+# SCOPE (this stage): single-module programs over ints/floats/bool/char/str —
+# literals, prefix operators, casts, full control flow, functions + recursion,
+# and the io/strings/convert/sys builtins + len/panic. Aggregates (struct/array/
+# vec/map), sum types/match, and closures are added in following commits.
+
+import io
+import strings
+import convert
+import fs
+import sys
+import parser
+
+# --------------------------------------------------------------------------- #
+# Runtime values
+# --------------------------------------------------------------------------- #
+
+type Value
+    VInt    (val i64) (ty str)        # ty "" = untyped literal
+    VFloat  (text str) (ty str)       # mantissa kept as text (no float parser)
+    VBool   (b bool)
+    VChar   (cp u32)
+    VStr    (s str)
+    VNull
+    VUnit
+    VClosure (clo Closure)
+    VBuiltin (name str)
+end
+
+# A variable lives in a Cell so capture-by-reference closures share mutations.
+struct Cell
+    slot {Value}      # 1-element mutable box
+    mutable bool
+end
+
+type Env
+    ENil
+    ENode (vars {str Cell}) (parent Env)
+end
+
+struct Closure
+    params {Param}
+    ret Ty
+    has_ret bool
+    body {Stmt}
+    name str
+end
+
+type Flow
+    FNormal
+    FBreak
+    FContinue
+    FReturn (val Value)
+end
+
+struct CellLook
+    found bool
+    cell Cell
+end
+
+# The interpreter holds the single module's top-level environment plus the
+# lexical `checked` flag (a 1-element cell so it can be saved/restored).
+struct Interp
+    genv Env
+    chk {bool}
+    args {str}
+end
+
+# --------------------------------------------------------------------------- #
+# Value helpers
+# --------------------------------------------------------------------------- #
+
+func rt_panic (msg str) -> Value
+    do (panic msg)
+    return VUnit
+end
+
+func truth (v Value) -> bool
+    match v
+        case (VBool b)
+            return b
+        else
+            do (panic "condition must be bool")
+    end
+    return false
+end
+
+func as_int (v Value) -> Value
+    match v
+        case (VInt n t)
+            return v
+        case (VChar cp)
+            return (VInt val: (as cp i64) ty: "u32")
+        else
+            do (panic "expected integer operand")
+    end
+    return (VInt val: 0 ty: "")
+end
+
+func int_val (v Value) -> i64
+    match v
+        case (VInt n t)
+            return n
+        case (VChar cp)
+            return (as cp i64)
+        else
+            do (panic "expected integer")
+    end
+    return 0
+end
+
+func int_ty (v Value) -> str
+    match v
+        case (VInt n t)
+            return t
+        case (VChar cp)
+            return "u32"
+        else
+            return ""
+    end
+    return ""
+end
+
+func is_float_v (v Value) -> bool
+    match v
+        case (VFloat t s)
+            return true
+        else
+            return false
+    end
+    return false
+end
+
+func is_int_v (v Value) -> bool
+    match v
+        case (VInt n t)
+            return true
+        case (VChar cp)
+            return true
+        else
+            return false
+    end
+    return false
+end
+
+# --------------------------------------------------------------------------- #
+# Display (mirrors interpreter.py:_display)
+# --------------------------------------------------------------------------- #
+
+func disp (v Value) -> str
+    match v
+        case (VInt n t)
+            return (convert::int_to_str n)
+        case (VFloat t s)
+            return t
+        case (VBool b)
+            if b
+                return "true"
+            end
+            return "false"
+        case (VChar cp)
+            return (strings::from_char (convert::chr cp))
+        case (VStr s)
+            return s
+        case VNull
+            return "null"
+        case VUnit
+            return "unit"
+        case (VClosure c)
+            return "<closure>"
+        case (VBuiltin nm)
+            return "<builtin>"
+    end
+    return "?"
+end
+
+# --------------------------------------------------------------------------- #
+# Integer wrapping (DESIGN §5.2). i64/u64 use host 64-bit semantics; narrower
+# types are masked. `checked` overflow aborts via host panic.
+# --------------------------------------------------------------------------- #
+
+func int_bits (ty str) -> i64
+    if (or (strings::eq ty "i8") (strings::eq ty "u8"))
+        return 8
+    end
+    if (or (strings::eq ty "i16") (strings::eq ty "u16"))
+        return 16
+    end
+    if (or (strings::eq ty "i32") (strings::eq ty "u32"))
+        return 32
+    end
+    return 64
+end
+
+func int_signed (ty str) -> bool
+    return (or (or (strings::eq ty "i8") (strings::eq ty "i16")) (or (strings::eq ty "i32") (strings::eq ty "i64")))
+end
+
+func wrap_int (ip Interp) (value i64) (ty str) -> Value
+    if (strings::eq ty "")
+        return (VInt val: value ty: "")
+    end
+    let bits = (int_bits ty)
+    if (>= bits 64)
+        return (VInt val: value ty: ty)
+    end
+    let mask = (- (shl 1i64 bits) 1)
+    let v = (band value mask)
+    if (int_signed ty)
+        if (>= v (shl 1i64 (- bits 1)))
+            set v = (- v (shl 1i64 bits))
+        end
+    end
+    if ip.chk[0]
+        if (not (== v value))
+            do (panic (strings::concat "integer overflow in " (strings::concat ty " (checked)")))
+        end
+    end
+    return (VInt val: v ty: ty)
+end
+
+# --------------------------------------------------------------------------- #
+# Environments
+# --------------------------------------------------------------------------- #
+
+func new_env (parent Env) -> Env
+    return (ENode vars: (map str Cell) parent: parent)
+end
+
+func env_define (env Env) (name str) (val Value) (mutable bool) -> unit
+    match env
+        case (ENode vars parent)
+            let vmap = vars
+            let slot {Value} = (vec Value)
+            do (push slot val)
+            set vmap[name] = (Cell slot: slot mutable: mutable)
+        else
+            do (panic "define on empty env")
+    end
+end
+
+func env_cell (env Env) (name str) -> CellLook
+    match env
+        case (ENode vars parent)
+            if (map_has vars name)
+                return (CellLook found: true cell: vars[name])
+            end
+            return (env_cell parent name)
+        else
+            return (CellLook found: false cell: (Cell slot: (vec Value) mutable: false))
+    end
+    return (CellLook found: false cell: (Cell slot: (vec Value) mutable: false))
+end
+
+func cell_get (c Cell) -> Value
+    return c.slot[0]
+end
+
+func cell_set (c Cell) (val Value) -> unit
+    set c.slot[0] = val
+end
+
+# --------------------------------------------------------------------------- #
+# copy_value — structs would deep-copy; in this stage all values are scalars or
+# shared references, so copying is identity.
+# --------------------------------------------------------------------------- #
+
+func copy_value (v Value) -> Value
+    return v
+end
+
+# --------------------------------------------------------------------------- #
+# Coercion (the only implicit step: untyped literal -> concrete numeric)
+# --------------------------------------------------------------------------- #
+
+func coerce (ip Interp) (v Value) (node Ty) -> Value
+    match node
+        case (TyName name)
+            return (coerce_named ip v name)
+        else
+            return v
+    end
+    return v
+end
+
+func coerce_named (ip Interp) (v Value) (name str) -> Value
+    if (is_int_type name)
+        match v
+            case (VInt n t)
+                if (strings::eq t "")
+                    return (VInt val: n ty: name)
+                end
+                if (strings::eq t name)
+                    return v
+                end
+                return (rt_panic (strings::concat "expected " (strings::concat name (strings::concat ", got " (strings::concat t " (use a cast)")))))
+            else
+                return (rt_panic (strings::concat "expected " name))
+        end
+    end
+    if (is_float_type name)
+        match v
+            case (VFloat t s)
+                return (VFloat text: t ty: name)
+            else
+                return (rt_panic (strings::concat "expected " name))
+        end
+    end
+    return v
+end
+
+func is_int_type (s str) -> bool
+    let v {str} = (vec str)
+    do (push v "i8")
+    do (push v "i16")
+    do (push v "i32")
+    do (push v "i64")
+    do (push v "u8")
+    do (push v "u16")
+    do (push v "u32")
+    do (push v "u64")
+    return (str_in_vec s v)
+end
+
+func is_float_type (s str) -> bool
+    return (or (strings::eq s "f32") (strings::eq s "f64"))
+end
+
+func str_in_vec (s str) (v {str}) -> bool
+    let i = 0u64
+    while (< i (len v))
+        if (strings::eq v[i] s)
+            return true
+        end
+        set i = (+ i 1)
+    end
+    return false
+end
+
+# --------------------------------------------------------------------------- #
+# Operators
+# --------------------------------------------------------------------------- #
+
+func unify_int_ty (a Value) (b Value) -> str
+    let ta = (int_ty a)
+    let tb = (int_ty b)
+    if (and (not (strings::eq ta "")) (not (strings::eq tb "")))
+        if (not (strings::eq ta tb))
+            do (panic "mismatched integer types (no implicit promotion)")
+        end
+        return ta
+    end
+    if (not (strings::eq ta ""))
+        return ta
+    end
+    return tb
+end
+
+func arith (ip Interp) (op str) (args {Value}) -> Value
+    # unary minus
+    if (and (strings::eq op "-") (== (len args) 1u64))
+        let x = args[0]
+        if (is_float_v x)
+            return (neg_float x)
+        end
+        let iv = (as_int x)
+        return (wrap_int ip (- 0 (int_val iv)) (int_ty iv))
+    end
+    if (any_float args)
+        return (float_arith op args)
+    end
+    let ty = (fold_int_ty args)
+    let acc = (int_val args[0])
+    let i = 1u64
+    while (< i (len args))
+        let x = (int_val args[i])
+        if (strings::eq op "+")
+            set acc = (+ acc x)
+        elsif (strings::eq op "-")
+            set acc = (- acc x)
+        elsif (strings::eq op "*")
+            set acc = (* acc x)
+        elsif (strings::eq op "/")
+            if (== x 0)
+                do (panic "integer division by zero")
+            end
+            set acc = (/ acc x)
+        elsif (strings::eq op "%")
+            if (== x 0)
+                do (panic "integer modulo by zero")
+            end
+            set acc = (% acc x)
+        else
+            do (panic "bad arith op")
+        end
+        set i = (+ i 1)
+    end
+    return (wrap_int ip acc ty)
+end
+
+func neg_float (x Value) -> Value
+    match x
+        case (VFloat t s)
+            return (VFloat text: (strings::concat "-" t) ty: s)
+        else
+            return x
+    end
+    return x
+end
+
+func any_float (args {Value}) -> bool
+    let i = 0u64
+    while (< i (len args))
+        if (is_float_v args[i])
+            return true
+        end
+        set i = (+ i 1)
+    end
+    return false
+end
+
+func fold_int_ty (args {Value}) -> str
+    let ty = ""
+    let i = 0u64
+    while (< i (len args))
+        let t = (int_ty args[i])
+        if (not (strings::eq t ""))
+            if (and (not (strings::eq ty "")) (not (strings::eq ty t)))
+                do (panic "mismatched integer types (no implicit promotion)")
+            end
+            set ty = t
+        end
+        set i = (+ i 1)
+    end
+    return ty
+end
+
+# Float arithmetic is not host-supported on text; we only support it minimally
+# by erroring — examples in this stage avoid float math. (Added with a real
+# float representation in a later commit.)
+func float_arith (op str) (args {Value}) -> Value
+    return (rt_panic "float arithmetic not yet supported in the Cardinal evaluator")
+end
+
+func bitwise (ip Interp) (op str) (args {Value}) -> Value
+    if (strings::eq op "bnot")
+        let iv = (as_int args[0])
+        return (wrap_int ip (bnot (int_val iv)) (int_ty iv))
+    end
+    if (or (strings::eq op "shl") (strings::eq op "shr"))
+        let a = (as_int args[0])
+        let b = (as_int args[1])
+        let r = 0i64
+        if (strings::eq op "shl")
+            set r = (shl (int_val a) (int_val b))
+        else
+            set r = (shr (int_val a) (int_val b))
+        end
+        return (wrap_int ip r (int_ty a))
+    end
+    let ty = (fold_int_ty args)
+    let acc = (int_val args[0])
+    let i = 1u64
+    while (< i (len args))
+        let x = (int_val args[i])
+        if (strings::eq op "band")
+            set acc = (band acc x)
+        elsif (strings::eq op "bor")
+            set acc = (bor acc x)
+        elsif (strings::eq op "bxor")
+            set acc = (bxor acc x)
+        else
+            do (panic "bad bitwise op")
+        end
+        set i = (+ i 1)
+    end
+    return (wrap_int ip acc ty)
+end
+
+func compare (op str) (args {Value}) -> Value
+    let a = args[0]
+    let b = args[1]
+    if (or (is_int_v a) (is_int_v b))
+        let x = (int_val a)
+        let y = (int_val b)
+        return (VBool b: (cmp_i64 op x y))
+    end
+    # equality-only types: bool, str, char, null
+    if (strings::eq op "==")
+        return (VBool b: (val_eq a b))
+    end
+    if (strings::eq op "!=")
+        return (VBool b: (not (val_eq a b)))
+    end
+    return (rt_panic "ordering comparison needs numbers")
+end
+
+func cmp_i64 (op str) (x i64) (y i64) -> bool
+    if (strings::eq op "<")
+        return (< x y)
+    end
+    if (strings::eq op "<=")
+        return (<= x y)
+    end
+    if (strings::eq op ">")
+        return (> x y)
+    end
+    if (strings::eq op ">=")
+        return (>= x y)
+    end
+    if (strings::eq op "==")
+        return (== x y)
+    end
+    return (not (== x y))
+end
+
+func val_eq (a Value) (b Value) -> bool
+    match a
+        case (VInt n t)
+            return (and (is_int_v b) (== n (int_val b)))
+        case (VBool ba)
+            match b
+                case (VBool bb)
+                    return (== ba bb)
+                else
+                    return false
+            end
+        case (VStr sa)
+            match b
+                case (VStr sb)
+                    return (strings::eq sa sb)
+                else
+                    return false
+            end
+        case (VChar ca)
+            match b
+                case (VChar cb)
+                    return (== ca cb)
+                else
+                    return false
+            end
+        case VNull
+            match b
+                case VNull
+                    return true
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+# --------------------------------------------------------------------------- #
+# Casts
+# --------------------------------------------------------------------------- #
+
+func eval_cast (ip Interp) (env Env) (ex Expr) (ty Ty) -> Value
+    let v = (eval ip env ex)
+    match ty
+        case (TyName name)
+            if (is_int_type name)
+                let src = 0i64
+                if (is_int_v v)
+                    set src = (int_val v)
+                else
+                    do (panic "cannot cast non-numeric to int")
+                end
+                return (wrap_int ip src name)
+            end
+            if (is_float_type name)
+                do (panic "float casts not yet supported in the Cardinal evaluator")
+            end
+            return (rt_panic "unsupported cast target")
+        else
+            return (rt_panic "cast target must be a numeric type")
+    end
+    return VUnit
+end
+
+# --------------------------------------------------------------------------- #
+# Expression evaluation
+# --------------------------------------------------------------------------- #
+
+func eval (ip Interp) (env Env) (e Expr) -> Value
+    match e
+        case (EInt value suffix)
+            return (VInt val: value ty: suffix)
+        case (EFloat text suffix)
+            return (VFloat text: text ty: suffix)
+        case (EBool value)
+            return (VBool b: value)
+        case (EChar cp)
+            return (VChar cp: cp)
+        case (EStr value)
+            return (VStr s: value)
+        case ENull
+            return VNull
+        case (EName ident)
+            return (lookup ip env ident)
+        case (EPath parts)
+            return (rt_panic (strings::concat "unsupported path " parts[0]))
+        case (EOp op args)
+            return (eval_op ip env op args)
+        case (ECast ex ty)
+            return (eval_cast ip env ex ty)
+        case (ECall callee args)
+            return (eval_call ip env callee args)
+        else
+            return (rt_panic "unsupported expression in this evaluator stage")
+    end
+    return VUnit
+end
+
+func lookup (ip Interp) (env Env) (name str) -> Value
+    let c = (env_cell env name)
+    if c.found
+        return (cell_get c.cell)
+    end
+    let g = (env_cell ip.genv name)
+    if g.found
+        return (cell_get g.cell)
+    end
+    # global builtins
+    if (or (or (strings::eq name "len") (strings::eq name "panic")) (or (strings::eq name "push") (strings::eq name "pop")))
+        return (VBuiltin name: name)
+    end
+    return (rt_panic (strings::concat "undefined name " name))
+end
+
+func eval_op (ip Interp) (env Env) (op str) (args {Expr}) -> Value
+    if (strings::eq op "and")
+        let i = 0u64
+        while (< i (len args))
+            if (not (truth (eval ip env args[i])))
+                return (VBool b: false)
+            end
+            set i = (+ i 1)
+        end
+        return (VBool b: true)
+    end
+    if (strings::eq op "or")
+        let i = 0u64
+        while (< i (len args))
+            if (truth (eval ip env args[i]))
+                return (VBool b: true)
+            end
+            set i = (+ i 1)
+        end
+        return (VBool b: false)
+    end
+    if (strings::eq op "not")
+        return (VBool b: (not (truth (eval ip env args[0]))))
+    end
+    let vals {Value} = (vec Value)
+    let i = 0u64
+    while (< i (len args))
+        do (push vals (eval ip env args[i]))
+        set i = (+ i 1)
+    end
+    if (is_arith op)
+        return (arith ip op vals)
+    end
+    if (is_cmp op)
+        return (compare op vals)
+    end
+    if (is_bit op)
+        return (bitwise ip op vals)
+    end
+    return (rt_panic (strings::concat "unknown operator " op))
+end
+
+func is_arith (op str) -> bool
+    let v {str} = (vec str)
+    do (push v "+")
+    do (push v "-")
+    do (push v "*")
+    do (push v "/")
+    do (push v "%")
+    return (str_in_vec op v)
+end
+
+func is_cmp (op str) -> bool
+    let v {str} = (vec str)
+    do (push v "<")
+    do (push v "<=")
+    do (push v ">")
+    do (push v ">=")
+    do (push v "==")
+    do (push v "!=")
+    return (str_in_vec op v)
+end
+
+func is_bit (op str) -> bool
+    let v {str} = (vec str)
+    do (push v "band")
+    do (push v "bor")
+    do (push v "bxor")
+    do (push v "shl")
+    do (push v "shr")
+    do (push v "bnot")
+    return (str_in_vec op v)
+end
+
+# --------------------------------------------------------------------------- #
+# Calls
+# --------------------------------------------------------------------------- #
+
+func eval_call (ip Interp) (env Env) (callee Expr) (args {Expr}) -> Value
+    # builtin module path call:  io::println, strings::concat, etc.
+    match callee
+        case (EPath parts)
+            let argv {Value} = (vec Value)
+            let i = 0u64
+            while (< i (len args))
+                do (push argv (eval ip env args[i]))
+                set i = (+ i 1)
+            end
+            return (call_builtin_path ip parts[0] parts[1] argv)
+        else
+            pass
+    end
+    let f = (eval ip env callee)
+    let argv {Value} = (vec Value)
+    let i = 0u64
+    while (< i (len args))
+        do (push argv (eval ip env args[i]))
+        set i = (+ i 1)
+    end
+    return (apply ip f argv)
+end
+
+func apply (ip Interp) (f Value) (argv {Value}) -> Value
+    match f
+        case (VBuiltin nm)
+            return (call_global_builtin ip nm argv)
+        case (VClosure c)
+            return (call_closure ip c argv)
+        else
+            return (rt_panic "attempt to call a non-function")
+    end
+    return VUnit
+end
+
+func call_closure (ip Interp) (c Closure) (argv {Value}) -> Value
+    if (not (== (len argv) (len c.params)))
+        do (panic (strings::concat c.name ": wrong argument count"))
+    end
+    let call_env = (new_env ip.genv)
+    let i = 0u64
+    while (< i (len c.params))
+        let p = c.params[i]
+        let a = (coerce ip argv[i] p.ty)
+        do (env_define call_env p.name (copy_value a) true)
+        set i = (+ i 1)
+    end
+    let saved = ip.chk[0]
+    set ip.chk[0] = false
+    let fl = (exec_block ip call_env c.body)
+    set ip.chk[0] = saved
+    let ret = VUnit
+    match fl
+        case (FReturn v)
+            set ret = v
+        else
+            set ret = VUnit
+    end
+    if c.has_ret
+        set ret = (coerce ip ret c.ret)
+    end
+    return (copy_value ret)
+end
+
+# --------------------------------------------------------------------------- #
+# Builtins
+# --------------------------------------------------------------------------- #
+
+func call_global_builtin (ip Interp) (name str) (argv {Value}) -> Value
+    if (strings::eq name "panic")
+        let m = ""
+        if (> (len argv) 0u64)
+            set m = (disp argv[0])
+        end
+        do (panic m)
+        return VUnit
+    end
+    if (strings::eq name "len")
+        match argv[0]
+            case (VStr s)
+                return (VInt val: (as (len (strings::chars s)) i64) ty: "u64")
+            else
+                return (rt_panic "len: unsupported in this stage")
+        end
+    end
+    return (rt_panic (strings::concat "unsupported builtin " name))
+end
+
+func call_builtin_path (ip Interp) (m str) (f str) (argv {Value}) -> Value
+    if (strings::eq m "io")
+        if (strings::eq f "println")
+            do (io::println (join_disp argv))
+            return VUnit
+        end
+        if (strings::eq f "print")
+            do (io::print (join_disp argv))
+            return VUnit
+        end
+    end
+    if (strings::eq m "strings")
+        if (strings::eq f "concat")
+            return (VStr s: (strings::concat (as_str argv[0]) (as_str argv[1])))
+        end
+        if (strings::eq f "eq")
+            return (VBool b: (strings::eq (as_str argv[0]) (as_str argv[1])))
+        end
+        if (strings::eq f "from_char")
+            return (VStr s: (strings::from_char (convert::chr (as_cp argv[0]))))
+        end
+        if (strings::eq f "substr")
+            return (VStr s: (strings::substr (as_str argv[0]) (as (int_val argv[1]) u64) (as (int_val argv[2]) u64)))
+        end
+    end
+    if (strings::eq m "convert")
+        if (strings::eq f "int_to_str")
+            return (VStr s: (convert::int_to_str (int_val argv[0])))
+        end
+        if (strings::eq f "str_to_int")
+            return (VInt val: (convert::str_to_int (as_str argv[0])) ty: "i64")
+        end
+        if (strings::eq f "ord")
+            return (VInt val: (as (convert::ord (convert::chr (as_cp argv[0]))) i64) ty: "u32")
+        end
+        if (strings::eq f "chr")
+            return (VChar cp: (as (int_val argv[0]) u32))
+        end
+    end
+    return (rt_panic (strings::concat "unsupported builtin path " (strings::concat m (strings::concat "::" f))))
+end
+
+func join_disp (argv {Value}) -> str
+    let out = ""
+    let i = 0u64
+    while (< i (len argv))
+        set out = (strings::concat out (disp argv[i]))
+        set i = (+ i 1)
+    end
+    return out
+end
+
+func as_str (v Value) -> str
+    match v
+        case (VStr s)
+            return s
+        else
+            do (panic "expected str")
+    end
+    return ""
+end
+
+func as_cp (v Value) -> u32
+    match v
+        case (VChar cp)
+            return cp
+        else
+            do (panic "expected char")
+    end
+    return 0u32
+end
+
+# --------------------------------------------------------------------------- #
+# Statement execution (returns a Flow)
+# --------------------------------------------------------------------------- #
+
+func exec_block (ip Interp) (env Env) (body {Stmt}) -> Flow
+    let inner = (new_env env)
+    let i = 0u64
+    while (< i (len body))
+        let fl = (exec_stmt ip inner body[i])
+        match fl
+            case FNormal
+                pass
+            else
+                return fl
+        end
+        set i = (+ i 1)
+    end
+    return FNormal
+end
+
+func exec_stmt (ip Interp) (env Env) (s Stmt) -> Flow
+    match s
+        case (SLet name ty has_ty expr mutable)
+            let val = (eval ip env expr)
+            if has_ty
+                set val = (coerce ip val ty)
+            end
+            do (env_define env name (copy_value val) mutable)
+            return FNormal
+        case (SSet target expr)
+            do (exec_set ip env target expr)
+            return FNormal
+        case (SDo call)
+            do (eval ip env call)
+            return FNormal
+        case (SIf branches orelse has_else)
+            let i = 0u64
+            while (< i (len branches))
+                let br = branches[i]
+                if (truth (eval ip env br.cond))
+                    return (exec_block ip env br.body)
+                end
+                set i = (+ i 1)
+            end
+            if has_else
+                return (exec_block ip env orelse)
+            end
+            return FNormal
+        case (SWhile cond body)
+            while (truth (eval ip env cond))
+                let fl = (exec_block ip env body)
+                match fl
+                    case FBreak
+                        return FNormal
+                    case (FReturn v)
+                        return fl
+                    else
+                        pass
+                end
+            end
+            return FNormal
+        case (SForNum var start stop stride has_step body)
+            return (exec_fornum ip env var start stop stride has_step body)
+        case (SForIn var iter body)
+            return (rt_flow "for-in not yet supported in this evaluator stage")
+        case (SLoop body)
+            while true
+                let fl = (exec_block ip env body)
+                match fl
+                    case FBreak
+                        return FNormal
+                    case (FReturn v)
+                        return fl
+                    else
+                        pass
+                end
+            end
+            return FNormal
+        case SBreak
+            return FBreak
+        case SContinue
+            return FContinue
+        case SPass
+            return FNormal
+        case (SReturn expr has_expr)
+            if has_expr
+                return (FReturn val: (eval ip env expr))
+            end
+            return (FReturn val: VUnit)
+        case (SChecked body)
+            let saved = ip.chk[0]
+            set ip.chk[0] = true
+            let fl = (exec_block ip env body)
+            set ip.chk[0] = saved
+            return fl
+        case (SMatch scrut arms orelse has_else)
+            return (rt_flow "match not yet supported in this evaluator stage")
+    end
+    return FNormal
+end
+
+func rt_flow (msg str) -> Flow
+    do (panic msg)
+    return FNormal
+end
+
+func exec_fornum (ip Interp) (env Env) (var str) (startE Expr) (stopE Expr) (strideE Expr) (has_step bool) (body {Stmt}) -> Flow
+    let sv = (as_int (eval ip env startE))
+    let ev = (as_int (eval ip env stopE))
+    let ty = (unify_int_ty sv ev)
+    let stepv = 1i64
+    if has_step
+        set stepv = (int_val (eval ip env strideE))
+    end
+    let i = (int_val sv)
+    let limit = (int_val ev)
+    while (< i limit)
+        let loopenv = (new_env env)
+        do (env_define loopenv var (VInt val: i ty: ty) true)
+        let fl = (exec_block ip loopenv body)
+        match fl
+            case FBreak
+                return FNormal
+            case (FReturn v)
+                return fl
+            else
+                pass
+        end
+        set i = (+ i stepv)
+    end
+    return FNormal
+end
+
+func exec_set (ip Interp) (env Env) (target Expr) (expr Expr) -> unit
+    let rhs = (eval ip env expr)
+    match target
+        case (EName ident)
+            let c = (env_cell env ident)
+            if (not c.found)
+                set c = (env_cell ip.genv ident)
+            end
+            if (not c.found)
+                do (panic (strings::concat "assignment to undefined " ident))
+            end
+            if (not c.cell.mutable)
+                do (panic (strings::concat "cannot assign to immutable " ident))
+            end
+            do (cell_set c.cell (copy_value (coerce_like rhs (cell_get c.cell))))
+        else
+            do (panic "unsupported assignment target in this evaluator stage")
+    end
+end
+
+func coerce_like (rhs Value) (cur Value) -> Value
+    match cur
+        case (VInt n t)
+            if (not (strings::eq t ""))
+                match rhs
+                    case (VInt rn rt)
+                        return (VInt val: rn ty: t)
+                    else
+                        return rhs
+                end
+            end
+            return rhs
+        else
+            return rhs
+    end
+    return rhs
+end
+
+# --------------------------------------------------------------------------- #
+# Program entry
+# --------------------------------------------------------------------------- #
+
+# Populate the top-level env with the module's function/const definitions, then
+# call main. Single-module only in this stage.
+export func run (src str) (args {str}) -> i32
+    let mod = (parser::parse src)
+    let genv = (new_env ENil)
+    let chk {bool} = (vec bool)
+    do (push chk false)
+    let ip = (Interp genv: genv chk: chk args: args)
+
+    for d in mod.decls
+        match d
+            case (DFunc name params ret has_ret body exported)
+                let c = (Closure params: params ret: ret has_ret: has_ret body: body name: name)
+                do (env_define genv name (VClosure clo: c) false)
+            case (DConst name ty has_ty cexpr exported)
+                let v = (eval ip genv cexpr)
+                if has_ty
+                    set v = (coerce ip v ty)
+                end
+                do (env_define genv name (copy_value v) false)
+            else
+                pass
+        end
+    end
+
+    let mc = (env_cell genv "main")
+    if (not mc.found)
+        do (panic "no 'main' function")
+    end
+    let r = (apply ip (cell_get mc.cell) (vec Value))
+    match r
+        case (VInt n t)
+            return (as n i32)
+        else
+            return 0i32
+    end
+    return 0i32
+end

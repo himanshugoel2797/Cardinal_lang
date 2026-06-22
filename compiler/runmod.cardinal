@@ -1,0 +1,21 @@
+module runmod
+
+# Harness: run a Cardinal program with the Cardinal evaluator.
+# argv[0] = program path; argv[1:] = program args.
+
+import io
+import fs
+import sys
+import eval
+
+func main () -> i32
+    let a = (sys::args)
+    let path = a[0]
+    let rest {str} = (vec str)
+    let i = 1u64
+    while (< i (len a))
+        do (push rest a[i])
+        set i = (+ i 1)
+    end
+    return (eval::run (fs::read_file path) rest)
+end
