@@ -790,13 +790,20 @@ check.
   examples and a 110-program differential test (zero verdict disagreements),
   adversarially reviewed. Tests: `compiler/checktest.cardinal`,
   `compiler/checkall.cardinal`.
-  - [ ] **Milestone B (next): cross-module USER imports** — load other
-    `.cardinal` files (via `fs`), recursive sig building, the `imported`/
-    `selective`/`sigs` registry, imported type/enum/variant resolution. This
-    is what unlocks self-checking (the compiler modules import each other).
-    Currently a `mod::value` path to a non-builtin module reports
-    "cannot resolve path"; errors don't carry line numbers yet.
-- [ ] **Backend** in Cardinal.
+  - [x] **Milestone B: cross-module USER imports** — module registry
+    (`{str Sig}`), `load_sig` (resolve a module name to a file via `fs::exists`,
+    parse, recursively `build_sig`; builtin synthetic sigs; cache = cycle
+    guard), selective imports with export checks, and cross-module resolution
+    of types/enums/variants/values. New entry `check_file(src, searchdirs)`.
+    **The Cardinal checker now type-checks the whole compiler — lexer, parser,
+    and itself — and agrees with the Python checker on all examples + all
+    compiler modules (13/13, zero disagreements).** This is the type-checking
+    half of self-hosting. Reproduce with `sh compiler/difftest.sh`. Added the
+    `fs::exists` builtin (needed for module-file probing without try/catch).
+    Remaining nit: errors don't carry source line numbers yet.
+- [ ] **Backend** in Cardinal — next: lower the checked AST to an output
+  (e.g. C, or the interpreter's own evaluation), enabling end-to-end
+  self-compilation.
 
 Implementation notes learned porting to Cardinal (apply to the checker too):
 keyword-colliding identifiers are illegal, so field/var names like `step`/`packed`
