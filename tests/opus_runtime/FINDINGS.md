@@ -14,24 +14,20 @@ C and x86 share the C runtime.
    (Python `%g`), C/x86 `-nan` (glibc prints the sign bit). FIXED: the runtime
    prints `nan` for any NaN in cl_f64_to_str and cl_print_f64. (cardinal_rt.c)
 
-## CONFIRMED, NOT YET FIXED (need deeper diagnosis or a semantics decision)
+## FIXED (after root-causing — it was NOT a GC bug)
 
-3. **x86 string corruption — to_str of an array with an EMPTY element, and string
-   accumulation under GC pressure.** HIGH PRIORITY (memory-safety smell).
-   - `x86_tostr_empty_elem` (deterministic): `to_str(["x" "y" ""])` → interp/C
-     `[x y ]`, x86 `x y ]` (drops the leading `[`). The empty-element control
-     (`x86_tostr_strarray`, no empty element) PASSES, so the empty string is the
-     trigger — this is NOT purely GC timing.
-   - `longstr_eq` (GC-pressure dependent): `set s = (concat s "ab")` ×1000 → interp/C
-     len 2000, x86 len 0; `x86_nested_concat_arg`: `concat("A", concat("B","C"))`
-     after a GC-pressure loop → x86 `AC` (drops `B`).
-   NOTE: an initial fix attempt (conservatively GC-rooting the 14-word scratch
-   parking region at each prologue) did NOT resolve the deterministic empty-element
-   case — so the collected/corrupted value is not (only) a parked scratch arg. The
-   real mechanism is still open: likely an x86-specific defect in empty-string
-   concat or in how a to_str accumulator local survives an allocating append.
-   Reverted that attempt; this needs a focused diagnosis (inspect the emitted asm
-   for the empty-string concat path).
+3. **x86 empty-string-literal interning collision.** The agent's "GC pressure"
+   framing was a red herring; the three repros (`x86_tostr_empty_elem`,
+   `longstr_eq`, `x86_nested_concat_arg`) share one DETERMINISTIC cause. Minimal:
+   `(strings::concat "ab" "")` → x86 `""` while `(strings::concat "[" "")` → `"["`.
+   Root cause: a regression from the embedded-NUL fix. String literals are emitted
+   `.LstrN: .ascii "<bytes>"  .LstrN_end:` and the byte length is `end - start`. An
+   EMPTY literal `.ascii ""` is 0 bytes, so its start label shares an address with
+   the NEXT entry — and `cl_strlit_n` interns by POINTER, so the empty literal and
+   its neighbour collide (whichever is evaluated first wins for both). In
+   `longstr_eq` the `""` init collided with `"ab"`, so every `concat(s,"ab")`
+   appended `""` → len 0. FIXED: emit a `.byte 0` separator after each entry's end
+   label so every literal has a distinct address. (backend_x86.cardinal)
 
 4. **`from_char` of a codepoint > 0x10FFFF** — `from_char_out_of_range`.
    `(from_char (chr 1200000u32))`: interp crashes with an uncaught Python

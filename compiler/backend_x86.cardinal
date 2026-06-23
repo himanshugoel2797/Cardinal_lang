@@ -3063,10 +3063,15 @@ export func emit (m IRModule) -> str
     # Emit each literal with a trailing end label and use .ascii (no implicit NUL
     # terminator): the byte length is end-label minus start-label, so embedded NULs
     # are preserved. cl_str_from_utf8 (see load_to_rax) takes an explicit length.
+    # A separator byte after each end label keeps every entry at a DISTINCT address —
+    # without it an EMPTY literal (.ascii "" -> 0 bytes) would share its start label's
+    # address with the next entry, and cl_strlit_n interns by pointer, so the two
+    # would collide (the first one evaluated wins for both).
     for s in (map_keys strs)
         set out = (strings::concat out (line (cat2 strs[s] ":")))
         set out = (strings::concat out (line (cat3 "    .ascii \"" (asm_escape s) "\"")))
         set out = (strings::concat out (line (cat2 strs[s] "_end:")))
+        set out = (strings::concat out (line "    .byte 0"))
     end
     set out = (strings::concat out (line "    .text"))
     # float-literal pool (filled while emitting funcs; rodata emitted at the end).
