@@ -903,7 +903,12 @@ multi-level nested capture. Deferred in the C backend: **sum types + `match`**,
 - [x] Wire the GC into the C backend — done (arrays/boxes/envs are handles; collection bounds memory under `-O2`).
 - [x] Robust rooting — precise **shadow stack** (sound at `-O2`, exact live counts).
 - [ ] Scan global/module state (managed top-level state isn't compiled yet); moving/compacting collector; the canonical GC rewritten in Cardinal.
-- [ ] C backend gaps: **sum types + `match`** (tagged-union emission + tag switch), `null`/handles/`ref`, enum-value printing (`io::print` of struct/array/vector/map now emits the interpreter's `_display` form — `(Name f: v ...)`, `[..]`, `{..}`, space-separated, recursive; struct fields print in declaration order), `for`-loop-variable capture.
+- [ ] C backend gaps (self-hosting Cardinal backend, `compiler/`): **sum types +
+  `match`** (tagged-union emission + tag switch) and **closures** (the last
+  Stage-4 work), `null`/handles/`ref`, `for`-loop-variable capture. DONE: value
+  display (`to_str` + `io::print` of struct/array/vector/map/enum — the canonical
+  `_display` form, recursive, with overridable per-type `<Type>_to_str` hooks,
+  §5.5); strings; vectors; maps.
 - [ ] IR-level optimization passes (const-folding, DCE) shared across backends.
 - [ ] Testing: golden tests + example programs; **self-compilation as the ultimate test**.
 
