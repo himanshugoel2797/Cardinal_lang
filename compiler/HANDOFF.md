@@ -1,10 +1,31 @@
-# Cardinal self-hosting compiler — handoff (next: Stage 5 self-host)
+# Cardinal self-hosting compiler — handoff (next: x86_64 aggregates + closures)
 
 Pick up here in a fresh session. This is the Cardinal-written compiler (`compiler/`)
-that runs on the Python bootstrap interpreter and emits standalone C. **Goal:
-self-host** — the compiler compiles itself to a native binary, so the Python
-bootstrap can be retired. **Stage 4 (sum types + match, closures) is DONE and
-committee-gated; the remaining big step is the Stage-5 self-host fixed point.**
+that runs on the Python bootstrap interpreter and emits native code. **Goal:
+self-host** — DONE for the C backend. Remote: `github.com/himanshugoel2797/Cardinal_lang`
+(push over SSH; the `gh` token is expired).
+
+**Status:** Stage 4 (sum types + match, closures), Stage 5 (self-host fixed point),
+and the reflection API are all DONE + committed. A second backend — a **native
+x86_64 direct-assembler** (`backend_x86.cardinal`, emits GNU `as` AT&T, same IR +
+runtime ABI as the C backend) — is in progress: milestones 1–3 done (scalars,
+control flow, calls, strings, GC rooting, sum types, vectors, maps), all
+byte-identical to the interpreter + GC-sanitizer-clean. **Remaining x86 milestones:
+floats (xmm), by-value aggregates (value structs + arrays via the SysV MEMORY /
+register-pair ABI), and closures (`cl_closure` is 16 bytes).** See
+"x86_64 backend" below.
+
+- **Self-host:** `sh compiler/selfhost.sh` → cc1.c == cc2.c byte-identical.
+- **x86 backend:** `sh compiler/ccrun_x86.sh <prog.cardinal>` (emit `.s`: `--emit`).
+  Driver `emitx86.cardinal`; selector `backend.cardinal` ("x86_64"). Works today on
+  fib/mathx/scalar/sum/vector/map programs; panics cleanly on the unimplemented
+  aggregate/closure/float ops.
+- **Reflection (§5.6):** builtin `reflect` module — `reflect::typeof(x) -> TypeInfo
+  {name,kind,fields,variants}` (static type → descriptor) and `reflect::variant_of(x)`
+  (live sum/enum variant). Deferred: per-field type descriptors + byte offsets
+  (need a shared C-ABI layout model — note the x86 backend now HAS one,
+  `type_size/type_align/field_offset` in backend_x86.cardinal) and a type-id
+  registry/lookup.
 
 ## Operating contract (read first — the user is strict about these)
 
@@ -165,17 +186,48 @@ selective-import func-as-value mangling; sum field DISPLAY order (interpreter no
 normalizes to declaration order, matching structs/§5.5); `tag` payload-field
 collision (discriminant renamed `cl_tag` so user `tag` payloads work).
 
-## NEXT: Stage 5 — self-host fixed point
-Compile the whole compiler with itself; iterate until `cc1 == cc2` byte-identical.
-Determinism is already enforced (sorted module/type order; sorted closure-capture
-+ thunk emission; Pass 3 deterministic). Sequence: emit C for every compiler
-module via the Python-hosted compiler, build a native `cc1`; have `cc1` recompile
-the compiler → `cc2`; diff. Watch for: any remaining map-iteration-driven emission
-order; the **lib search-path gap** below (the self-host build must put the
-compiler's own module dir(s) on the search path — emitir only adds the source dir
-and `.`); and that the compiler source itself only uses already-supported features
-(it does — no closures/sum-overrides in its own source, recursive AST sums are
-covered).
+## Stage 5 — DONE (self-host fixed point)
+`sh compiler/selfhost.sh`: the Python-hosted compiler emits C for the whole
+compiler → `cc1`; `cc1` recompiles the compiler → `cc2.c`; `cc1.c == cc2.c ==
+cc3.c` byte-identical (~59k lines of C). Binaries built from the same source path
+are identical (only residual diff is the C toolchain embedding the input path).
+Enabled by native `fs::read_file`/`fs::exists`/`sys::args` (cardinal_rt.c) + the
+`int main(int argc,char**argv)` wrapper setting `cl_sys_set_args`.
+
+## NEXT: x86_64 backend — remaining milestones
+`backend_x86.cardinal` is a stack-slot machine (no regalloc): every IR temp/local/
+param → an 8-byte frame slot; ints computed in 64-bit then normalized to width;
+SysV AMD64 ABI; precise GC shadow-stack rooting; call args + values parked in
+**frame scratch slots** (NOT push/pop — a runtime call while args are pushed
+misaligns %rsp; this was the recurring segfault). A C-ABI **layout model**
+(`type_size`/`type_align`/`field_offset`/`struct_size`, from `IRModule.structs`)
+already exists for sum/struct offsets. DONE: scalars (all int widths), bool/char/
+enum, control flow, casts, calls+recursion, panic, string-literal pool (cl_strlit),
+io of scalars, GC rooting, sum types (ISumNew/Tag/Field), vec + map ops. Each op
+that's unimplemented raises `panic "x86: ..."`. Verify like the C backend but with
+`ccrun_x86.sh`; GC-stress with the same ASan+UBSan + `CARDINAL_GC_THRESHOLD=0`.
+
+Remaining (in rough order of ABI difficulty):
+1. **Floats (xmm):** ImmFloat (rodata .double / movq immediate), float arith via
+   xmm0/xmm1 (addsd/subsd/mulsd/divsd, f32 via *ss), float compares (ucomisd +
+   setcc), int↔float casts (cvtsi2sd/cvttsd2si), float args (xmm0..7) + returns
+   (xmm0), float to_str (cl_f64_to_str). Self-contained; unlocks float programs.
+2. **By-value aggregates (the hard part — SysV ABI):** value structs
+   (IStructNew/ILoadField + PField, struct params/returns) and arrays
+   (cl_array is 24 bytes; IArrNew/Lit/Get/Set/Len; cl_array_new returns 24B via a
+   hidden pointer, cl_array_at takes 24B by value on the stack). Classify each
+   aggregate's eightbytes (≤16B → up to 2 regs by INTEGER/SSE class; >16B →
+   MEMORY: on the stack as an arg, hidden-pointer return). Multi-word values need
+   >8-byte frame slots. This unlocks demo/features/strtest.
+3. **Closures:** `cl_closure {void* fn; cl_handle env}` is 16 bytes (2 slots /
+   2-reg by value); IAlloc/ILoad (boxes), IEnvNew/Store/Load, IMakeClosure
+   (load fn label addr + env into the 2-word value), ICallClosure (cast fn ptr,
+   call through it with the SysV cast). The C backend's emission is the reference.
+
+Smaller native gaps shared with the C backend: the **lib search-path** (emitir/
+emitx86 only add the source dir + `.`, so programs importing `lib/` modules —
+cdemo/usestd — fail; the self-host build doesn't need lib) and **fs::write_file**
+(maptest; read_file/exists/args exist, write_file does not yet).
 
 ## Smaller deferred items (additive)
 - **Native import search path** — `emitir.cardinal` only adds the source file's
