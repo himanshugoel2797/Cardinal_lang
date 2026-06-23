@@ -767,6 +767,16 @@ func store_rax (bx BX) (dst IVal) -> str
     return (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) ""))
 end
 
+# Store a 1-word CALL RESULT into dst, first normalizing %rax to dst's declared
+# width. A C runtime function returning a narrow type (e.g. cl_strings__eq -> bool)
+# may leave dirty upper bytes in %rax (SysV only guarantees the low bits); without
+# this, a bool result reads as a garbage non-zero. No-op for 8-byte results.
+func store_result_rax (bx BX) (dst IVal) -> str
+    let t = (iv_ty dst)
+    let out = (extend_rax (irt_bits t) (irt_signed t))
+    return (strings::concat out (store_rax bx dst))
+end
+
 # Store the low `size` bytes of register base ("c"/"a"/"d") into a memory operand.
 func store_sized (size i64) (base str) (mem str) -> str
     if (== size 1i64)
@@ -1039,7 +1049,7 @@ func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> s
             set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) "")))
             set out = (strings::concat out (line (cat3 "    movq %rdx, " (off_mem (+ (slot_off bx (iv_key dst)) 8i64)) "")))
         else
-            set out = (strings::concat out (store_rax bx dst))
+            set out = (strings::concat out (store_result_rax bx dst))
         end
     end
     return out
@@ -1195,10 +1205,70 @@ func emit_array_at (bx BX) (arr IVal) (idx IVal) -> str
     return out
 end
 
-# cl_vec_push(vc, &elem): park the element in a frame slot, pass its address.
+# Store a container element (parked in scratch[0..]) into the buffer slot whose
+# address is in %rax. ≤8B: exact sized store; multi-word (8-multiple): full words.
+func store_elem_at_rax (bx BX) (ety IRType) -> str
+    let nw = (nwords ety bx.structs)
+    if (== nw 1i64)
+        let out = (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx")))
+        return (strings::concat out (store_sized (type_size ety bx.structs) "c" "(%rax)"))
+    end
+    if (not (== (% (type_size ety bx.structs) 8i64) 0i64))
+        do (panic "x86: multi-word container element size not a multiple of 8 (later)")
+    end
+    let out = ""
+    let w = 0i64
+    while (< w nw)
+        set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ bx.scratch (* w 8i64))) ", %rcx"))))
+        set out = (strings::concat out (line (cat2 "    movq %rcx, " (cat2 (i2s (* w 8i64)) "(%rax)"))))
+        set w = (+ w 1i64)
+    end
+    return out
+end
+
+# Load a container element (buffer address in %rax) into dst's slot.
+func load_elem_from_rax (bx BX) (dst IVal) (ty IRType) -> str
+    let nw = (nwords ty bx.structs)
+    if (== nw 1i64)
+        let out = (load_sized (type_size ty bx.structs) (irt_signed ty) "(%rax)")
+        return (strings::concat out (store_rax bx dst))
+    end
+    if (not (== (% (type_size ty bx.structs) 8i64) 0i64))
+        do (panic "x86: multi-word container element size not a multiple of 8 (later)")
+    end
+    let out = ""
+    let w = 0i64
+    while (< w nw)
+        set out = (strings::concat out (line (cat2 "    movq " (cat2 (cat2 (i2s (* w 8i64)) "(%rax)") ", %rcx"))))
+        set out = (strings::concat out (line (cat3 "    movq %rcx, " (off_mem (+ (slot_off bx (iv_key dst)) (* w 8i64))) "")))
+        set w = (+ w 1i64)
+    end
+    return out
+end
+
+# Load a container element parked in scratch[0..] into dst's slot (for cl_vec_pop,
+# which writes the popped element to the address we passed).
+func load_elem_from_scratch (bx BX) (dst IVal) (ty IRType) -> str
+    let nw = (nwords ty bx.structs)
+    if (== nw 1i64)
+        let out = (load_sized (type_size ty bx.structs) (irt_signed ty) (off_mem bx.scratch))
+        return (strings::concat out (store_rax bx dst))
+    end
+    let out = ""
+    let w = 0i64
+    while (< w nw)
+        set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ bx.scratch (* w 8i64))) ", %rcx"))))
+        set out = (strings::concat out (line (cat3 "    movq %rcx, " (off_mem (+ (slot_off bx (iv_key dst)) (* w 8i64))) "")))
+        set w = (+ w 1i64)
+    end
+    return out
+end
+
+# cl_vec_push(vc, &elem): park the element's words in scratch, pass its address.
 func emit_vec_push (bx BX) (vc IVal) (sval IVal) (esz i64) -> str
-    let out = (load_to_rax bx sval)
-    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+    # park ALL of the element's words (emit_park_arg copies multi-word values),
+    # then pass &scratch (cl_vec_push copies elemsz bytes from there).
+    let out = (emit_park_arg bx sval 0i64)
     set out = (strings::concat out (load_into bx "%rdi" vc))
     set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem bx.scratch) ", %rsi"))))
     set out = (strings::concat out (line "    call cl_vec_push"))
@@ -1390,17 +1460,13 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             let out = (load_into bx "%rdi" vc)
             set out = (strings::concat out (load_into bx "%rsi" idx))
             set out = (strings::concat out (line "    call cl_vec_at"))
-            set out = (strings::concat out (load_sized (type_size ty bx.structs) (irt_signed ty) "(%rax)"))
-            return (strings::concat out (store_rax bx dst))
+            return (strings::concat out (load_elem_from_rax bx dst ty))
         case (IVecSet vc idx sval elem)
-            let esz = (type_size elem bx.structs)
-            let out = (load_to_rax bx sval)
-            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+            let out = (emit_park_arg bx sval 0i64)
             set out = (strings::concat out (load_into bx "%rdi" vc))
             set out = (strings::concat out (load_into bx "%rsi" idx))
             set out = (strings::concat out (line "    call cl_vec_at"))
-            set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
-            set out = (strings::concat out (store_sized esz "c" "(%rax)"))
+            set out = (strings::concat out (store_elem_at_rax bx elem))
             return out
         case (IVecPush vc sval elem)
             return (emit_vec_push bx vc sval (type_size elem bx.structs))
@@ -1408,8 +1474,7 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             let out = (load_into bx "%rdi" vc)
             set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem bx.scratch) ", %rsi"))))
             set out = (strings::concat out (line "    call cl_vec_pop"))
-            set out = (strings::concat out (load_sized (type_size elem bx.structs) (irt_signed elem) (off_mem bx.scratch)))
-            return (strings::concat out (store_rax bx dst))
+            return (strings::concat out (load_elem_from_scratch bx dst elem))
         case (IMapNew dst kty vty)
             let kind = "0"
             if (irt_is_str kty)
@@ -1425,18 +1490,16 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             set out = (strings::concat out (line "    call cl_map_len"))
             return (strings::concat out (store_rax bx dst))
         case (IMapGet dst mp ky kty vty)
-            let out = (load_to_rax bx ky)
-            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+            let out = (emit_park_arg bx ky 0i64)
             set out = (strings::concat out (load_into bx "%rdi" mp))
             set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem bx.scratch) ", %rsi"))))
             set out = (strings::concat out (line "    call cl_map_get"))
-            set out = (strings::concat out (load_sized (type_size vty bx.structs) (irt_signed vty) "(%rax)"))
-            return (strings::concat out (store_rax bx dst))
+            return (strings::concat out (load_elem_from_rax bx dst vty))
         case (IMapSet mp ky sval kty vty)
-            let out = (load_to_rax bx ky)
-            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
-            set out = (strings::concat out (load_to_rax bx sval))
-            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ bx.scratch 8i64)) "")))
+            # key parked in scratch[0], value words in scratch[1..] (cl_map_set copies
+            # keysz/valsz bytes from &key / &val).
+            let out = (emit_park_arg bx ky 0i64)
+            set out = (strings::concat out (emit_park_arg bx sval 1i64))
             set out = (strings::concat out (load_into bx "%rdi" mp))
             set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem bx.scratch) ", %rsi"))))
             set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem (+ bx.scratch 8i64)) ", %rdx"))))
@@ -1472,15 +1535,11 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             return (strings::concat out (store_rax bx dst))
         case (IArrGet dst arr idx ty)
             let out = (emit_array_at bx arr idx)
-            set out = (strings::concat out (load_sized (type_size ty bx.structs) (irt_signed ty) "(%rax)"))
-            return (strings::concat out (store_rax bx dst))
+            return (strings::concat out (load_elem_from_rax bx dst ty))
         case (IArrSet arr idx sval elem)
-            let esz = (type_size elem bx.structs)
-            let out = (load_to_rax bx sval)
-            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+            let out = (emit_park_arg bx sval 0i64)
             set out = (strings::concat out (emit_array_at bx arr idx))
-            set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
-            set out = (strings::concat out (store_sized esz "c" "(%rax)"))
+            set out = (strings::concat out (store_elem_at_rax bx elem))
             return out
         case (IArrLit dst elem elems)
             let esz = (type_size elem bx.structs)
@@ -1490,11 +1549,9 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             set out = (strings::concat out (line "    call cl_array_new"))
             let k = 0u64
             while (< k (len elems))
-                set out = (strings::concat out (load_to_rax bx elems[k]))
-                set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+                set out = (strings::concat out (emit_park_arg bx elems[k] 0i64))
                 set out = (strings::concat out (emit_array_at bx dst (ImmInt val: (as k i64) ty: (TyOf t: (TInt name: "u64")))))
-                set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
-                set out = (strings::concat out (store_sized esz "c" "(%rax)"))
+                set out = (strings::concat out (store_elem_at_rax bx elem))
                 set k = (+ k 1)
             end
             return out
@@ -1599,7 +1656,7 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                     set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) "")))
                     set out = (strings::concat out (line (cat3 "    movq %rdx, " (off_mem (+ (slot_off bx (iv_key dst)) 8i64)) "")))
                 else
-                    set out = (strings::concat out (store_rax bx dst))
+                    set out = (strings::concat out (store_result_rax bx dst))
                 end
             end
             return out
