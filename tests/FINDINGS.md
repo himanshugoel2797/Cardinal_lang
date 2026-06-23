@@ -140,3 +140,16 @@ assembler error — s17). The proper fix is coordinated across lexer (lossless
 literal values), both checkers (range-check bare + suffixed + float literals), and
 the interpreter (wrap untyped arithmetic per DESIGN "overflow wraps"; never raise
 an uncaught Python exception). Captured as a focused follow-up.
+
+## opus_codegen (25 tests) — 2 fixed
+x86 codegen / register-pressure stress; the park-args-to-scratch design shrugged
+off the clobber attempts. Two bugs (mirrors of earlier fixes): x86 float->u64 cast
+wrong for >= 2^63 (signed cvtt..2siq); C backend shift by a runtime count >= width
+(raw machine shift). Both FIXED + gated. See `tests/opus_codegen/FINDINGS.md`.
+
+## opus_runtime (13 tests) — 5 fixed
+strings / UTF-8 / to_str / runtime. All 5 FIXED + gated: interp str_to_int wrap;
+runtime NaN sign ("-nan"->"nan"); x86 empty-string-literal interning collision
+(a regression from the embedded-NUL .ascii change — the "GC-pressure" symptom was
+really a deterministic pointer-intern collision); chr of out-of-range / surrogate
+codepoints now panics in interp + runtime. See `tests/opus_runtime/FINDINGS.md`.
