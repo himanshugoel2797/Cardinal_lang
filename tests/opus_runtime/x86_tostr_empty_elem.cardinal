@@ -1,0 +1,9 @@
+module x86tsempty
+
+import io
+
+func main () -> i32
+    let strs = ["x" "y" ""]
+    do (io::println (to_str strs))     # [x y ]
+    return 0i32
+end

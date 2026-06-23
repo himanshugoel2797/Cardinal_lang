@@ -73,7 +73,7 @@ void cl_panic_cstr(const char *msg) {
 
 void cl_print_i64(int64_t v)  { printf("%lld", (long long)v); }
 void cl_print_u64(uint64_t v) { printf("%llu", (unsigned long long)v); }
-void cl_print_f64(double v)   { printf("%g", v); }
+void cl_print_f64(double v)   { if (v != v) printf("nan"); else printf("%g", v); }
 void cl_print_bool(int v)     { fputs(v ? "true" : "false", stdout); }
 void cl_print_str(cl_str s)   { uint64_t n; const char *b = str_bytes(s, &n); fwrite(b, 1, n, stdout); }
 void cl_print_nl(void)        { putchar('\n'); }
@@ -508,7 +508,11 @@ cl_str cl_u64_to_str(uint64_t v) {
 
 cl_str cl_f64_to_str(double v) {
     char buf[32];
-    int n = snprintf(buf, sizeof buf, "%g", v);
+    /* glibc prints a sign-bit-set NaN as "-nan"; the interpreter oracle (Python
+     * "%g") always prints "nan". Normalize so all three paths agree. (v != v) is
+     * true only for NaN. */
+    int n = (v != v) ? snprintf(buf, sizeof buf, "nan")
+                     : snprintf(buf, sizeof buf, "%g", v);
     return cl_str_from_utf8(buf, (uint64_t)n);
 }
 

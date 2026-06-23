@@ -1,0 +1,10 @@
+module surr2
+import io
+import strings
+import convert
+func main () -> i32
+    let s = (strings::from_char (convert::chr 55296u32))  # U+D800 surrogate
+    do (io::println s)
+    do (io::println "after")
+    return 0i32
+end

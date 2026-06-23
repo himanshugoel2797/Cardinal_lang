@@ -1,0 +1,20 @@
+module x86argclob
+
+import io
+import strings
+import convert
+
+# Minimal: a for-loop calling from_char, then concat("Q", from_char(chr(...)))
+# where the 2nd concat arg is a NESTED call. x86 drops the first arg.
+func main () -> i32
+    let cs = (strings::chars "ab")
+    let r = ""
+    for c in cs
+        set r = (strings::concat r (strings::from_char c))
+    end
+    # 2nd arg is a nested call -> x86 loses the "Q"
+    let combo = (strings::concat "Q" (strings::from_char (convert::chr 90u32)))  # "QZ"
+    do (io::println combo)                  # QZ
+    do (io::println (len combo))            # 2
+    return 0i32
+end

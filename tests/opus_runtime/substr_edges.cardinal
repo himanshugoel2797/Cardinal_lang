@@ -1,0 +1,22 @@
+module substredges
+
+import io
+import strings
+
+func main () -> i32
+    let s = "hello"
+    # start past end -> empty (Python clamps)
+    do (io::println (strings::concat "[" (strings::concat (strings::substr s 10u64 3u64) "]")))
+    # huge count from middle -> to end
+    do (io::println (strings::concat "[" (strings::concat (strings::substr s 2u64 1000000u64) "]")))
+    # start + count overflow u64
+    do (io::println (strings::concat "[" (strings::concat (strings::substr s 1u64 18446744073709551615u64) "]")))
+    # zero count
+    do (io::println (strings::concat "[" (strings::concat (strings::substr s 2u64 0u64) "]")))
+    # multibyte: "héllo" - substr by codepoint must not split the 2-byte é
+    let m = "héllo"
+    do (io::println (strings::substr m 0u64 2u64))   # hé
+    do (io::println (strings::substr m 1u64 1u64))   # é
+    do (io::println (len (strings::substr m 1u64 1u64)))  # 1 codepoint
+    return 0i32
+end

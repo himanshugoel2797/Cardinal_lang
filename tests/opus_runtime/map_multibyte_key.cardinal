@@ -1,0 +1,23 @@
+module mapmbkey
+
+import io
+import strings
+import convert
+
+func main () -> i32
+    let m = (map str i32)
+    set m["😀"] = 1i32
+    set m["中文"] = 2i32
+    set m["é"] = 3i32
+    do (io::println m["😀"])
+    do (io::println m["中文"])
+    do (io::println m["é"])
+    do (io::println (map_has m "😀"))      # true
+    # equal-content key built at runtime vs literal
+    let k = (strings::from_char (convert::chr 128512u32))   # 😀
+    do (io::println (map_has m k))          # true
+    do (io::println m[k])                   # 1
+    # to_str of the whole map (insertion order)
+    do (io::println (to_str m))
+    return 0i32
+end

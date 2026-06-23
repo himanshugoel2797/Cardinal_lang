@@ -1,0 +1,25 @@
+module longstreq
+
+import io
+import strings
+
+func main () -> i32
+    # build a long string by repeated concat, compare to a same-content literal
+    let s = ""
+    for i = 0 to 1000
+        set s = (strings::concat s "ab")
+    end
+    do (io::println (len s))          # 2000
+    # built vs built equality
+    let t = ""
+    for i = 0 to 1000
+        set t = (strings::concat t "ab")
+    end
+    do (io::println (strings::eq s t))   # true
+    # substr of the long string by codepoint
+    do (io::println (strings::substr s 1998u64 2u64))   # ab
+    # eq of equal-content literal vs built (short)
+    let built = (strings::concat "he" "llo")
+    do (io::println (strings::eq built "hello"))   # true
+    return 0i32
+end

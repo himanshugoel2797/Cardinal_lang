@@ -1,0 +1,14 @@
+module fcbound
+
+import io
+import strings
+import convert
+
+# from_char at the high boundary: 0x10FFFF is the max valid Unicode scalar.
+# Python chr() accepts up to 0x10FFFF; the C runtime utf8_encode handles 4-byte.
+func main () -> i32
+    let maxcp = (strings::from_char (convert::chr 1114111u32))  # U+10FFFF
+    do (io::println (len maxcp))               # 1 codepoint
+    do (io::println (convert::ord (strings::chars maxcp)[0]))   # 1114111
+    return 0i32
+end

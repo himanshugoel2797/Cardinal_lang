@@ -1,0 +1,19 @@
+module x86nestcc
+
+import io
+import strings
+
+# Is the x86 "first arg dropped" bug general to nested-call 2nd args, or specific
+# to from_char? Here the nested 2nd arg is itself a concat. Preceded by a loop.
+func main () -> i32
+    let cs = (strings::chars "ab")
+    let r = ""
+    for c in cs
+        set r = (strings::concat r (strings::from_char c))
+    end
+    # nested concat as 2nd arg
+    let out = (strings::concat "A" (strings::concat "B" "C"))
+    do (io::println out)            # ABC
+    do (io::println (len out))      # 3
+    return 0i32
+end

@@ -1,0 +1,13 @@
+module fcoor
+
+import io
+import strings
+import convert
+
+# from_char of a codepoint > 0x10FFFF: interp crashes with an unhandled Python
+# ValueError (chr() arg not in range), C/x86 blindly UTF-8-encode 4 bytes.
+func main () -> i32
+    let bad = (strings::from_char (convert::chr 1200000u32))  # > 0x10FFFF
+    do (io::println (len bad))
+    return 0i32
+end

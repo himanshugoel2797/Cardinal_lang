@@ -1,0 +1,30 @@
+module fginfnan
+
+import io
+
+func mkbig () -> f64
+    return 1.0e308
+end
+
+func mkzero () -> f64
+    return 0.0
+end
+
+func mkone () -> f64
+    return 1.0
+end
+
+func main () -> i32
+    let big = (mkbig)
+    let ten = (mkbig)
+    let inf = (* big big)            # +inf (overflow)
+    do (io::println inf)
+    let negone = (- (mkzero) (mkone))
+    let ninf = (* inf negone)        # -inf
+    do (io::println ninf)
+    let nan = (- inf inf)            # nan
+    do (io::println nan)
+    let nz = (* (mkzero) negone)     # -0.0
+    do (io::println nz)
+    return 0i32
+end

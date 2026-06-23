@@ -1,0 +1,17 @@
+module strtoiover
+
+import io
+import convert
+
+# str_to_int: interp accumulates an unbounded Python int then tags it i64
+# WITHOUT wrapping; the C/x86 runtime uses int64_t and wraps (two's complement).
+# A value beyond i64 range should diverge.
+func main () -> i32
+    # 99999999999999999999 = 10^20 - 1, far past i64 max (~9.2e18)
+    let a = (convert::str_to_int "99999999999999999999")
+    do (io::println a)
+    # 9223372036854775808 = i64 max + 1  -> wraps to i64 min in C
+    let b = (convert::str_to_int "9223372036854775808")
+    do (io::println b)
+    return 0i32
+end

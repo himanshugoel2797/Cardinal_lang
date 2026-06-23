@@ -2137,7 +2137,9 @@ def builtin_convert():
             if not ("0" <= s[k] <= "9"):
                 raise Panic(f"str_to_int: not an integer: {args[0]!r}")
             acc = acc * 10 + (ord(s[k]) - 48)
-        return CInt(-acc if neg else acc, "i64")
+        # wrap to i64 (two's complement) so an overflowing string matches the
+        # C/x86 runtime (cl_convert__str_to_int) instead of keeping a wide value.
+        return interp.wrap_int(-acc if neg else acc, "i64")
     ms.env.define("ord", Builtin("convert::ord", _ord), mutable=False)
     ms.env.define("chr", Builtin("convert::chr", _chr), mutable=False)
     ms.env.define("int_to_str", Builtin("convert::int_to_str", _int_to_str), mutable=False)

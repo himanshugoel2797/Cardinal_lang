@@ -1,0 +1,30 @@
+module utf8mb
+
+import io
+import strings
+import convert
+
+func main () -> i32
+    # 4-byte emoji, 3-byte CJK, 2-byte accented, combining mark
+    let s = "a😀中é"
+    do (io::println (len s))                # 4 codepoints
+    let cs = (strings::chars s)
+    do (io::println (len cs))               # 4
+    do (io::println (convert::ord cs[1]))   # emoji codepoint 128512
+    do (io::println (convert::ord cs[2]))   # 中 = 20013
+    do (io::println (convert::ord cs[3]))   # é = 233
+    # rebuild from chars and compare
+    let r = ""
+    for c in cs
+        set r = (strings::concat r (strings::from_char c))
+    end
+    do (io::println (strings::eq r s))      # true
+    do (io::println r)                      # a😀中é
+    # from_char round-trips each codepoint
+    do (io::println (strings::from_char (convert::chr 128512u32)))  # 😀
+    do (io::println (len (strings::from_char (convert::chr 128512u32))))  # 1 codepoint
+    # combining mark: e + U+0301 = 2 codepoints
+    let combo = (strings::concat "e" (strings::from_char (convert::chr 769u32)))
+    do (io::println (len combo))            # 2
+    return 0i32
+end

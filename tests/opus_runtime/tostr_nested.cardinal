@@ -1,0 +1,36 @@
+module tostrnest
+
+import io
+import strings
+
+struct Pt
+    x i32
+    y i32
+end
+
+struct Box
+    label str
+    pts [Pt]
+    tags {str}
+end
+
+func main () -> i32
+    let b = (Box label: "hi 😀" pts: [(Pt x: 1 y: 2) (Pt x: 3 y: 4)] tags: (vec str))
+    do (push b.tags "a")
+    do (push b.tags "b")
+    do (io::println (to_str b))
+    # map str -> str with multibyte values
+    let mm = (map str str)
+    set mm["greet"] = "hi 😀"
+    set mm["x"] = "中"
+    do (io::println (to_str mm))
+    # empty containers
+    let ea = (vec i32)
+    do (io::println (to_str ea))           # {}
+    let em = (map str str)
+    do (io::println (to_str em))           # {}
+    # nested array of strings (quoting? interp does NOT quote)
+    let strs = ["x" "y 😀" ""]
+    do (io::println (to_str strs))
+    return 0i32
+end
