@@ -78,6 +78,13 @@ void     cl_map_del(cl_map m, const void *key);    /* no-op if absent */
 cl_vec   cl_map_keys(cl_map m);                    /* fresh cl_vec(keysz) of keys, insertion order */
 uint64_t cl_map_len(cl_map m);
 
+/* fs:: / sys:: builtins (self-hosting: the compiler reads its own source files
+ * and command-line arguments). cl_sys_set_args is called by the emitted main. */
+cl_str cl_fs__read_file(cl_str path);
+bool   cl_fs__exists(cl_str path);
+cl_vec cl_sys__args(void);
+void   cl_sys_set_args(int argc, char **argv);
+
 _Noreturn void cl_panic(cl_str msg);
 _Noreturn void cl_panic_cstr(const char *msg);
 

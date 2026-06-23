@@ -1155,13 +1155,15 @@ func main_wrapper (m IRModule) -> str
         end
         set i = (+ i 1)
     end
+    # main captures argc/argv for sys::args() (self-hosting: the compiler reads its
+    # program arguments). cl_gc_init's arg is a stack-base marker for the GC.
     if (not found)
-        return "int main(void) { int b; cl_gc_init(&b); return 0; }"
+        return "int main(int argc, char **argv) { int b; cl_gc_init(&b); cl_sys_set_args(argc, argv); return 0; }"
     end
     if (irt_is_int tret)
-        return (strings::concat "int main(void) { int b; cl_gc_init(&b); return (int)" (strings::concat tname "(); }"))
+        return (strings::concat "int main(int argc, char **argv) { int b; cl_gc_init(&b); cl_sys_set_args(argc, argv); return (int)" (strings::concat tname "(); }"))
     end
-    return (strings::concat "int main(void) { int b; cl_gc_init(&b); " (strings::concat tname "(); return 0; }"))
+    return (strings::concat "int main(int argc, char **argv) { int b; cl_gc_init(&b); cl_sys_set_args(argc, argv); " (strings::concat tname "(); return 0; }"))
 end
 
 # --------------------------------------------------------------------------- #

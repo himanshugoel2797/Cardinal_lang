@@ -556,3 +556,76 @@ cl_str cl_strlit(const char *utf8_cstr) {
     cl_gc_pop_roots(1);
     return s;
 }
+
+/* --------------------------------------------------------------------------- *
+ * fs:: / sys:: builtins — the support the self-hosted compiler needs to read its
+ * own source files and command-line arguments. Names match the backend's
+ * cl_<mod>__<fn> mangling. (Bootstrap-grade: blocking stdio, no async.)
+ * --------------------------------------------------------------------------- */
+
+/* Copy a managed str into a fresh NUL-terminated C buffer (caller frees). */
+static char *cl_str_cstr(cl_str s) {
+    uint64_t n;
+    const char *b = str_bytes(s, &n);
+    char *p = (char *)malloc(n + 1);
+    if (!p) { fprintf(stderr, "panic: out of memory\n"); exit(101); }
+    if (n) memcpy(p, b, n);
+    p[n] = '\0';
+    return p;
+}
+
+/* fs::read_file(path) -> str : the whole file's bytes as a managed string. */
+cl_str cl_fs__read_file(cl_str path) {
+    char *p = cl_str_cstr(path);
+    FILE *f = fopen(p, "rb");
+    if (!f) { fprintf(stderr, "panic: read_file: %s\n", p); free(p); exit(101); }
+    size_t cap = 4096, len = 0;
+    char *buf = (char *)malloc(cap);
+    if (!buf) { fprintf(stderr, "panic: out of memory\n"); exit(101); }
+    char tmp[4096];
+    size_t got;
+    while ((got = fread(tmp, 1, sizeof tmp, f)) > 0) {
+        if (len + got > cap) {
+            while (len + got > cap) cap *= 2;
+            buf = (char *)realloc(buf, cap);
+            if (!buf) { fprintf(stderr, "panic: out of memory\n"); exit(101); }
+        }
+        memcpy(buf + len, tmp, got);
+        len += got;
+    }
+    fclose(f);
+    cl_str s = cl_str_from_utf8(buf, (uint64_t)len);
+    free(buf);
+    free(p);
+    return s;
+}
+
+/* fs::exists(path) -> bool : true if the path exists (file or directory). */
+bool cl_fs__exists(cl_str path) {
+    char *p = cl_str_cstr(path);
+    FILE *f = fopen(p, "rb");
+    bool ok = (f != NULL);
+    if (f) fclose(f);
+    free(p);
+    return ok;
+}
+
+/* Program arguments (set from main's argv; arg[0] is the first arg AFTER the
+ * program name, matching the interpreter's sys::args). */
+static int    g_argc = 0;
+static char **g_argv = NULL;
+void cl_sys_set_args(int argc, char **argv) { g_argc = argc; g_argv = argv; }
+
+/* sys::args() -> {str} : the program arguments (excludes the program name). */
+cl_vec cl_sys__args(void) {
+    cl_vec v = cl_vec_new(sizeof(cl_str));
+    cl_gc_push_root(&v, sizeof v);                  /* survive per-arg allocs + grows */
+    for (int i = 1; i < g_argc; i++) {
+        cl_str s = cl_str_from_utf8(g_argv[i], (uint64_t)strlen(g_argv[i]));
+        cl_gc_push_root(&s, sizeof s);              /* survive cl_vec_push's grow */
+        cl_vec_push(v, &s);
+        cl_gc_pop_roots(1);
+    }
+    cl_gc_pop_roots(1);
+    return v;
+}
