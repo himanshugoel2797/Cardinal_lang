@@ -28,7 +28,7 @@ while [ $# -gt 0 ]; do
 done
 sfile="$(mktemp /tmp/cardinal_XXXXXX.s)"
 errfile="$(mktemp /tmp/cardinal_XXXXXX.err)"
-if ! ( cd "$root/compiler" && python3 "$root/bootstrap/cardinal.py" emitx86.cardinal "$abssrc" ) > "$sfile" 2>"$errfile"; then
+if ! ( cd "$root/compiler" && python3 "$root/bootstrap/cardinal.py" emitx86.cardinal "$abssrc" "$root/lib" ) > "$sfile" 2>"$errfile"; then
   echo "cardinal: x86 compilation failed:" >&2
   cat "$sfile" "$errfile" >&2
   rm -f "$sfile" "$errfile"
