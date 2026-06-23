@@ -1,0 +1,33 @@
+module t02_nested_aggregate
+
+import io
+import strings
+import convert
+
+# Partially-constructed nested aggregate: a vec of vecs of strings, all built
+# inline. If GC fires mid-construction and an inner, not-yet-stored vec/string
+# is unrooted, it is freed.
+func build (n i32) -> {{str}}
+    let outer = (vec {str})
+    for i = 0 to n
+        let inner = (vec str)
+        for j = 0 to 8
+            do (push inner (strings::concat "x" (convert::int_to_str (as (+ (* i 8) j) i64))))
+        end
+        do (push outer inner)
+    end
+    return outer
+end
+
+func main () -> i32
+    let vv = (build 200)
+    let count = 0i32
+    for row in vv
+        for s in row
+            set count = (+ count (as (len s) i32))
+        end
+    end
+    do (io::println count)
+    do (io::println (as (len vv) i32))
+    return 0i32
+end

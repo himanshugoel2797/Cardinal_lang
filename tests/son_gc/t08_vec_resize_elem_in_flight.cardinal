@@ -1,0 +1,23 @@
+module t08_vec_resize_elem_in_flight
+
+import io
+import strings
+import convert
+
+# Push a freshly-allocated string into a vec that must grow on this push. The
+# new string is computed into a temp/_e; the grow allocation happens inside
+# cl_vec_push. If the element isn't rooted across the grow it is lost.
+func main () -> i32
+    let v = (vec str)
+    # Force many grows; each push's element is a brand-new alloc.
+    for i = 0 to 4000
+        do (push v (strings::concat "item-" (convert::int_to_str (as i i64))))
+    end
+    let total = 0i32
+    for s in v
+        set total = (+ total (as (len s) i32))
+    end
+    do (io::println total)
+    do (io::println (as (len v) i32))
+    return 0i32
+end

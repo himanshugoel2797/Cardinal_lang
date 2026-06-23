@@ -1,0 +1,38 @@
+module t12_sumlist_accumulate
+
+import io
+
+# Cons-list (sum type) built one node at a time; the running list is the sole
+# root and grows long while each Cons allocates. Forced collection each step.
+type List
+    Nil
+    Cons (v i32) (next List)
+end
+
+func len_of (l List) -> i32
+    match l
+        case Nil
+            return 0i32
+        case (Cons v next)
+            return (+ 1i32 (len_of next))
+    end
+end
+
+func sum_of (l List) -> i32
+    match l
+        case Nil
+            return 0i32
+        case (Cons v next)
+            return (+ v (sum_of next))
+    end
+end
+
+func main () -> i32
+    let l = Nil
+    for i = 0 to 3000
+        set l = (Cons v: i next: l)     # prepend; old list still reachable via next
+    end
+    do (io::println (len_of l))         # 3000
+    do (io::println (sum_of l))         # 0+1+...+2999 = 4498500
+    return 0i32
+end

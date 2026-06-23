@@ -1,0 +1,44 @@
+module t14_struct_field_chain
+
+import io
+import strings
+import convert
+
+# Build a struct holding a vec of structs holding strings, mutate fields in
+# place via set arr[i].field, all while churning. Exercises nested place stores
+# and embedded-handle rooting in a value struct held in a local.
+struct Inner
+    label str
+    count i32
+end
+
+struct Outer
+    items {Inner}
+    total i32
+end
+
+func main () -> i32
+    let o = (Outer items: (vec Inner) total: 0)
+    for i = 0 to 400
+        let it = (Inner label: (strings::concat "L" (convert::int_to_str (as i i64))) count: i)
+        do (push o.items it)
+        set o.total = (+ o.total i)
+    end
+    # mutate every element's count in place, churning each step
+    let i = 0u64
+    while (< i (len o.items))
+        set o.items[i].count = (+ o.items[i].count 1)
+        let junk = (strings::concat "j" (convert::int_to_str (as i i64)))
+        set i = (+ i 1)
+    end
+    let sumc = 0i32
+    let suml = 0i32
+    for it in o.items
+        set sumc = (+ sumc it.count)
+        set suml = (+ suml (as (len it.label) i32))
+    end
+    do (io::println sumc)
+    do (io::println suml)
+    do (io::println o.total)
+    return 0i32
+end

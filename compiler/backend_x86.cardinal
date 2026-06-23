@@ -1369,10 +1369,14 @@ func tfn_params (t Type) -> {Type}
     return (vec Type)
 end
 
-# integer-register words a source-type by-value argument consumes (matches
-# int_regs_for, but on a checker Type).
-func int_regs_for_src (t Type) -> i64
+# GP-register words a by-value argument consumes in the SysV integer class. A float
+# travels in an xmm register (0 GP words); a closure value is 2 GP words. Struct and
+# array by-value params in a function-VALUE thunk aren't supported yet — lambdas
+# handle them, only the named-function adapter is partial.
+func gp_words_src (t Type) -> i64
     match t
+        case (TFloat n)
+            return 0i64
         case (TFunc p r)
             return 2i64
         case (TStruct n)
@@ -1383,6 +1387,23 @@ func int_regs_for_src (t Type) -> i64
             return 1i64
     end
     return 1i64
+end
+
+# Does a function-value's return travel via a hidden pointer (SysV MEMORY, >16B)?
+# Only a by-value struct return can; every other return type is <=16B.
+func ret_is_mem (ft Type) (sm {str IRStruct}) -> bool
+    match ft
+        case (TFunc p r)
+            match r
+                case (TStruct n)
+                    return (> (struct_size sm n) 16i64)
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
 end
 
 func bc_str_lt (a str) (b str) -> bool
@@ -1446,19 +1467,31 @@ func sorted_str_keys (m {str str}) -> {str}
     return ks
 end
 
-# A function-as-value thunk: drops the leading env arg (%rdi) by shifting the real
-# args down one integer register, then tail-calls the real function.
-func emit_thunk (name str) (ft Type) -> str
+# A function-as-value thunk: drops the env arg the closure ABI inserts and shifts
+# the real GP args down one register, then tail-calls the real function. The env is
+# the first GP arg normally, or the SECOND when the result returns via a hidden
+# pointer (SysV MEMORY) — which must be preserved in %rdi.
+func emit_thunk (name str) (ft Type) (sm {str IRStruct}) -> str
     let ps = (tfn_params ft)
     let k = 0i64
     let i = 0u64
     while (< i (len ps))
-        set k = (+ k (int_regs_for_src ps[i]))
+        set k = (+ k (gp_words_src ps[i]))
         set i = (+ i 1)
     end
+    let base = 0i64
+    if (ret_is_mem ft sm)
+        set base = 1i64
+    end
+    # Incoming closure-ABI GP usage = [hidden ret ptr] + env + args. If that spills
+    # past the 6 GP registers the leading args arrived on the stack, and a register
+    # shift + tail-call cannot relocate them. Fail loudly rather than miscompile.
+    if (> (+ (+ base 1i64) k) 6i64)
+        do (panic "x86: function-value thunk with stack-spilled args (later milestone)")
+    end
     let out = (line (cat3 name "__thunk" ":"))
-    let w = 0i64
-    while (< w k)
+    let w = base
+    while (< w (+ base k))
         set out = (strings::concat out (line (cat2 "    movq " (cat3 (argreg (+ w 1i64)) ", " (argreg w)))))
         set w = (+ w 1i64)
     end
@@ -3022,7 +3055,7 @@ export func emit (m IRModule) -> str
     let tnames = (sorted_keys m.thunks)
     let ti = 0u64
     while (< ti (len tnames))
-        set out = (strings::concat out (emit_thunk tnames[ti] m.thunks[tnames[ti]]))
+        set out = (strings::concat out (emit_thunk tnames[ti] m.thunks[tnames[ti]] sm))
         set out = (strings::concat out (line ""))
         set ti = (+ ti 1)
     end

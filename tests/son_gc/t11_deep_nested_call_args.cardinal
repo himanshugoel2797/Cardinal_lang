@@ -1,0 +1,21 @@
+module t11_deep_nested_call_args
+
+import io
+import strings
+
+# Deeply nested call where every argument is a fresh allocation. All the
+# intermediate strings are simultaneously live as the inner-to-outer concats
+# allocate. Classic (f (alloc)(alloc)(alloc)) but nested 6 deep.
+func j (a str) (b str) -> str
+    return (strings::concat a b)
+end
+
+func main () -> i32
+    let total = 0i32
+    for i = 0 to 8000
+        let s = (j (j (j "1" "2") (j "3" "4")) (j (j "5" "6") (j "7" "8")))
+        set total = (+ total (as (len s) i32))
+    end
+    do (io::println total)   # each s = "12345678" len 8 -> 64000
+    return 0i32
+end

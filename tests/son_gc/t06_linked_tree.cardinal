@@ -1,0 +1,37 @@
+module t06_linked_tree
+
+import io
+
+# Large sum-type tree, built bottom-up so intermediate subtrees are live only as
+# temporaries while the parent Node allocates. Collection forced each step via
+# threshold=0. A dropped child = wrong sum / panic.
+type Tree
+    Leaf
+    Node (v i32) (l Tree) (r Tree)
+end
+
+func build (depth i32) (v i32) -> Tree
+    if (<= depth 0)
+        return Leaf
+    end
+    return (Node v: v l: (build (- depth 1) (* v 2)) r: (build (- depth 1) (+ (* v 2) 1)))
+end
+
+func total (t Tree) -> i32
+    match t
+        case Leaf
+            return 0i32
+        case (Node v l r)
+            return (+ v (+ (total l) (total r)))
+    end
+end
+
+func main () -> i32
+    let acc = 0i32
+    for i = 0 to 2000
+        let t = (build 8 1)
+        set acc = (+ acc (total t))
+    end
+    do (io::println acc)
+    return 0i32
+end

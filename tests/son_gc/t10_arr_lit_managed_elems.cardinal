@@ -1,0 +1,30 @@
+module t10_arr_lit_managed_elems
+
+import io
+import strings
+import convert
+
+# Array literal whose elements are freshly-allocated strings. The array is
+# allocated first, then each element stored; element temps must stay rooted
+# while subsequent element allocations (and the next loop's array) churn.
+func make (i i32) -> [str]
+    let a [str] = [
+        (strings::concat "a" (convert::int_to_str (as i i64)))
+        (strings::concat "bb" (convert::int_to_str (as i i64)))
+        (strings::concat "ccc" (convert::int_to_str (as i i64)))
+        (strings::concat "dddd" (convert::int_to_str (as i i64)))
+    ]
+    return a
+end
+
+func main () -> i32
+    let total = 0i32
+    for i = 0 to 5000
+        let a = (make i)
+        for s in a
+            set total = (+ total (as (len s) i32))
+        end
+    end
+    do (io::println total)
+    return 0i32
+end

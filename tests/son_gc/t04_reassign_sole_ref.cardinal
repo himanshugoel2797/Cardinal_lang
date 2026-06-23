@@ -1,0 +1,25 @@
+module t04_reassign_sole_ref
+
+import io
+import strings
+import convert
+
+# Reassign the sole reference, then allocate heavily. The replaced object must
+# die cleanly and the new one must survive.
+func main () -> i32
+    let s = (strings::concat "seed" "value")
+    for i = 0 to 20000
+        set s = (strings::concat s "")            # new string each time, old becomes garbage
+        if (> (len s) 100u64)
+            set s = (strings::concat "reset" (convert::int_to_str (as i i64)))
+        end
+        # heavy churn to force collection while only `s` is live
+        let junk = (vec str)
+        for j = 0 to 4
+            do (push junk (convert::int_to_str (as j i64)))
+        end
+    end
+    do (io::println (as (len s) i32))
+    do (io::println s)
+    return 0i32
+end

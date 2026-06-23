@@ -1,0 +1,20 @@
+module t14_thunk_7int_args
+
+import io
+
+# 7-int-param function value -> thunk. env + 7 args: rsi..r9 hold args 1..5,
+# args 6 and 7 spill to the stack. The thunk only shifts registers (clamped to
+# %r9) and never repositions stack args, so the top args are corrupted.
+func seven (a i64) (b i64) (c i64) (d i64) (e i64) (f i64) (g i64) -> i64
+    return (+ (+ (+ (+ (+ (+ a b) c) d) e) f) g)
+end
+
+func apply (h func(i64 i64 i64 i64 i64 i64 i64 -> i64)) -> i64
+    return (h 1i64 2i64 4i64 8i64 16i64 32i64 64i64)
+end
+
+func main () -> i32
+    let p = seven
+    do (io::println (apply p))   # 127
+    return 0i32
+end

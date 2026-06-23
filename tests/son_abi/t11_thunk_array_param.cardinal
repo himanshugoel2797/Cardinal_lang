@@ -1,0 +1,21 @@
+module t11_thunk_array_param
+
+import io
+
+# Named function taking an ARRAY by value, used as a function value -> thunk.
+# int_regs_for_src panics on a by-value array thunk param (line ~1381):
+# "x86: by-value array thunk param (later milestone)".
+func first3 (xs [i64]) -> i64
+    return (+ (+ xs[0] xs[1]) xs[2])
+end
+
+func apply (f func([i64] -> i64)) (xs [i64]) -> i64
+    return (f xs)
+end
+
+func main () -> i32
+    let g = first3
+    let xs = [10i64 20i64 30i64]
+    do (io::println (apply g xs))   # 60
+    return 0i32
+end

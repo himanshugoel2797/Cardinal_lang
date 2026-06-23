@@ -1,0 +1,36 @@
+module t16_map_in_struct_churn
+
+import io
+import strings
+import convert
+
+# A value struct embedding a map<str,str> handle. The struct lives in a local;
+# the map (and all its string keys/values) is reachable only via the struct's
+# embedded handle. Insert across rehashes with constant churn.
+struct Env
+    vars {str str}
+    size i32
+end
+
+func main () -> i32
+    let e = (Env vars: (map str str) size: 0)
+    for i = 0 to 800
+        let k = (strings::concat "var" (convert::int_to_str (as i i64)))
+        let v = (strings::concat "val" (convert::int_to_str (as (* i 7) i64)))
+        set e.vars[k] = v
+        set e.size = (+ e.size 1)
+        # churn between inserts
+        let junk = (vec str)
+        for j = 0 to 3
+            do (push junk (convert::int_to_str (as j i64)))
+        end
+    end
+    let total = 0i32
+    for k in (map_keys e.vars)
+        set total = (+ total (as (len e.vars[k]) i32))
+    end
+    do (io::println total)
+    do (io::println e.size)
+    do (io::println (as (len (map_keys e.vars)) i32))
+    return 0i32
+end

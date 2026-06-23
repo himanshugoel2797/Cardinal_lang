@@ -1,0 +1,37 @@
+module t15_vec_of_closures
+
+import io
+
+# A vec of closures; each closure's captured cell (box) is reachable ONLY through
+# the closure stored in the vec. Build all, churn, then invoke. If an env/box is
+# collected because the only root is a vec element (an embedded cl_closure whose
+# .env handle must be scanned), invocation reads freed memory.
+func adder (base i32) -> func(i32 -> i32)
+    let b = base
+    let f = func (x i32) -> i32
+        set b = (+ b x)
+        return b
+    end
+    return f
+end
+
+func main () -> i32
+    let fns = (vec func(i32 -> i32))
+    for i = 0 to 1000
+        do (push fns (adder i))
+    end
+    # heavy churn AFTER building, before invoking
+    let junk = (vec i32)
+    for k = 0 to 5000
+        do (push junk k)
+    end
+    let total = 0i32
+    let i = 0u64
+    while (< i (len fns))
+        let f = fns[i]
+        set total = (+ total (f 10))     # base i + 10
+        set i = (+ i 1)
+    end
+    do (io::println total)   # sum(i+10 for i in 0..999) = 499500 + 10000 = 509500
+    return 0i32
+end

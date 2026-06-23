@@ -1,0 +1,22 @@
+module t13_thunk_6int_args
+
+import io
+
+# Named 6-int-param function used as a function VALUE -> thunk.
+# Through a closure call: env in %rdi, args 1..5 in %rsi..%r9, arg6 on the stack.
+# The thunk shifts GP regs down to drop env, but argreg() clamps index>=5 to %r9,
+# so the final shift is "movq %r9,%r9" and the 6th (stack) arg is never loaded.
+# Expect the 6th argument to be lost/garbage in x86 only.
+func six (a i64) (b i64) (c i64) (d i64) (e i64) (f i64) -> i64
+    return (+ (+ (+ (+ (+ a b) c) d) e) f)
+end
+
+func apply (g func(i64 i64 i64 i64 i64 i64 -> i64)) -> i64
+    return (g 1i64 2i64 4i64 8i64 16i64 32i64)
+end
+
+func main () -> i32
+    let h = six
+    do (io::println (apply h))   # 63
+    return 0i32
+end

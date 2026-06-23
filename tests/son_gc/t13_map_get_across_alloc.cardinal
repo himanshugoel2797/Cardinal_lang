@@ -1,0 +1,26 @@
+module t13_map_get_across_alloc
+
+import io
+import strings
+import convert
+
+# Read a managed value out of a map into a temp, then allocate heavily before
+# using it. The map still holds it, so it must survive; this checks the read
+# temp is rooted and the map keeps the value alive across the churn.
+func main () -> i32
+    let m = (map i32 str)
+    for i = 0 to 500
+        set m[i] = (strings::concat "value" (convert::int_to_str (as i i64)))
+    end
+    let total = 0i32
+    for i = 0 to 500
+        let got = m[i]                       # managed read into temp
+        let junk = (vec str)                 # churn after the read, before use
+        for k = 0 to 6
+            do (push junk (convert::int_to_str (as k i64)))
+        end
+        set total = (+ total (as (len got) i32))   # use after churn
+    end
+    do (io::println total)
+    return 0i32
+end

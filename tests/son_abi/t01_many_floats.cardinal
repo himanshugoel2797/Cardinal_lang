@@ -1,0 +1,14 @@
+module t01_many_floats
+
+import io
+
+# 10 float args: 8 go in xmm0..7, 9th and 10th overflow to the stack.
+func sum10 (a f64) (b f64) (c f64) (d f64) (e f64) (f f64) (g f64) (h f64) (i f64) (j f64) -> f64
+    return (+ (+ (+ (+ (+ (+ (+ (+ (+ a b) c) d) e) f) g) h) i) j)
+end
+
+func main () -> i32
+    let r = (sum10 1.0 2.0 4.0 8.0 16.0 32.0 64.0 128.0 256.0 512.0)
+    do (io::println r)   # 1023
+    return 0i32
+end

@@ -1,0 +1,21 @@
+module t04_struct_at_4regs
+
+import io
+
+# 4 ints (rdi,rsi,rdx,rcx) then a 2-word struct: base+gpw=4, k=2 -> 4+2=6 <= 6,
+# so the struct DOES go into r8:r9 (the last two GP regs). Exact-fit boundary.
+struct Pair
+    a i64
+    b i64
+end
+
+func f (p1 i64) (p2 i64) (p3 i64) (p4 i64) (s Pair) -> i64
+    return (+ (+ (+ (+ p1 p2) p3) p4) (+ s.a s.b))
+end
+
+func main () -> i32
+    let s = (Pair a: 1000i64 b: 2000i64)
+    let r = (f 1i64 2i64 4i64 8i64 s)
+    do (io::println r)   # 15 + 3000 = 3015
+    return 0i32
+end

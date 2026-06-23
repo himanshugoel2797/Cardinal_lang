@@ -1,0 +1,24 @@
+module t03_struct_split_gp_boundary
+
+import io
+
+# A 16-byte (2-word) struct arriving when only ONE GP reg remains.
+# 5 i64 ints fill rdi..r8 (well, rdi,rsi,rdx,rcx,r8 = 5 regs), leaving r9 (1 reg).
+# Then a 2-word struct: SysV says it stays whole; if it fits it goes to regs,
+# else MEMORY (stack). emit_call: base+gpw=5, k=2 -> 5+2=7 > 6 -> entire struct
+# to stack. The prologue must mirror exactly. Boundary stress.
+struct Pair
+    a i64
+    b i64
+end
+
+func f (p1 i64) (p2 i64) (p3 i64) (p4 i64) (p5 i64) (s Pair) -> i64
+    return (+ (+ (+ (+ (+ p1 p2) p3) p4) p5) (+ s.a s.b))
+end
+
+func main () -> i32
+    let s = (Pair a: 100i64 b: 200i64)
+    let r = (f 1i64 2i64 4i64 8i64 16i64 s)
+    do (io::println r)   # 31 + 300 = 331
+    return 0i32
+end

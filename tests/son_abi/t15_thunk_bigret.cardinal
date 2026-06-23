@@ -1,0 +1,30 @@
+module t15_thunk_bigret
+
+import io
+
+# A named function RETURNING a >16B struct (MEMORY class, hidden return pointer),
+# used as a function VALUE -> thunk. Through a closure call the hidden return ptr
+# is in %rdi, env in %rsi, the real arg in %rdx. The thunk shifts %rsi->%rdi to
+# drop the env, which CLOBBERS the hidden return pointer with the env value.
+struct Big
+    a i64
+    b i64
+    c i64
+end
+
+func make_big (n i64) -> Big
+    return (Big a: n b: (* n 2i64) c: (* n 3i64))
+end
+
+func apply (f func(i64 -> Big)) (n i64) -> Big
+    return (f n)
+end
+
+func main () -> i32
+    let g = make_big
+    let r = (apply g 5i64)
+    do (io::println r.a)   # 5
+    do (io::println r.b)   # 10
+    do (io::println r.c)   # 15
+    return 0i32
+end

@@ -1,0 +1,27 @@
+module t05_closure_captures_sole_root
+
+import io
+import strings
+import convert
+
+# The captured cell (a string) is the ONLY root for that object — reachable only
+# through the closure's environment. Allocate heavily, then invoke.
+func make (seed str) -> func(-> str)
+    let acc = seed
+    let f = func () -> str
+        set acc = (strings::concat acc "!")
+        return acc
+    end
+    return f
+end
+
+func main () -> i32
+    let f = (make "hello")
+    let last = ""
+    for i = 0 to 10000
+        set last = (f)                # mutates captured cell
+        let junk = (strings::concat "g" (convert::int_to_str (as i i64)))   # churn
+    end
+    do (io::println (as (len last) i32))   # 5 + 10000 = 10005
+    return 0i32
+end

@@ -1,0 +1,32 @@
+module t06_inner12_after_i32
+
+import io
+
+# Inner is 12 bytes (3x i32), align 4, but occupies a 2-word (16B) slot.
+# Outer = { q i32; p Inner }: q@0, p@4, total size align_up(4+12,4)=16 (2 words).
+# IStructNew copies the multi-word field p as TWO whole 8-byte words at dst+4,
+# i.e. it writes dst+4 .. dst+19 — 4 bytes PAST the 16-byte Outer slot.
+# That overruns into an adjacent frame slot. We surround with sentinels.
+struct Inner
+    a i32
+    b i32
+    c i32
+end
+
+struct Outer
+    q i32
+    p Inner
+end
+
+func main () -> i32
+    let guard_before = 111111i64
+    let o = (Outer q: 7i32 p: (Inner a: 1i32 b: 2i32 c: 3i32))
+    let guard_after = 222222i64
+    do (io::println o.q)         # 7
+    do (io::println o.p.a)       # 1
+    do (io::println o.p.b)       # 2
+    do (io::println o.p.c)       # 3
+    do (io::println guard_before) # 111111
+    do (io::println guard_after)  # 222222
+    return 0i32
+end

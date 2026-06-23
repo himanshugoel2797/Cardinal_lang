@@ -1,0 +1,26 @@
+module t05_mixed_int_float_struct_args
+
+import io
+
+# Many mixed int / float / struct args together — interleaved so the GP counter,
+# xmm counter, and stack offset all advance independently and out of phase.
+struct V3
+    x f64
+    y f64
+    z f64
+end
+
+func blend (i1 i64) (f1 f64) (s V3) (i2 i64) (f2 f64) (i3 i64) (f3 f64) -> f64
+    let si = (as (+ (+ i1 i2) i3) f64)
+    let sf = (+ (+ f1 f2) f3)
+    let ss = (+ (+ s.x s.y) s.z)
+    return (+ (+ si sf) ss)
+end
+
+func main () -> i32
+    let s = (V3 x: 0.5 y: 1.5 z: 2.5)   # >16B struct -> MEMORY (stack)
+    let r = (blend 10i64 0.25 s 20i64 0.75 30i64 100.0)
+    # ints 60 + floats (0.25+0.75+100)=101 + struct (4.5) = 165.5
+    do (io::println r)   # 165.5
+    return 0i32
+end

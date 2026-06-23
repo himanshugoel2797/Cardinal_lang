@@ -1,0 +1,17 @@
+module t02_f32_stack_overflow
+
+import io
+
+# 9 f32 args. The 9th overflows to the stack. emit_store_arg_to_stack writes
+# only 4 bytes (movss) into an 8-byte stack slot; the prologue reads it back via
+# movss from %rbp+16. If upper bytes / alignment are mishandled, value corrupts.
+# Also mix so the float counter and stack offset interact.
+func sum9 (a f32) (b f32) (c f32) (d f32) (e f32) (f f32) (g f32) (h f32) (i f32) -> f32
+    return (+ (+ (+ (+ (+ (+ (+ (+ a b) c) d) e) f) g) h) i)
+end
+
+func main () -> i32
+    let r = (sum9 1.5f32 2.5f32 4.0f32 8.0f32 16.0f32 32.0f32 64.0f32 128.0f32 256.0f32)
+    do (io::println r)   # 512.5
+    return 0i32
+end

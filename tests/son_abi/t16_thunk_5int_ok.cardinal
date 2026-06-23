@@ -1,0 +1,20 @@
+module t16_thunk_5int_ok
+
+import io
+
+# BOUNDARY (expected PASS): 5-int-param function value. env + 5 args = 6 GP regs,
+# all in registers, nothing spills. The thunk's register shift is exactly right.
+# This isolates t13/t14: the bug appears only once an arg must spill to the stack.
+func five (a i64) (b i64) (c i64) (d i64) (e i64) -> i64
+    return (+ (+ (+ (+ a b) c) d) e)
+end
+
+func apply (g func(i64 i64 i64 i64 i64 -> i64)) -> i64
+    return (g 1i64 2i64 4i64 8i64 16i64)
+end
+
+func main () -> i32
+    let h = five
+    do (io::println (apply h))   # 31
+    return 0i32
+end

@@ -1,0 +1,40 @@
+module t03_map_of_vec_of_struct
+
+import io
+import strings
+import convert
+
+struct Holder
+    name str
+    tag i32
+end
+
+# Objects escaping through several indirections: map<str, vec<Holder>>.
+# Each Holder embeds a managed str. Map resize, vec grow, and string alloc all
+# interleave; the only path to a live Holder is through the map.
+func main () -> i32
+    let m = (map str {Holder})
+    for i = 0 to 300
+        let key = (strings::concat "k" (convert::int_to_str (as i i64)))
+        let v = (vec Holder)
+        for j = 0 to 5
+            let h = (Holder name: (strings::concat key (convert::int_to_str (as j i64))) tag: (+ (* i 5) j))
+            do (push v h)
+        end
+        set m[key] = v
+    end
+
+    # Now read everything back; any freed string/holder shows as wrong output/panic.
+    let sumtags = 0i32
+    let sumlen = 0i32
+    for k in (map_keys m)
+        let v = m[k]
+        for h in v
+            set sumtags = (+ sumtags h.tag)
+            set sumlen = (+ sumlen (as (len h.name) i32))
+        end
+    end
+    do (io::println sumtags)
+    do (io::println sumlen)
+    return 0i32
+end

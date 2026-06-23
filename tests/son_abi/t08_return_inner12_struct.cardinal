@@ -1,0 +1,33 @@
+module t08_return_inner12_struct
+
+import io
+
+# Return-by-value a 16B struct whose embedded 12-byte field sits at offset 4.
+# Construction (IStructNew) + return (rax:rdx 2-word) + the caller reading the
+# non-8-aligned inner field via ILoadField (16B word read at base+4 overruns).
+struct Inner
+    a i32
+    b i32
+    c i32
+end
+
+struct Outer
+    q i32
+    p Inner
+end
+
+func make () -> Outer
+    let g = 999999i64
+    let o = (Outer q: 5i32 p: (Inner a: 100i32 b: 200i32 c: 300i32))
+    do (io::println g)   # 999999  (must survive the construction overrun)
+    return o
+end
+
+func main () -> i32
+    let o = (make)
+    do (io::println o.q)    # 5
+    do (io::println o.p.a)  # 100
+    do (io::println o.p.b)  # 200
+    do (io::println o.p.c)  # 300
+    return 0i32
+end

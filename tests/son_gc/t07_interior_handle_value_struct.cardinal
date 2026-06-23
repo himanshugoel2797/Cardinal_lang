@@ -1,0 +1,38 @@
+module t07_interior_handle_value_struct
+
+import io
+import strings
+import convert
+
+# A multi-word VALUE struct that embeds managed handles (a str and a vec).
+# Value structs live inline in a stack slot rooted by sizeof; the conservative
+# scan must find the embedded handles. Pass the struct by value across allocs.
+struct Pair
+    a str
+    b {i32}
+    n i32
+end
+
+func grow (p Pair) -> Pair
+    # allocate a lot while p (a value struct with embedded handles) is live by value
+    let junk = (vec str)
+    for k = 0 to 8
+        do (push junk (convert::int_to_str (as k i64)))
+    end
+    return (Pair a: (strings::concat p.a "+") b: p.b n: (+ p.n 1))
+end
+
+func main () -> i32
+    let v = (vec i32)
+    for i = 0 to 16
+        do (push v i)
+    end
+    let p = (Pair a: "start" b: v n: 0)
+    for i = 0 to 5000
+        set p = (grow p)
+    end
+    do (io::println (as (len p.a) i32))   # 5 + 5000
+    do (io::println (as (len p.b) i32))            # 16
+    do (io::println p.n)                            # 5000
+    return 0i32
+end

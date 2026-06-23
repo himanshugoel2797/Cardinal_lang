@@ -1,0 +1,21 @@
+module t10_thunk_float_param
+
+import io
+
+# A named function taking float params, used as a function value (thunk).
+# The thunk shifts GP arg registers down by one to drop the env, but a float
+# arg lives in xmm (not GP). Mixed int+float args via a thunk are the danger:
+# the GP shift must not disturb xmm, and the GP count must exclude floats.
+func combine (a i64) (x f64) (b i64) (y f64) -> f64
+    return (+ (+ (as (+ a b) f64) x) y)
+end
+
+func apply (f func(i64 f64 i64 f64 -> f64)) -> f64
+    return (f 3i64 0.5 4i64 0.25)
+end
+
+func main () -> i32
+    let g = combine
+    do (io::println (apply g))   # (3+4)=7 + 0.5 + 0.25 = 7.75
+    return 0i32
+end

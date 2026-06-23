@@ -1,0 +1,31 @@
+module t17_mutual_rec_alloc
+
+import io
+import strings
+import convert
+
+# Mutually recursive functions each allocating strings and passing them as args
+# through the recursion. Deep stack of live managed temps; forced GC each frame.
+func ping (n i32) (acc str) -> str
+    if (<= n 0)
+        return acc
+    end
+    return (pong (- n 1) (strings::concat acc "p"))
+end
+
+func pong (n i32) (acc str) -> str
+    if (<= n 0)
+        return acc
+    end
+    return (ping (- n 1) (strings::concat acc "q"))
+end
+
+func main () -> i32
+    let total = 0i32
+    for i = 0 to 1000
+        let s = (ping 40 "")
+        set total = (+ total (as (len s) i32))
+    end
+    do (io::println total)   # 40 chars * 1000 = 40000
+    return 0i32
+end

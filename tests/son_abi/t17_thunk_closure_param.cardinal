@@ -1,0 +1,26 @@
+module t17_thunk_closure_param
+
+import io
+
+# Function value whose param is itself a func-typed (closure, 16B = 2 GP words)
+# value. int_regs_for_src returns 2 for TFunc, so the thunk shifts 2 GP words.
+# env + 2 (closure) + 1 (i64) = needs rdi + rsi:rdx + rcx = 4 regs (fits), but the
+# closure occupies TWO adjacent argregs and the env shift must move both correctly.
+func runit (cb func(i64 -> i64)) (n i64) -> i64
+    return (cb n)
+end
+
+func dbl (x i64) -> i64
+    return (* x 2i64)
+end
+
+func apply (f func(func(i64 -> i64) i64 -> i64)) -> i64
+    let c = dbl
+    return (f c 21i64)
+end
+
+func main () -> i32
+    let g = runit
+    do (io::println (apply g))   # dbl(21) = 42
+    return 0i32
+end

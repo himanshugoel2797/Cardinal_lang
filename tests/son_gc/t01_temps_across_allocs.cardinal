@@ -1,0 +1,35 @@
+module t01_temps_across_allocs
+
+import io
+
+# A box-like sum type so each `mk` is a heap allocation holding an int.
+type Box
+    B (v i32)
+end
+
+func mk (v i32) -> Box
+    return (B v: v)
+end
+
+func unbox (b Box) -> i32
+    match b
+        case (B v)
+            return v
+    end
+end
+
+# Three live temporaries (each a fresh heap alloc) must survive while the
+# later args allocate. If the first/second alloc's temp is not rooted before
+# the third alloc triggers GC, its object is freed -> use-after-free / wrong sum.
+func add3 (a Box) (b Box) (c Box) -> i32
+    return (+ (unbox a) (+ (unbox b) (unbox c)))
+end
+
+func main () -> i32
+    let total = 0i32
+    for i = 0 to 5000
+        set total = (+ total (add3 (mk 1) (mk 2) (mk 3)))
+    end
+    do (io::println total)   # 5000 * 6 = 30000
+    return 0i32
+end
