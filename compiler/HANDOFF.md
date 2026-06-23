@@ -1,10 +1,10 @@
-# Cardinal self-hosting compiler — handoff (next: Stage 4)
+# Cardinal self-hosting compiler — handoff (next: Stage 5 self-host)
 
 Pick up here in a fresh session. This is the Cardinal-written compiler (`compiler/`)
 that runs on the Python bootstrap interpreter and emits standalone C. **Goal:
 self-host** — the compiler compiles itself to a native binary, so the Python
-bootstrap can be retired. **Stage 4 (sum types + match, closures) is the last big
-language feature before the Stage-5 self-host fixed point.**
+bootstrap can be retired. **Stage 4 (sum types + match, closures) is DONE and
+committee-gated; the remaining big step is the Stage-5 self-host fixed point.**
 
 ## Operating contract (read first — the user is strict about these)
 
@@ -53,15 +53,32 @@ Pipeline: `AST → typecheck (gate) → lower → IR → Backend.emit()` → C �
     objects; reference semantics; map is insertion-ordered). Full lowering:
     construction, literals, index r/w, `push`/`pop`/`map_has`/`map_del`/`map_keys`,
     `len`, for-in. Map keys: str(content)/int/char/bool/enum.
-- **Value display + `to_str` (DESIGN §5.5/§5.6) — COMPLETE for struct/enum.**
+- **Value display + `to_str` (DESIGN §5.5/§5.6) — COMPLETE for struct/enum/sum.**
   `to_str(x)` is a type-dispatched builtin; **`io::print` is `print(to_str(x))`**
-  (one formatter). Each struct/enum gets a synthesized
+  (one formatter). Each struct/enum/sum gets a synthesized
   `cl_<mod>__<Type>_to_str(self T)` (lower_program **Pass 3**, always-emit,
-  deterministic); user types recurse via CALLS (the model sum-type display reuses).
-  **User OVERRIDES**: a `func <Type>_to_str (x T) -> str` in the type's defining
-  module replaces the autogen (native skips synthesis; interpreter dispatches via
-  a `defmod` on StructV/EnumV; both checkers enforce the `(T)->str` signature).
-  Floats display via `%g` in both backends.
+  deterministic); user types recurse via CALLS. **User OVERRIDES**: a
+  `func <Type>_to_str (x T) -> str` in the type's defining module replaces the
+  autogen (native skips synthesis; interpreter dispatches via a `defmod` on
+  StructV/EnumV/SumV; both checkers enforce the `(T)->str` signature). Floats via
+  `%g`. A closure renders as `<closure>` in both backends.
+- **Stage 4 — closures + sum types (committee-gated; commits `acf6be6`, `88946a3`):**
+  - **Closures** (ported from `bootstrap/lower.py`): free-variable analysis →
+    captured locals BOXED (1-slot heap cell, shared by-reference, `vs` IVal of IR
+    type `Ptr` ⇒ boxed); `EFunc` bodies lifted to top-level functions taking a GC'd
+    env array; value is `cl_closure {fn,env}`; named/imported function used as a
+    value becomes a thunk-wrapping closure; indirect calls `ICallClosure`. A
+    captured for-loop variable gets a FRESH per-iteration box (interpreter parity;
+    beyond the Python ref which errors). `build_callmap` now resolves selectively-
+    imported functions to their defining module.
+  - **Sum types** (designed; no Python ref): a sum value is a `cl_handle` to a GC
+    object `{int32 cl_tag; payload...}` — one C struct per variant
+    (`cl_struct_<mod>__<Sum>__<Variant>`) + a tag-only header struct; tag = variant
+    index. IR ops `ISumNew/ISumTag/ISumField`. Construction (incl. nullary BARE),
+    `match` (tag if-chain, payload binding, `else`, exhaustive-trap), autogen +
+    overridable sum `to_str`. The discriminant field is `cl_tag` so a user payload
+    may be named `tag`. Recursive sums (AST trees) display/eval by runtime
+    recursion. GC-safe at threshold 0 (conservative scan traces inline payloads).
 
 The Python reference (`bootstrap/lower.py`, `backend_c.py`, `ir.py`) is the
 stage-0 throwaway port spec: it **HAS closures** (port them) but **NO sum types**
@@ -135,68 +152,39 @@ sh compiler/difftest.sh                                              # expect AG
 - Struct fields display in DECLARATION order (canonical); floats via `%g`;
   `to_str` overrides via the per-type `<Type>_to_str` hook.
 
-## NEXT: Stage 4 — sum types + match, and closures  (committee-gated)
+## Stage 4 — DONE (committee-gated, see commits `acf6be6` closures, `88946a3` sums)
 
-Two independent features; do them as separate committee-gated milestones. The
-checker ALREADY fully type-checks both (module-local-qualified), so the work is
-lower + backend + (for sums) a runtime representation. Grep the panic sites:
-`grep -nE 'stage 4' compiler/lower.cardinal` →
-- `451` EFunc (closure literal), `489` path-as-value (function-as-value thunk),
-  `688` indirect/closure call  → **closures**
-- `1046` sum variant literal, `1210` SMatch  → **sum types + match**
-- `backend_c.cardinal:~721` "unsupported instruction" → the closure/sum IR ops.
+Both features land; see the Stage-4 bullet under "Current state" above for the
+model. All `grep 'stage 4'` panic sites are gone. Verification that held:
+closures/features/gcstress + sumtest byte-identical to the interpreter; GC
+sanitizer stress at `CARDINAL_GC_THRESHOLD=0` clean (escaping closures, shared
+cells, vec/map of closures, 100k+ recursive-sum churn with a bounded live set);
+deterministic emission; difftest `AGREE=13`. Each milestone passed a 3-auditor
+committee (parity / GC / design); committee-found bugs fixed before commit:
+selective-import func-as-value mangling; sum field DISPLAY order (interpreter now
+normalizes to declaration order, matching structs/§5.5); `tag` payload-field
+collision (discriminant renamed `cl_tag` so user `tag` payloads work).
 
-### Closures (PORT from the Python reference)
-`bootstrap/lower.py` HAS closure conversion — port it. The model: each `EFunc`
-literal is lifted to a top-level function taking the environment; captured
-variables are **boxed** (a 1-slot heap object) so mutations are shared; the
-closure value is `cl_closure {fn, env}` and calls go indirect through it. The IR
-ops already exist (`IAlloc`/`ILoad` for boxes, `IEnvNew`/`IEnvStore`/`IEnvLoad`
-for the env array, `IMakeClosure`, `ICallClosure`); `cl_closure` is in the
-runtime and `managed()` already covers it. Work:
-1. **Lower** (`lower.cardinal`): closure conversion — free-variable analysis,
-   boxing of captured locals, lift `EFunc` bodies to synthesized top-level
-   functions (you can synthesize functions like Pass 3 does for `to_str`), emit
-   `IMakeClosure`; lower a bare named-function-used-as-value (`lower_path` at 489)
-   to a thunk closure; lower indirect/closure calls (688) to `ICallClosure`.
-   Mirror `bootstrap/lower.py`'s algorithm.
-2. **Backend** (`backend_c.cardinal`): emit the closure ops (port from
-   `bootstrap/backend_c.py`). The env is a GC handle → root it; the conservative
-   scan traces boxes/env. GC-stress at threshold 0 is the key check (escaping
-   closures, two closures sharing one cell — see `examples/closures.cardinal`,
-   `gcstress.cardinal`, `features.cardinal`).
-3. Known deferral even in Python: capturing a `for`-loop variable — check what the
-   interpreter does and match (or ping if it's a hole).
-
-### Sum types + match (DESIGN it — NOT in the Python reference)
-Sum values are **reference types** (managed/handle-backed, recursive — an AST node
-contains AST nodes; DESIGN §5.3). The checker already type-checks construction +
-`match` (exhaustive, payload binding, module-local-qualified). Work:
-1. **Representation** (you design it; ping if §5.3 underspecifies): a sum value =
-   a handle to a GC object holding a variant **tag** (int32, = variant index) +
-   the payload fields. A per-sum-type tagged C struct/union, or a uniform
-   `{tag, fields...}` sized to the largest variant. Payload handles must be
-   GC-traced (8-byte aligned). Add IR + backend emission; likely no new runtime
-   *functions* (just emitted structs + a tag switch).
-2. **Lower** construction (`1046`): build the tagged object for the variant
-   (nullary variants construct BARE — `Leaf`, not `(Leaf)`). **Lower `match`**
-   (`SMatch`, `1210`): read the tag, switch/if-chain on the variant, bind payload
-   fields into the arm scope, exec the arm; `else` default. Exhaustiveness is
-   already enforced by the checker.
-3. **Sum-type `to_str`** (closes the last §5.5 gap): the function model is ready —
-   add a `synth_sum_to_str` (Pass 3) that switches on the tag and builds
-   `(Variant f: <to_str field> ...)`, nullary `(Variant)` (match the interpreter's
-   `_display` SumV form). Handle `TSum` in `lower_to_str`/`to_str_sym`, and EXTEND
-   the checker `<Type>_to_str` hook-signature rule (`check_to_str_hook` /
-   `_check_to_str_hook`) to also accept sum types. Verify recursive sums (e.g. an
-   `Expr` tree) display correctly — runtime recursion over data terminates.
-
-## THEN: Stage 5 — self-host fixed point
+## NEXT: Stage 5 — self-host fixed point
 Compile the whole compiler with itself; iterate until `cc1 == cc2` byte-identical.
-Determinism is already enforced (sorted module/type order, Pass 3 deterministic);
-watch any new map-iteration-driven emission when closures/sums land.
+Determinism is already enforced (sorted module/type order; sorted closure-capture
++ thunk emission; Pass 3 deterministic). Sequence: emit C for every compiler
+module via the Python-hosted compiler, build a native `cc1`; have `cc1` recompile
+the compiler → `cc2`; diff. Watch for: any remaining map-iteration-driven emission
+order; the **lib search-path gap** below (the self-host build must put the
+compiler's own module dir(s) on the search path — emitir only adds the source dir
+and `.`); and that the compiler source itself only uses already-supported features
+(it does — no closures/sum-overrides in its own source, recursive AST sums are
+covered).
 
-## Smaller deferred items (additive, not Stage-4 blockers)
+## Smaller deferred items (additive)
+- **Native import search path** — `emitir.cardinal` only adds the source file's
+  dir + `.` to the checker/lowerer searchdirs, so a program importing a `lib/`
+  module (e.g. `examples/cdemo.cardinal`, `usestd.cardinal` use `array`/`math`)
+  fails native compilation with "module not found" (they still type-check in
+  difftest, which uses a wider search path). Pre-existing; relevant to Stage 5
+  (the self-host build must add the compiler's module dirs). `maptest.cardinal`
+  separately needs `fs::`/`sys::` runtime builtins declared in the backend.
 - **`mod::Type` qualified SYNTAX** (finishes §10): a `TyPath(mod,name)` Ty node in
   `parser.cardinal` + `interpreter.py` parse_type; handle in both `resolve`s and
   qualified construction `(mod::Point ...)`. Nothing needs it yet (no collisions;
