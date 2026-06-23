@@ -432,6 +432,169 @@ struct BX
     slots {str i64}     # slot key -> byte offset from %rbp (negative)
     fname str           # current function (label prefix, avoids cross-fn clashes)
     strs {str str}      # string-literal content -> rodata label
+    structs {str IRStruct}   # qualified struct/variant name -> its IRStruct (layout)
+    scratch i64         # a spare frame slot offset (park a value across a call)
+end
+
+# --------------------------------------------------------------------------- #
+# C-ABI layout model (SysV x86_64): size/alignment of a type, and the byte offset
+# of each field in a struct/variant heap object. Needed because — unlike the C
+# backend, which defers to the C compiler — we compute offsets ourselves. Matches
+# the layout `cc` produces for the emitted typedefs, so heap objects interop.
+# --------------------------------------------------------------------------- #
+
+func type_align (t IRType) (sm {str IRStruct}) -> i64
+    match t
+        case (TyOf st)
+            match st
+                case (TInt n)
+                    return (/ (int_bits n) 8i64)
+                case (TFloat n)
+                    if (strings::eq n "f32")
+                        return 4i64
+                    end
+                    return 8i64
+                case (TPrim n)
+                    if (strings::eq n "bool")
+                        return 1i64
+                    end
+                    if (strings::eq n "char")
+                        return 4i64
+                    end
+                    return 8i64
+                case (TEnum n)
+                    return 4i64
+                case (TStruct n)
+                    return (struct_align sm n)
+                else
+                    return 8i64
+            end
+        else
+            return 8i64
+    end
+    return 8i64
+end
+
+func type_size (t IRType) (sm {str IRStruct}) -> i64
+    match t
+        case (TyOf st)
+            match st
+                case (TInt n)
+                    return (/ (int_bits n) 8i64)
+                case (TFloat n)
+                    if (strings::eq n "f32")
+                        return 4i64
+                    end
+                    return 8i64
+                case (TPrim n)
+                    if (strings::eq n "bool")
+                        return 1i64
+                    end
+                    if (strings::eq n "char")
+                        return 4i64
+                    end
+                    if (strings::eq n "unit")
+                        return 0i64
+                    end
+                    return 8i64
+                case (TEnum n)
+                    return 4i64
+                case (TArray e)
+                    return 24i64
+                case (TFunc p r)
+                    return 16i64
+                case (TStruct n)
+                    return (struct_size sm n)
+                else
+                    return 8i64
+            end
+        else
+            return 8i64
+    end
+    return 8i64
+end
+
+func align_up (off i64) (a i64) -> i64
+    if (<= a 1i64)
+        return off
+    end
+    let r = (% off a)
+    if (== r 0i64)
+        return off
+    end
+    return (+ off (- a r))
+end
+
+func max2 (a i64) (b i64) -> i64
+    if (> a b)
+        return a
+    end
+    return b
+end
+
+func struct_align (sm {str IRStruct}) (qn str) -> i64
+    if (not (map_has sm qn))
+        do (panic (strings::concat "x86: unknown struct layout " qn))
+    end
+    let fs = sm[qn].fields
+    let m = 1i64
+    let i = 0u64
+    while (< i (len fs))
+        set m = (max2 m (type_align fs[i].ty sm))
+        set i = (+ i 1)
+    end
+    return m
+end
+
+func struct_size (sm {str IRStruct}) (qn str) -> i64
+    if (not (map_has sm qn))
+        do (panic (strings::concat "x86: unknown struct layout " qn))
+    end
+    let fs = sm[qn].fields
+    let off = 0i64
+    let i = 0u64
+    while (< i (len fs))
+        let a = (type_align fs[i].ty sm)
+        set off = (align_up off a)
+        set off = (+ off (type_size fs[i].ty sm))
+        set i = (+ i 1)
+    end
+    return (align_up off (struct_align sm qn))
+end
+
+# Byte offset of field `fname` within struct/variant `qn`.
+func field_offset (sm {str IRStruct}) (qn str) (fname str) -> i64
+    if (not (map_has sm qn))
+        do (panic (strings::concat "x86: unknown struct layout " qn))
+    end
+    let fs = sm[qn].fields
+    let off = 0i64
+    let i = 0u64
+    while (< i (len fs))
+        let a = (type_align fs[i].ty sm)
+        set off = (align_up off a)
+        if (strings::eq fs[i].name fname)
+            return off
+        end
+        set off = (+ off (type_size fs[i].ty sm))
+        set i = (+ i 1)
+    end
+    do (panic (strings::concat "x86: no field " (strings::concat fname (strings::concat " in " qn))))
+    return 0i64
+end
+
+# The type of field `fname` in struct/variant `qn` (for sized loads/stores).
+func field_type (sm {str IRStruct}) (qn str) (fname str) -> IRType
+    let fs = sm[qn].fields
+    let i = 0u64
+    while (< i (len fs))
+        if (strings::eq fs[i].name fname)
+            return fs[i].ty
+        end
+        set i = (+ i 1)
+    end
+    do (panic (strings::concat "x86: no field " fname))
+    return VoidPtr
 end
 
 func slot_off (bx BX) (key str) -> i64
@@ -518,6 +681,43 @@ end
 # Store %rax into operand `dst`'s slot.
 func store_rax (bx BX) (dst IVal) -> str
     return (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) ""))
+end
+
+# Store the low `size` bytes of register base ("c"/"a"/"d") into a memory operand.
+func store_sized (size i64) (base str) (mem str) -> str
+    if (== size 1i64)
+        return (line (cat2 "    movb " (cat3 (reg_for base 8i64) ", " mem)))
+    end
+    if (== size 2i64)
+        return (line (cat2 "    movw " (cat3 (reg_for base 16i64) ", " mem)))
+    end
+    if (== size 4i64)
+        return (line (cat2 "    movl " (cat3 (reg_for base 32i64) ", " mem)))
+    end
+    return (line (cat2 "    movq " (cat3 (reg_for base 64i64) ", " mem)))
+end
+
+# Load `size` bytes from memory into %rax, sign/zero-extended to 64 bits.
+func load_sized (size i64) (signed bool) (mem str) -> str
+    if (== size 8i64)
+        return (line (cat2 "    movq " (cat2 mem ", %rax")))
+    end
+    if (== size 4i64)
+        if signed
+            return (line (cat2 "    movslq " (cat2 mem ", %rax")))
+        end
+        return (line (cat2 "    movl " (cat2 mem ", %eax")))
+    end
+    if (== size 2i64)
+        if signed
+            return (line (cat2 "    movswq " (cat2 mem ", %rax")))
+        end
+        return (line (cat2 "    movzwq " (cat2 mem ", %rax")))
+    end
+    if signed
+        return (line (cat2 "    movsbq " (cat2 mem ", %rax")))
+    end
+    return (line (cat2 "    movzbq " (cat2 mem ", %rax")))
 end
 
 # Materialize operand `v` into %rax. Unlike load_into, this handles ImmStr (a
@@ -694,24 +894,23 @@ func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> s
         do (panic "x86: >6 call arguments (stack args later)")
     end
     let out = ""
-    # Materialize each arg into %rax and push it (left-to-right), THEN pop into the
-    # SysV arg registers in reverse. This keeps already-evaluated args on the stack
-    # (not in caller-saved regs) so a strlit/call during a later arg can't clobber
-    # them. The push/pop pairs leave %rsp 16-aligned at the call site.
+    # Materialize each arg into a frame scratch slot (NOT a push — a strlit/call
+    # while args are pushed would misalign %rsp at the internal call), then load
+    # the scratch slots into the SysV arg registers, then call (16-aligned, no
+    # outstanding pushes).
     let i = 0u64
     while (< i (len args))
         if (irt_is_float (iv_ty args[i]))
             do (panic "x86: float call arg (later milestone)")
         end
         set out = (strings::concat out (load_to_rax bx args[i]))
-        set out = (strings::concat out (line "    pushq %rax"))
+        set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ bx.scratch (* (as i i64) 8i64))) "")))
         set i = (+ i 1)
     end
-    let n = (as (len args) i64)
-    let j = (- n 1i64)
-    while (>= j 0i64)
-        set out = (strings::concat out (line (cat2 "    popq " (argreg j))))
-        set j = (- j 1i64)
+    set i = 0u64
+    while (< i (len args))
+        set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem (+ bx.scratch (* (as i i64) 8i64))) ", ") (argreg (as i i64)))))
+        set i = (+ i 1)
     end
     set out = (strings::concat out (line (cat2 "    call " callee)))
     if has_dst
@@ -781,6 +980,47 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             set out = (strings::concat out (line "    movq %rax, %rdi"))
             set out = (strings::concat out (line "    call cl_panic"))
             return out
+        case (ISumNew dst variant_qual tag fnames fvals)
+            # allocate the variant heap object {int32 cl_tag; payload...}, then
+            # write the tag + each payload field through cl_gc_deref.
+            let sz = (struct_size bx.structs variant_qual)
+            let out = (line (cat2 "    movq $" (cat2 (i2s sz) ", %rdi")))
+            set out = (strings::concat out (line "    call cl_gc_alloc"))
+            set out = (strings::concat out (store_rax bx dst))
+            # cl_tag at offset 0 (i32)
+            set out = (strings::concat out (load_into bx "%rdi" dst))
+            set out = (strings::concat out (line "    call cl_gc_deref"))
+            set out = (strings::concat out (line (cat2 "    movl $" (cat2 (i2s tag) ", 0(%rax)"))))
+            let k = 0u64
+            while (< k (len fnames))
+                let foff = (field_offset bx.structs variant_qual fnames[k])
+                let fsz = (type_size (field_type bx.structs variant_qual fnames[k]) bx.structs)
+                # materialize the field value FIRST (may itself call cl_strlit), park
+                # it in a frame slot (NOT a push — that would misalign the stack across
+                # the cl_gc_deref call), then deref the (rooted) object and store.
+                set out = (strings::concat out (load_to_rax bx fvals[k]))
+                set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+                set out = (strings::concat out (load_into bx "%rdi" dst))
+                set out = (strings::concat out (line "    call cl_gc_deref"))
+                set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
+                set out = (strings::concat out (store_sized fsz "c" (cat3 (i2s foff) "(%rax)" "")))
+                set k = (+ k 1)
+            end
+            return out
+        case (ISumTag dst sm sum_qual)
+            let out = (load_into bx "%rdi" sm)
+            set out = (strings::concat out (line "    call cl_gc_deref"))
+            set out = (strings::concat out (line "    movl 0(%rax), %eax"))
+            set out = (strings::concat out (store_rax bx dst))
+            return out
+        case (ISumField dst sm variant_qual field ty)
+            let foff = (field_offset bx.structs variant_qual field)
+            let fsz = (type_size ty bx.structs)
+            let out = (load_into bx "%rdi" sm)
+            set out = (strings::concat out (line "    call cl_gc_deref"))
+            set out = (strings::concat out (load_sized fsz (irt_signed ty) (cat3 (i2s foff) "(%rax)" "")))
+            set out = (strings::concat out (store_rax bx dst))
+            return out
         else
             do (panic "x86: unsupported instruction (later milestone)")
     end
@@ -799,7 +1039,7 @@ func round16 (n i64) -> i64
     return (+ n (- 16i64 r))
 end
 
-func emit_func (f IRFunc) (strs {str str}) -> str
+func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
     # 1) assign a slot to every param, non-unit temp, and local.
     let slots {str i64} = (map str i64)
     let off = 0i64
@@ -828,8 +1068,12 @@ func emit_func (f IRFunc) (strs {str str}) -> str
         set slots[(lkey f.locals[li].name)] = off
         set li = (+ li 1)
     end
+    # 6 spare slots for parking call args / values across runtime calls (so we
+    # never have an outstanding push misaligning the stack at an internal call).
+    set off = (- off 48i64)
+    let scratch = off
     let frame = (round16 (- 0i64 off))
-    let bx = (BX slots: slots fname: f.name strs: strs)
+    let bx = (BX slots: slots fname: f.name strs: strs structs: sm scratch: scratch)
 
     # 2) collect managed slots (for GC rooting): (key, offset) pairs.
     let rkeys {str} = (vec str)
@@ -1005,6 +1249,13 @@ end
 
 export func emit (m IRModule) -> str
     let strs = (collect_strs m)
+    # struct/variant layout map (qualified name -> IRStruct), for sum/struct offsets
+    let sm {str IRStruct} = (map str IRStruct)
+    let si = 0u64
+    while (< si (len m.structs))
+        set sm[m.structs[si].name] = m.structs[si]
+        set si = (+ si 1)
+    end
     let out = ""
     set out = (strings::concat out (line "    .section .rodata"))
     set out = (strings::concat out (line ".Lcl_divzero:"))
@@ -1020,7 +1271,7 @@ export func emit (m IRModule) -> str
     set out = (strings::concat out (line "    .text"))
     let i = 0u64
     while (< i (len m.funcs))
-        set out = (strings::concat out (emit_func m.funcs[i] strs))
+        set out = (strings::concat out (emit_func m.funcs[i] strs sm))
         set out = (strings::concat out (line ""))
         set i = (+ i 1)
     end
