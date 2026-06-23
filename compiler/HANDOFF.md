@@ -1,25 +1,25 @@
-# Cardinal self-hosting compiler — handoff (next: x86_64 aggregates + closures)
+# Cardinal self-hosting compiler — handoff (x86_64 backend feature-complete)
 
 Pick up here in a fresh session. This is the Cardinal-written compiler (`compiler/`)
 that runs on the Python bootstrap interpreter and emits native code. **Goal:
-self-host** — DONE for the C backend. Remote: `github.com/himanshugoel2797/Cardinal_lang`
-(push over SSH; the `gh` token is expired).
+self-host** — DONE for both the C and x86_64 backends. Remote:
+`github.com/himanshugoel2797/Cardinal_lang` (push over SSH; the `gh` token is expired).
 
 **Status:** Stage 4 (sum types + match, closures), Stage 5 (C-backend self-host),
 the reflection API, AND a full **native x86_64 direct-assembler backend** are all
 DONE + committed. The x86 backend (`backend_x86.cardinal`, emits GNU `as` AT&T,
-same IR + runtime ABI as the C backend) compiles the same 10/13 examples
-byte-identically to the interpreter, is GC-sanitizer-clean, AND **self-hosts**:
-the native x86-compiled compiler compiles the whole compiler to byte-identical C.
-**The only remaining x86 gap is floats (xmm); the compiler doesn't use floats, so
-it doesn't block x86 self-host.**
+same IR + runtime ABI as the C backend) compiles the examples byte-identically to
+the interpreter, is GC-sanitizer-clean, AND **self-hosts**: the native x86-compiled
+compiler compiles the whole compiler to byte-identical C. **The x86 backend now has
+full feature parity with the C backend — floats (xmm) and inline asm are done; no
+known x86 codegen gaps remain.** (See "Session: floats + inline asm + fixes" below.)
 
-- **C self-host:** `sh compiler/selfhost.sh` → cc1.c == cc2.c byte-identical.
+- **C self-host:** `sh compiler/selfhost.sh` → cc1.c == cc2.c byte-identical (~71k lines).
 - **x86 self-host:** `sh compiler/selfhost_x86.sh` → the native x86 compiler emits
   identical C to the Python-hosted compiler.
 - **x86 backend:** `sh compiler/ccrun_x86.sh <prog.cardinal>` (emit `.s`: `--emit`).
-  Driver `emitx86.cardinal`; selector `backend.cardinal` ("x86_64"). Floats raise
-  a clean `panic "x86: float ..."`.
+  Driver `emitx86.cardinal`; selector `backend.cardinal` ("x86_64"). Floats fully
+  supported (xmm); inline `asm` supported (native-only).
 - **Reflection (§5.6):** builtin `reflect` module — `reflect::typeof(x) -> TypeInfo
   {name,kind,fields,variants}` (static type → descriptor) and `reflect::variant_of(x)`
   (live sum/enum variant). Deferred: per-field type descriptors + byte offsets
@@ -194,6 +194,76 @@ are identical (only residual diff is the C toolchain embedding the input path).
 Enabled by native `fs::read_file`/`fs::exists`/`sys::args` (cardinal_rt.c) + the
 `int main(int argc,char**argv)` wrapper setting `cl_sys_set_args`.
 
+## Session: floats + inline asm + fixes — DONE (committee-gated)
+
+This session brought the x86 backend to full parity with the C backend and closed
+the last-known cross-backend gaps. All committee-gated; difftest `AGREE=13`, C and
+x86 self-host both byte-identical at each step.
+
+- **x86 floats (xmm)** — commit `f514718`. f32/f64 at parity with the C backend:
+  SSE arith (add/sub/mul/div ss/sd), ordered compares (ucomi + setcc), negate
+  (xorps/xorpd sign mask), int↔float and f32↔f64 casts (cvtsi2sd/ss, cvttsd/ss2si,
+  cvtss2sd, cvtsd2ss). SysV: float args in xmm0..7 (a SEPARATE counter from the 6
+  GP regs; hidden struct-return ptr does not touch the xmm counter), stack overflow,
+  return in xmm0, params from xmm0..7. Float literals interned in a `.rodata` pool
+  (.double/.float, 8-aligned), threaded through `emit_func`. Float stores routed
+  through xmm everywhere (locals, struct/sum field init, value-struct construction,
+  array/vec elements, deref-through-box). **Committee blocker fixed:** the call-arg
+  park area was 6 words but a call can now park 6 GP + 8 xmm = 14 register args via
+  the shared scratch cursor — overflowing into saved %rbp / the return address; the
+  scratch reservation is now 14 words (`set off = (- off 112i64)` in `emit_func`).
+- **Inline assembly** — commit `4385c00`. A native-only GCC-style extended `asm`
+  statement (DESIGN had no spec; defined here). Syntax:
+  ```
+  asm "template"
+      out: (var "=constraint") ...
+      in:  (var "constraint")  ...
+      clobber: "reg" ...
+  end
+  ```
+  Operands are register-sized scalars (int/enum/bool/char/handle), numbered
+  outputs-first (GCC `%0,%1`); constraints a/b/c/d/S/D (fixed reg), r/q (any GP reg),
+  m (memory slot), with `=`/`+`/`&` modifiers; template supports `%N`, `%%`, and the
+  `%b/%w/%k/%q` size modifiers. Wired through lexer (`asm` kw) → parser (`SAsm`/
+  `AsmOp`) → checker (operand validation; mirrored in `typecheck.py`) → ir (`IAsm`/
+  `IAsmOp`) → lower (resolve operand vars to non-boxed Locals) → C backend
+  (`__asm__ volatile`) → x86 backend (`emit_asm`) → interpreter (native-only panic).
+  x86 places each operand (fixed reg / allocated reg / memory slot), loads inputs,
+  substitutes, stores register outputs. The `r` allocator excludes rbp/rsp/rbx and
+  skips clobbered + fixed regs. **Committee blocker fixed:** narrow-int outputs
+  (i8/i16/i32/unsigned) stored back without re-extending, breaking the invariant
+  that narrow slots hold a full sign/zero-extended 64-bit word — now extended before
+  a full-word store (`asm_extend_reg`), with a `=m`/`+m` slot fixup
+  (`asm_load_ext_slot`); inputs load the full extended word.
+  **Documented semantic difference:** every operand gets a distinct register (outputs
+  are always effectively early-clobber — safer than GCC, which may alias `=r` onto an
+  input); asm relying on GCC aliasing is non-portable (use `=&`).
+- **`fs::write_file` / `read_file_cb` / `write_file_cb`** — commit `ae3bb6c`. The
+  `fs` builtin declared these (checker + interpreter supported them) but the SHARED
+  runtime only had `read_file`/`exists`, so maptest failed to LINK on BOTH backends
+  (the x86 backend links the same `cardinal_rt.c`+`cardinal_gc.c` — there is NO
+  separate x86 runtime). Implemented in `cardinal_rt.c` matching the interpreter;
+  callbacks invoked via the closure ABI `((RET(*)(cl_handle env, ARGS...))(cl.fn))
+  (cl.env, ...)`; `read_file_cb` GC-roots the fresh string across the callback.
+- **x86 multi-word boxed value-struct load/store** — commit `4a46a4a`. A value
+  struct >8 bytes captured by a closure is boxed; `IAssign(PDeref)` (store) and
+  `ILoad` (read) only handled ONE word (ILoad used `load_sized(type_size)` which
+  falls through to a 1-byte `movzbq` for a 24-byte struct), so a captured struct's
+  later fields (e.g. a `str` at offset 8) were never written/read → "null handle
+  dereference". (Pre-existing; C backend assigns whole structs, unaffected.) Both
+  x86 paths now copy every `nwords` word, mirroring the IStructNew copy loops.
+- **lib module search path** — commits `592b141` (x86), `e8b06fb` (C). The drivers
+  built the import search path as `[dirname(src), "."]`, so programs importing
+  stdlib modules (`math`/`array`: cdemo/usestd/usemathx) failed with "module not
+  found" on BOTH backends. `emitir.cardinal`/`emitx86.cardinal` now append `argv[1:]`
+  as search dirs (same convention as `checkmod.cardinal`), and `ccrun.sh`/
+  `ccrun_x86.sh` pass `$root/lib`. Backward compatible (no extra args → unchanged,
+  self-host stays byte-identical). **Resolved the "cdemo overflow" question:** there
+  was never an overflow-semantics divergence — cdemo just failed to compile (lib
+  path); now its intentional i32 overflow `2000000000*2 → -294967296` matches across
+  interpreter and both backends (interp wraps two's-complement; compiled uses
+  `-fwrapv`). gcc emits a cosmetic `-Woverflow` warning on stderr; stdout is correct.
+
 ## x86_64 backend — DONE (self-hosts; commits through milestone 7)
 A stack-slot machine (no regalloc): every IR temp/local/param → a size-aware frame
 slot; ints computed in 64-bit then normalized to width; full SysV AMD64 ABI
@@ -209,10 +279,9 @@ io, sum types, vectors, maps, closures (boxes/env/16B cl_closure/thunks), arrays
 ABI bugs were fixed: narrow call-return normalization (str ==) and multi-word
 container elements (vec/map of closures).
 
-**Only remaining x86 op:** floats (xmm) — ImmFloat (rodata .double), addsd/.../
-ucomisd, cvtsi2sd/cvttsd2si, float args xmm0..7 / return xmm0, cl_f64_to_str. No
-example and not the compiler uses floats, so this is the last loose end, not a
-blocker.
+**Floats (xmm) and inline asm are now DONE** (see "Session: floats + inline asm +
+fixes" above). The x86 backend has full feature parity with the C backend; no known
+codegen gaps remain.
 
 ## (historical) x86_64 backend — remaining milestones
 `backend_x86.cardinal` is a stack-slot machine (no regalloc): every IR temp/local/
@@ -227,36 +296,12 @@ io of scalars, GC rooting, sum types (ISumNew/Tag/Field), vec + map ops. Each op
 that's unimplemented raises `panic "x86: ..."`. Verify like the C backend but with
 `ccrun_x86.sh`; GC-stress with the same ASan+UBSan + `CARDINAL_GC_THRESHOLD=0`.
 
-Remaining (in rough order of ABI difficulty):
-1. **Floats (xmm):** ImmFloat (rodata .double / movq immediate), float arith via
-   xmm0/xmm1 (addsd/subsd/mulsd/divsd, f32 via *ss), float compares (ucomisd +
-   setcc), int↔float casts (cvtsi2sd/cvttsd2si), float args (xmm0..7) + returns
-   (xmm0), float to_str (cl_f64_to_str). Self-contained; unlocks float programs.
-2. **By-value aggregates (the hard part — SysV ABI):** value structs
-   (IStructNew/ILoadField + PField, struct params/returns) and arrays
-   (cl_array is 24 bytes; IArrNew/Lit/Get/Set/Len; cl_array_new returns 24B via a
-   hidden pointer, cl_array_at takes 24B by value on the stack). Classify each
-   aggregate's eightbytes (≤16B → up to 2 regs by INTEGER/SSE class; >16B →
-   MEMORY: on the stack as an arg, hidden-pointer return). Multi-word values need
-   >8-byte frame slots. This unlocks demo/features/strtest.
-3. **Closures:** `cl_closure {void* fn; cl_handle env}` is 16 bytes (2 slots /
-   2-reg by value); IAlloc/ILoad (boxes), IEnvNew/Store/Load, IMakeClosure
-   (load fn label addr + env into the 2-word value), ICallClosure (cast fn ptr,
-   call through it with the SysV cast). The C backend's emission is the reference.
-
-Smaller native gaps shared with the C backend: the **lib search-path** (emitir/
-emitx86 only add the source dir + `.`, so programs importing `lib/` modules —
-cdemo/usestd — fail; the self-host build doesn't need lib) and **fs::write_file**
-(maptest; read_file/exists/args exist, write_file does not yet).
+All milestones from this list are now DONE: (1) floats (xmm), (2) by-value
+aggregates (value structs + arrays), and (3) closures. See the "Session" and
+"x86_64 backend — DONE" sections above for the as-built model. The earlier
+shared-backend gaps (lib search-path, `fs::write_file`) are also resolved.
 
 ## Smaller deferred items (additive)
-- **Native import search path** — `emitir.cardinal` only adds the source file's
-  dir + `.` to the checker/lowerer searchdirs, so a program importing a `lib/`
-  module (e.g. `examples/cdemo.cardinal`, `usestd.cardinal` use `array`/`math`)
-  fails native compilation with "module not found" (they still type-check in
-  difftest, which uses a wider search path). Pre-existing; relevant to Stage 5
-  (the self-host build must add the compiler's module dirs). `maptest.cardinal`
-  separately needs `fs::`/`sys::` runtime builtins declared in the backend.
 - **`mod::Type` qualified SYNTAX** (finishes §10): a `TyPath(mod,name)` Ty node in
   `parser.cardinal` + `interpreter.py` parse_type; handle in both `resolve`s and
   qualified construction `(mod::Point ...)`. Nothing needs it yet (no collisions;
@@ -283,3 +328,8 @@ cdemo/usestd — fail; the self-host build doesn't need lib) and **fs::write_fil
 - Deeply nested `strings::concat` mis-balances parens → use the `cat`/vec builder.
 - The whole program (all modules) compiles to ONE C file (whole-program), so
   cross-module synthesized calls link fine; functions are forward-declared.
+- `asm` is a keyword. Inline asm is native-only (the interpreter panics), so asm
+  programs can't go in difftest; verify them by compiling with BOTH `ccrun.sh` and
+  `ccrun_x86.sh` and comparing runtime output. Operands are register-sized scalars
+  only; outputs must be mutable, non-captured locals. Outputs are always early-
+  clobber on x86 (use `=&` for portability to the C/GCC backend).
