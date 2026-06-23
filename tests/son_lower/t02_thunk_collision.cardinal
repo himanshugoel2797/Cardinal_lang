@@ -1,0 +1,34 @@
+module t02_thunk_collision
+
+# STRATEGY 2: Thunk naming collision.
+# When a top-level function is used as a value (passed to higher-order func),
+# the lowerer emits a thunk: cl_<mod>__<fname>__thunk.
+# If the user also defines a function named "<fname>__thunk" in this module,
+# the lowerer will emit cl_<mod>__<fname>__thunk TWICE.
+# Note: identifiers can contain double-underscores? Let's check if the parser
+# allows that. The lexer: is_ident_start = letter|underscore, is_ident_cont = ident_start|digit.
+# So "foo__thunk" contains "__" which is two underscores -- valid identifier!
+# This should produce a duplicate symbol.
+
+import io
+
+func foo () -> i32
+    return 10i32
+end
+
+func foo__thunk () -> i32
+    return 20i32
+end
+
+func apply (f func(-> i32)) -> i32
+    return (f)
+end
+
+func main () -> i32
+    # passing foo as value generates cl_t02_thunk_collision__foo__thunk
+    # but foo__thunk is already cl_t02_thunk_collision__foo__thunk
+    let r = (apply foo)
+    do (io::println r)
+    do (io::println (foo__thunk))
+    return 0i32
+end

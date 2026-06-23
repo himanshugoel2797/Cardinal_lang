@@ -1,0 +1,28 @@
+module t09_struct_field_cl_tag
+
+# STRATEGY 9: Sum variant payload field named "tag" (reserved check).
+# The lowerer explicitly checks: if pf.name == "cl_tag" -> panic.
+# But "tag" (without cl_ prefix) is allowed per comments in lower.cardinal.
+# This tests that "tag" works fine but "cl_tag" triggers the reservation error.
+# "tag" should be usable as a payload field name.
+
+import io
+
+type Shape
+    Circle (radius f64) (tag i32)
+    Square (side f64) (tag i32)
+end
+
+func main () -> i32
+    let c = (Circle radius: 3.14 tag: 1i32)
+    let s = (Square side: 5.0 tag: 2i32)
+    match c
+        case Circle(r t)
+            do (io::println t)
+    end
+    match s
+        case Square(side t)
+            do (io::println t)
+    end
+    return 0i32
+end

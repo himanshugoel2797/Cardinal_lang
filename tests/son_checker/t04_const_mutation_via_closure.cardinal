@@ -1,0 +1,22 @@
+module t04_const_mutation_via_closure
+# ATTACK: const binding captured by a closure, then the closure tries to mutate it.
+# The const is immutable at the outer scope, but inside the closure body,
+# the closure params are marked mutable: true.
+# However the CAPTURE is by reference. If the checker lets a closure
+# that returns the captured variable's address mutate it, that's unsound.
+# More specifically: close over a `const` and see if the closure can `set` it.
+
+import io
+
+func main () -> i32
+    const x = 10i32
+    # Create a closure that tries to modify the captured const
+    # This SHOULD be rejected (set on immutable const)
+    let mutator = func () -> i32
+        set x = 99i32
+        return x
+    end
+    let v = (mutator)
+    do (io::println v)
+    return 0i32
+end

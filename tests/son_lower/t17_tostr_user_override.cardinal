@@ -1,0 +1,34 @@
+module t17_tostr_user_override
+
+# STRATEGY 17: User-defined <Type>_to_str function and the pass-3 skip logic.
+# If a user defines "Foo_to_str" in the SAME module as struct "Foo",
+# the lowerer should skip synthesizing the auto-generated one (pass 3 checks this).
+# BUT: what if the user function has the WRONG signature?
+# The user override should still replace the autogen. We test that:
+# 1. User-override is used (not autogen).
+# 2. The output differs from the default "(Foo x: 5)" format.
+# Also test that a struct "Bar_to_str" doesn't confuse the skip logic
+# (the auto-generated "Bar_to_str_to_str" must still be emitted).
+
+import io
+
+struct Foo
+    x i32
+end
+
+struct Bar_to_str
+    y i32
+end
+
+# Override the to_str for Foo -- should produce custom output
+func Foo_to_str (self Foo) -> str
+    return "custom_Foo"
+end
+
+func main () -> i32
+    let f = (Foo x: 5i32)
+    let b = (Bar_to_str y: 7i32)
+    do (io::println (to_str f))    # should print "custom_Foo"
+    do (io::println (to_str b))    # should print "(Bar_to_str y: 7)"
+    return 0i32
+end

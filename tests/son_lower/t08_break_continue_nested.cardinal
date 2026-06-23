@@ -1,0 +1,66 @@
+module t08_break_continue_nested
+
+# STRATEGY 8: break/continue in deeply nested loop/while inside loop.
+# The lowerer uses a STACK for break/continue targets.
+# `loop` and `while` both push to brk/cont stacks.
+# A `break` in nested loops should target the INNERMOST enclosing loop,
+# not an outer one. Let's verify this is correct across all three backends.
+
+import io
+
+func test_break_nested () -> i32
+    let result = 0i32
+    let i = 0i32
+    while (< i 10i32)
+        let j = 0i32
+        while (< j 10i32)
+            if (== j 3i32)
+                break
+            end
+            set result = (+ result 1i32)
+            set j = (+ j 1i32)
+        end
+        set i = (+ i 1i32)
+    end
+    return result
+end
+
+func test_continue_nested () -> i32
+    let result = 0i32
+    let i = 0i32
+    while (< i 5i32)
+        let j = 0i32
+        while (< j 5i32)
+            set j = (+ j 1i32)
+            if (== j 3i32)
+                continue
+            end
+            set result = (+ result 1i32)
+        end
+        set i = (+ i 1i32)
+    end
+    return result
+end
+
+func test_loop_break () -> i32
+    let result = 0i32
+    loop
+        loop
+            set result = (+ result 1i32)
+            if (>= result 5i32)
+                break
+            end
+        end
+        if (>= result 5i32)
+            break
+        end
+    end
+    return result
+end
+
+func main () -> i32
+    do (io::println (test_break_nested))   # 10*3 = 30
+    do (io::println (test_continue_nested))  # 5*4 = 20
+    do (io::println (test_loop_break))      # 5
+    return 0i32
+end

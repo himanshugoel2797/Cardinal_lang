@@ -1,0 +1,35 @@
+module t22_for_var_named_i
+
+# STRATEGY 22: for-in loop creates an internal index variable via uniq(lx, "i").
+# If the USER also has a variable named "i" in the same function, the uniq
+# calls might collide.
+# Lower_forin: let idxn = (uniq lx "i") -> "i_N"
+# Lower_stmt SLet "i": let idxm = (uniq lx "i") -> "i_M"
+# These are different (different N, M). But if user names var "i_1",
+# then that var gets IR name "i_1_K" for some K. The for-in index gets "i_1" too?
+# No -- for-in uses uniq("i") not uniq("i_1").
+# But: what if there are TWO for-in loops? First: idx gets "i_1". Second: idx gets "i_2".
+# User var "i" (let) gets "i_3" (third uniq call for "i"). Different. OK.
+# What if user writes: let i_1 = ...? -> IR name "i_1_1". And for-in idx gets "i_1".
+# These are DIFFERENT IR names. Hmm.
+#
+# But wait: what if user has nested for-in loops AND a variable shadowed from outer scope?
+# Let's just verify the output is consistent.
+
+import io
+
+func main () -> i32
+    let arr1 [i32] = [1i32 2i32 3i32]
+    let arr2 [i32] = [10i32 20i32 30i32]
+    let i = 0i32
+    let total = 0i32
+    for x in arr1
+        for y in arr2
+            set total = (+ total (+ x y))
+        end
+        set i = (+ i 1i32)
+    end
+    do (io::println total)  # (1+10)+(1+20)+(1+30) + (2+10)+... = 3*(1+2+3) + 9*(10+20+30) = 18+540=558
+    do (io::println i)      # 3
+    return 0i32
+end

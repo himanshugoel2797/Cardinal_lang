@@ -1,0 +1,92 @@
+module interact_intwidths
+
+import io
+
+# Strategy B: INTERACTION — arithmetic-heavy kernel mixing int widths inside aggregates
+# Tests: i8, i16, i32, i64, u8, u16, u32, u64 values stored in structs,
+# casts between widths, operations inside loops.
+
+struct NumBox
+    a i32
+    b i64
+    c i32
+end
+
+func make_box (a i32) (b i64) (c i32) -> NumBox
+    return (NumBox a: a b: b c: c)
+end
+
+func box_sum_i64 (nb NumBox) -> i64
+    return (+ (as nb.a i64) (+ nb.b (as nb.c i64)))
+end
+
+# Polynomial: a*x^2 + b*x + c with different width operands
+func poly32 (a i32) (b i32) (c i32) (x i32) -> i32
+    return (+ (* a (* x x)) (+ (* b x) c))
+end
+
+func poly64 (a i64) (b i64) (c i64) (x i64) -> i64
+    return (+ (* a (* x x)) (+ (* b x) c))
+end
+
+# Shift/bitwise operations across widths
+func bit_ops_i32 (n i32) -> i32
+    let shifted = (shl n 3)
+    let masked = (band shifted 255i32)
+    let toggled = (bxor masked 42i32)
+    return toggled
+end
+
+func bit_ops_i64 (n i64) -> i64
+    let shifted = (shl n 3)
+    let masked = (band shifted 255i64)
+    let toggled = (bxor masked 42i64)
+    return toggled
+end
+
+# Test accumulation in a vec of structs
+func sum_boxes (boxes {NumBox}) -> i64
+    let total = 0i64
+    for box in boxes
+        set total = (+ total (box_sum_i64 box))
+    end
+    return total
+end
+
+func main () -> i32
+    # Test poly with i32
+    let p1 = (poly32 2 3 1 5)
+    do (io::println p1)
+
+    # Test poly with i64
+    let p2 = (poly64 2i64 3i64 1i64 5i64)
+    do (io::println p2)
+
+    # Test bit ops
+    let b1 = (bit_ops_i32 100i32)
+    let b2 = (as (bit_ops_i64 (as 100i32 i64)) i32)
+    do (io::println b1)
+    do (io::println b2)
+
+    # Test struct vec pipeline
+    let boxes {NumBox} = (vec NumBox)
+    do (push boxes (make_box 1 10i64 100))
+    do (push boxes (make_box 2 20i64 200))
+    do (push boxes (make_box 3 30i64 300))
+    do (push boxes (make_box 4 40i64 400))
+    let total = (sum_boxes boxes)
+    do (io::println total)
+
+    # width cast round-trips
+    let x = 127i32
+    let y = (as (as x i64) i32)
+    do (io::println y)
+
+    # i32 -> i64 arithmetic
+    let a = 1000000i32
+    let b = (as a i64)
+    let c = (* b b)
+    do (io::println c)
+
+    return 0i32
+end

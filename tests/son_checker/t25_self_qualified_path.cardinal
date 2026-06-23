@@ -1,0 +1,19 @@
+module t25_self_qualified_path
+# ATTACK: use `module_name::func` to reference a function in the current module.
+# Python checker: tries sig.imported.get(parts[0]) then self.sigs.get(parts[0])
+# Cardinal checker: explicitly checks if parts[0] == ctx.modname
+# If there's divergence in how self-qualified paths are resolved,
+# one checker might accept while the other rejects.
+
+import io
+
+func helper () -> i32
+    return 99i32
+end
+
+func main () -> i32
+    # Call helper via self-qualified path
+    let v = (t25_self_qualified_path::helper)
+    do (io::println v)
+    return 0i32
+end

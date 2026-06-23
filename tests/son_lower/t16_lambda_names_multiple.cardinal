@@ -1,0 +1,34 @@
+module t16_lambda_names_multiple
+
+# STRATEGY 16: Multiple functions with lambdas, counter is global to module.
+# The lambda counter (lamn) is module-wide monotonic. If function f1 generates
+# lambda1..lambda3, then f2 starts at lambda4.
+# But: what if user has func "lambda3" and f1 generates exactly 3 lambdas?
+# Then cl_<mod>__lambda3 would be BOTH the user function AND the 3rd auto-lambda.
+
+import io
+
+# User-defined function that will collide with the 3rd auto-generated lambda
+func lambda3 () -> i32
+    return 300i32
+end
+
+# This function generates lambdas 1, 2, 3
+func make_three () -> i32
+    let f1 = func () -> i32
+        return 1i32
+    end
+    let f2 = func () -> i32
+        return 2i32
+    end
+    let f3 = func () -> i32
+        return 3i32
+    end
+    return (+ (f1) (+ (f2) (f3)))
+end
+
+func main () -> i32
+    do (io::println (make_three))    # 6
+    do (io::println (lambda3))       # 300
+    return 0i32
+end

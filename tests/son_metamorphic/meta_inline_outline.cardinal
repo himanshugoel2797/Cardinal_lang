@@ -1,0 +1,98 @@
+module meta_inline_outline
+
+import io
+
+# Strategy A: METAMORPHIC — inline a helper vs outline a computation
+# Also tests: wrapping computations in closures and immediately calling them.
+# Computes Collatz sequence length for several inputs.
+# collatz(6)=9, collatz(11)=15, collatz(27)=112
+
+# Original: inline the step
+func collatz_inline (n i32) -> i32
+    let count = 0i32
+    let cur = n
+    while (!= cur 1)
+        if (== (- cur (* 2 (/ cur 2))) 0)
+            set cur = (/ cur 2)
+        else
+            set cur = (+ (* 3 cur) 1)
+        end
+        set count = (+ count 1)
+    end
+    return count
+end
+
+# Helper functions outlined
+func is_even (n i32) -> bool
+    return (== (- n (* 2 (/ n 2))) 0)
+end
+
+func collatz_step (n i32) -> i32
+    if (is_even n)
+        return (/ n 2)
+    else
+        return (+ (* 3 n) 1)
+    end
+    return n
+end
+
+func collatz_outlined (n i32) -> i32
+    let count = 0i32
+    let cur = n
+    while (!= cur 1)
+        set cur = (collatz_step cur)
+        set count = (+ count 1)
+    end
+    return count
+end
+
+# Wrapped in closure and immediately called
+func collatz_closure (n i32) -> i32
+    let compute = func () -> i32
+        let count = 0i32
+        let cur = n
+        while (!= cur 1)
+            if (is_even cur)
+                set cur = (/ cur 2)
+            else
+                set cur = (+ (* 3 cur) 1)
+            end
+            set count = (+ count 1)
+        end
+        return count
+    end
+    return (compute)
+end
+
+# Variant: use for-loop with max iterations and loop/break
+func collatz_loopbreak (n i32) -> i32
+    let count = 0i32
+    let cur = n
+    loop
+        if (== cur 1)
+            break
+        end
+        if (is_even cur)
+            set cur = (/ cur 2)
+        else
+            set cur = (+ (* 3 cur) 1)
+        end
+        set count = (+ count 1)
+    end
+    return count
+end
+
+func main () -> i32
+    let inputs [i32] = [6 11 27]
+    for n in inputs
+        let a = (collatz_inline n)
+        let b = (collatz_outlined n)
+        let c = (collatz_closure n)
+        let d = (collatz_loopbreak n)
+        do (io::println a)
+        do (io::println b)
+        do (io::println c)
+        do (io::println d)
+    end
+    return 0i32
+end

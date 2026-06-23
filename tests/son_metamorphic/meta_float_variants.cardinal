@@ -1,0 +1,122 @@
+module meta_float_variants
+
+import io
+
+# Strategy A: METAMORPHIC — float arithmetic with identity casts and variant forms
+# Tests: f64 operations, cast from/to f64, let-factoring, closure wrapping.
+# Uses p64 pass-through to anchor literal types.
+
+func p64 (x f64) -> f64
+    return x
+end
+
+# Baseline: direct float computation
+# sum of 1/i for i=1..10 (harmonic series)
+func harmonic_direct () -> f64
+    let s = (p64 0.0)
+    let i = 1i32
+    while (<= i 10)
+        set s = (+ s (/ (p64 1.0) (as i f64)))
+        set i = (+ i 1)
+    end
+    return s
+end
+
+# Variant: let-factored steps
+func harmonic_factored () -> f64
+    let s = (p64 0.0)
+    let i = 1i32
+    while (<= i 10)
+        let fi = (as i f64)
+        let term = (/ (p64 1.0) fi)
+        let news = (+ s term)
+        set s = news
+        set i = (+ i 1)
+    end
+    return s
+end
+
+# Variant: with identity casts
+func harmonic_withcast () -> f64
+    let s = (as (p64 0.0) f64)
+    let i = 1i32
+    while (<= i 10)
+        let fi = (as (as i f64) f64)
+        let term = (as (/ (as (p64 1.0) f64) fi) f64)
+        set s = (as (+ s term) f64)
+        set i = (+ i 1)
+    end
+    return s
+end
+
+# Variant: wrapped in closure
+func harmonic_closure () -> f64
+    let compute = func () -> f64
+        let s = (p64 0.0)
+        let i = 1i32
+        while (<= i 10)
+            set s = (+ s (/ (p64 1.0) (as i f64)))
+            set i = (+ i 1)
+        end
+        return s
+    end
+    return (compute)
+end
+
+# Variant: outlined step function
+func recip (i i32) -> f64
+    return (/ (p64 1.0) (as i f64))
+end
+
+func harmonic_outlined () -> f64
+    let s = (p64 0.0)
+    for i = 1 to 11
+        set s = (+ s (recip i))
+    end
+    return s
+end
+
+# Different computation: sum of squares as floats
+# sum(i^2) for i=1..5 = 55.0
+func sumsq_float_direct () -> f64
+    let s = (p64 0.0)
+    for i = 1 to 6
+        let fi = (as i f64)
+        set s = (+ s (* fi fi))
+    end
+    return s
+end
+
+func sumsq_float_closure () -> f64
+    let compute = func () -> f64
+        let s = (p64 0.0)
+        let i = 1i32
+        while (<= i 5)
+            let fi = (as i f64)
+            set s = (+ s (* fi fi))
+            set i = (+ i 1)
+        end
+        return s
+    end
+    return (compute)
+end
+
+func main () -> i32
+    let a = (harmonic_direct)
+    let b = (harmonic_factored)
+    let c = (harmonic_withcast)
+    let d = (harmonic_closure)
+    let e = (harmonic_outlined)
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    do (io::println e)
+
+    let fa = (sumsq_float_direct)
+    let fb = (sumsq_float_closure)
+    do (io::println fa)
+    do (io::println fb)
+
+    return 0i32
+end

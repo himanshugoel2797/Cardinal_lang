@@ -1,0 +1,20 @@
+# Minimal repro for const-with-expression cannot be used as value in C/x86 backends.
+# BUG: both C and x86 backends emit "lower: cannot use as a value: <const_name>"
+# when a module-level const is defined with an arithmetic expression.
+# A const with a simple literal value DOES work — the bug is specific to
+# computed const values (expressions).
+module n22_const_arith_used_as_val
+
+import io
+
+# Simple literal const: should work
+const FORTY_TWO i32 = 42i32
+
+# Computed const: triggers the backend crash
+const WRAPPED i32 = (+ 2147483647i32 1i32)
+
+func main () -> i32
+    do (io::println FORTY_TWO)
+    do (io::println WRAPPED)
+    return 0i32
+end

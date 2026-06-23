@@ -1,0 +1,64 @@
+# Strategy 2: NaN semantics — NaN comparisons must return false for ordered,
+# and true for != . Test NaN generated at runtime (0.0/0.0) vs used in
+# comparisons and branches.
+# Known: C backend panics on float /0 (BUG 2), but the x86 backend gives NaN.
+# This test uses subtraction of infinities to produce NaN (not division by zero)
+# to avoid the known float /0 panic.
+module n04_float_nan_compare
+
+import io
+
+func make_inf () -> f64
+    # 1e308 * 10 overflows to inf in f64
+    return (* 1e308 10.0)
+end
+
+func make_nan () -> f64
+    # inf - inf = NaN (IEEE 754)
+    let inf = (make_inf)
+    return (- inf inf)
+end
+
+func main () -> i32
+    let nan = (make_nan)
+    let inf = (make_inf)
+
+    # NaN comparisons: all ordered comparisons should be false
+    if (< nan 0.0)
+        do (io::println "nan<0: TRUE")
+    else
+        do (io::println "nan<0: false")
+    end
+
+    if (> nan 0.0)
+        do (io::println "nan>0: TRUE")
+    else
+        do (io::println "nan>0: false")
+    end
+
+    if (== nan nan)
+        do (io::println "nan==nan: TRUE")
+    else
+        do (io::println "nan==nan: false")
+    end
+
+    if (!= nan nan)
+        do (io::println "nan!=nan: TRUE")
+    else
+        do (io::println "nan!=nan: false")
+    end
+
+    if (<= nan 0.0)
+        do (io::println "nan<=0: TRUE")
+    else
+        do (io::println "nan<=0: false")
+    end
+
+    if (>= nan 0.0)
+        do (io::println "nan>=0: TRUE")
+    else
+        do (io::println "nan>=0: false")
+    end
+
+    return 0i32
+end

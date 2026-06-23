@@ -1,0 +1,25 @@
+module t15_closure_capture_in_for
+
+# STRATEGY 15: Closure capturing a for-loop variable.
+# The lowerer says: "A loop variable captured by a closure gets a FRESH
+# per-iteration box". This means each closure should capture a distinct value.
+# The interpreter does the same. But the C and x86 backends must implement
+# per-iteration boxing. Test that all three agree.
+
+import io
+
+func main () -> i32
+    let fns {func(-> i32)} = (vec func(-> i32))
+    for i = 0i32 to 5i32
+        let captured_i = i
+        let f = func () -> i32
+            return captured_i
+        end
+        do (push fns f)
+    end
+    # Each closure should return its own i (0,1,2,3,4)
+    for x in fns
+        do (io::println (x))
+    end
+    return 0i32
+end

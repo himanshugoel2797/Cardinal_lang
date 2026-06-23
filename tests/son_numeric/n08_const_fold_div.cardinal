@@ -1,0 +1,57 @@
+# Strategy 1d: Constant folding for division.
+# The interpreter uses exact integer division (trucate toward zero).
+# C backend emits literal integer division with -fwrapv.
+# INT_MIN / -1 is the classic UB case (x86 SIGFPE), but that's a known bug.
+# New angle: does constant-folded division agree with runtime division?
+# Also: division of negative numbers (truncation direction).
+module n08_const_fold_div
+
+import io
+
+func keep_i32 (x i32) -> i32
+    return x
+end
+
+func keep_i64 (x i64) -> i64
+    return x
+end
+
+func main () -> i32
+    # -7 / 2: truncate toward zero = -3 (not floor = -4)
+    let lit_div i32 = (/ (- 7i32) 2i32)
+    let rt_div i32 = (/ (keep_i32 (- 7i32)) 2i32)
+    do (io::println lit_div)
+    do (io::println rt_div)
+
+    # -7 % 2: remainder with truncation toward zero = -1 (not 1)
+    let lit_mod i32 = (% (- 7i32) 2i32)
+    let rt_mod i32 = (% (keep_i32 (- 7i32)) 2i32)
+    do (io::println lit_mod)
+    do (io::println rt_mod)
+
+    # 7 / -2: truncate toward zero = -3
+    let lit_div2 i32 = (/ 7i32 (- 2i32))
+    let rt_div2 i32 = (/ 7i32 (keep_i32 (- 2i32)))
+    do (io::println lit_div2)
+    do (io::println rt_div2)
+
+    # 7 % -2: remainder = 1 (sign follows dividend in C)
+    let lit_mod2 i32 = (% 7i32 (- 2i32))
+    let rt_mod2 i32 = (% 7i32 (keep_i32 (- 2i32)))
+    do (io::println lit_mod2)
+    do (io::println rt_mod2)
+
+    # -7 / -2: truncate toward zero = 3
+    let lit_div3 i32 = (/ (- 7i32) (- 2i32))
+    let rt_div3 i32 = (/ (keep_i32 (- 7i32)) (keep_i32 (- 2i32)))
+    do (io::println lit_div3)
+    do (io::println rt_div3)
+
+    # -7 % -2: remainder = -1
+    let lit_mod3 i32 = (% (- 7i32) (- 2i32))
+    let rt_mod3 i32 = (% (keep_i32 (- 7i32)) (keep_i32 (- 2i32)))
+    do (io::println lit_mod3)
+    do (io::println rt_mod3)
+
+    return 0i32
+end

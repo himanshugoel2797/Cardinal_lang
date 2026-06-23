@@ -1,0 +1,21 @@
+# Minimal repro for x86 crash when NaN is used as a while loop condition.
+# NaN < anything is always false, so the loop should never execute.
+# The x86 backend crashes (exit 124 = killed/timeout or signal).
+module n26_nan_while_minimal
+
+import io
+
+func make_nan () -> f64
+    let inf f64 = (* 1e308 10.0)
+    return (- inf inf)
+end
+
+func main () -> i32
+    let x f64 = (make_nan)
+    while (< x 10.0)
+        do (io::println "loop body")
+        set x = (+ x 1.0)
+    end
+    do (io::println "done")
+    return 0i32
+end

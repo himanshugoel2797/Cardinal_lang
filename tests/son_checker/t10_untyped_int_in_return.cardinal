@@ -1,0 +1,19 @@
+module t10_untyped_int_in_return
+# ATTACK: untyped integer literal used in return of a function that declares
+# return type. The checker should infer the type from the declared return type
+# and accept it. But what if we return an untyped literal from a func -> SumT?
+# The coerce will see got=UntypedIntT, expected=SumT, which is NOT handled
+# by the coerce rules (only int/float/ref/unit/handle have special cases).
+# So it should ERR. But what about subtle interaction with overloaded returns?
+
+import io
+
+func get_num () -> i32
+    return 42
+end
+
+func main () -> i32
+    let x = (get_num)
+    do (io::println x)
+    return 0i32
+end

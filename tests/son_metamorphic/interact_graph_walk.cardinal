@@ -1,0 +1,91 @@
+module interact_graph_walk
+
+import io
+
+# Strategy B: INTERACTION — BFS/DFS over a graph using maps + vecs + structs + sum types
+# Features: maps with vec values (adjacency list), BFS algorithm with a vec queue,
+#           maps for distances, struct-like state tracking
+
+# Add an edge to the adjacency list
+func add_edge (graph {i32 {i32}}) (from_node i32) (to_node i32) -> unit
+    if (map_has graph from_node)
+        do (push graph[from_node] to_node)
+    else
+        let neighbors {i32} = (vec i32)
+        do (push neighbors to_node)
+        set graph[from_node] = neighbors
+    end
+end
+
+# BFS from source, returns map of node -> distance (-1 if unreachable)
+func bfs (graph {i32 {i32}}) (source i32) (num_nodes i32) -> {i32 i32}
+    let dist {i32 i32} = (map i32 i32)
+
+    # Initialize all distances to -1
+    let i = 0i32
+    while (< i num_nodes)
+        set dist[i] = (- 0 1)
+        set i = (+ i 1)
+    end
+    set dist[source] = 0
+
+    # BFS queue (vec as queue, use front pointer)
+    let queue {i32} = (vec i32)
+    do (push queue source)
+    let front = 0i32
+
+    while (< front (as (len queue) i32))
+        let cur = queue[front]
+        set front = (+ front 1)
+
+        if (map_has graph cur)
+            for neighbor in graph[cur]
+                if (== dist[neighbor] (- 0 1))
+                    set dist[neighbor] = (+ dist[cur] 1)
+                    do (push queue neighbor)
+                end
+            end
+        end
+    end
+
+    return dist
+end
+
+func main () -> i32
+    # Build graph:
+    # 0 -> 1, 2
+    # 1 -> 3
+    # 2 -> 3, 4
+    # 3 -> 5
+    # 4 -> 5
+    # (diamond-ish structure)
+    let graph = (map i32 {i32})
+    do (add_edge graph 0 1)
+    do (add_edge graph 0 2)
+    do (add_edge graph 1 3)
+    do (add_edge graph 2 3)
+    do (add_edge graph 2 4)
+    do (add_edge graph 3 5)
+    do (add_edge graph 4 5)
+
+    let dist = (bfs graph 0 6)
+
+    # Expected BFS distances from node 0:
+    # 0->0: 0, 0->1: 1, 0->2: 1, 0->3: 2, 0->4: 2, 0->5: 3
+    let i = 0i32
+    while (< i 6)
+        do (io::println dist[i])
+        set i = (+ i 1)
+    end
+
+    # BFS from node 3
+    let dist2 = (bfs graph 3 6)
+    # 3->0: -1, 3->1: -1, 3->2: -1, 3->3: 0, 3->4: -1, 3->5: 1
+    let j = 0i32
+    while (< j 6)
+        do (io::println dist2[j])
+        set j = (+ j 1)
+    end
+
+    return 0i32
+end

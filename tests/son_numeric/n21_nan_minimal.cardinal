@@ -1,0 +1,33 @@
+# Minimal repro for NaN comparison bug on x86.
+# BUG: x86 backend produces wrong results for ordered float comparisons with NaN.
+# NaN < 0.0 should be FALSE but x86 gives TRUE.
+# NaN == NaN should be FALSE but x86 gives TRUE.
+# NaN != NaN should be TRUE but x86 gives FALSE.
+module n21_nan_minimal
+
+import io
+
+func make_nan () -> f64
+    let inf f64 = (* 1e308 10.0)
+    return (- inf inf)
+end
+
+func main () -> i32
+    let nan f64 = (make_nan)
+    if (< nan 0.0)
+        do (io::println "WRONG")
+    else
+        do (io::println "ok")
+    end
+    if (== nan nan)
+        do (io::println "WRONG")
+    else
+        do (io::println "ok")
+    end
+    if (!= nan nan)
+        do (io::println "ok")
+    else
+        do (io::println "WRONG")
+    end
+    return 0i32
+end

@@ -1,0 +1,26 @@
+module t34_struct_equality
+# ATTACK: compare two structs with ==.
+# The unify_comparable allows == for matching types (a == b type-wise).
+# A struct is a StructT; if both sides are StructT with same qualified name,
+# type_eq returns true. So the checker ACCEPTS struct equality comparison.
+# But at RUNTIME: struct == is not defined! Does the interpreter crash?
+# Do C/x86 produce a different result? SOUNDNESS potential.
+
+import io
+
+struct Pt
+    x i32
+    y i32
+end
+
+func main () -> i32
+    let a = (Pt x: 1 y: 2)
+    let b = (Pt x: 1 y: 2)
+    # Comparing structs with == -- checker accepts (same StructT), runtime behavior?
+    if (== a b)
+        do (io::println "equal")
+    else
+        do (io::println "not equal")
+    end
+    return 0i32
+end

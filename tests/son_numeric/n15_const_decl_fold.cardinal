@@ -1,0 +1,43 @@
+# Strategy 10: const declarations that involve arithmetic.
+# The interpreter evaluates const decls at module load time using Python bignums.
+# The backends may fold these at compile time or emit them as C constants.
+# Key: does a const expression involving overflow get folded differently?
+module n15_const_decl_fold
+
+import io
+
+# These const values involve overflow -- the interpreter evaluates them with
+# Python ints (no overflow), but must then coerce to the declared type width.
+# The backends may evaluate them as compile-time C constants.
+
+const I32_WRAP i32 = (+ 2147483647i32 1i32)
+const U32_WRAP u32 = (+ 4294967295u32 1u32)
+const I64_WRAP i64 = (+ 9223372036854775807i64 1i64)
+const U8_WRAP u8 = (+ 255u8 1u8)
+
+# multiply overflow
+const MUL_WRAP i32 = (* 1073741824i32 4i32)
+
+func keep_i32 (x i32) -> i32
+    return x
+end
+
+func keep_u32 (x u32) -> u32
+    return x
+end
+
+func main () -> i32
+    do (io::println I32_WRAP)
+    do (io::println U32_WRAP)
+    do (io::println I64_WRAP)
+    do (io::println U8_WRAP)
+    do (io::println MUL_WRAP)
+
+    # Compare const values against runtime-computed equivalents
+    let rt_i32 i32 = (+ (keep_i32 2147483647i32) 1i32)
+    let rt_u32 u32 = (+ (keep_u32 4294967295u32) 1u32)
+    do (io::println rt_i32)
+    do (io::println rt_u32)
+
+    return 0i32
+end

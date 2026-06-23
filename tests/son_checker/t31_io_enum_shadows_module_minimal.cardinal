@@ -1,0 +1,19 @@
+module t31_io_enum_shadows_module_minimal
+# MINIMAL REPRO of t30 soundness bug:
+# An enum named 'io' shadows the io module in the interpreter but not in C/x86.
+# The checker accepts the program (AGREE=ok), but the interpreter panics
+# while C and x86 produce output.
+# ROOT CAUSE: interpreter resolves io::println as an enum variant lookup first,
+# while C/x86 compilers see io::println as the module function.
+
+import io
+
+enum io
+    In
+    Out
+end
+
+func main () -> i32
+    do (io::println "hello")
+    return 0i32
+end

@@ -1,0 +1,26 @@
+module t24_handle_coerce_divergence
+# ATTACK: Python checker coerce has a special case:
+# "handle accepts anything heap-ish in the bootstrap" — it returns expected for
+# any got when expected is handle. Cardinal checker has same rule.
+# But can we use this to pass a wrong type as handle?
+# The Python checker's _coerce at line 1039:
+#   if isinstance(expected, PrimT) and expected.name == "handle":
+#       return expected  # handle accepts anything heap-ish
+
+import io
+
+func use_handle (h handle) -> i32
+    return 42i32
+end
+
+func main () -> i32
+    let x = 5i32
+    # Pass i32 as handle? Should be rejected.
+    # But Python checker coerce: got=IntT("i32"), expected=PrimT("handle")
+    # -> falls to last else: err("expected handle, got i32")
+    # Actually the handle special-case only fires from _coerce when expected=handle
+    # This should be ERR in both checkers since IntT != PrimT("handle")
+    let v = (use_handle x)
+    do (io::println v)
+    return 0i32
+end

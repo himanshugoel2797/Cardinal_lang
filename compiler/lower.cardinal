@@ -865,6 +865,21 @@ func lower_name (lx LX) (vs {str IVal}) (ts {str Binding}) (id str) -> IVal
         end
         return v
     end
+    # a module-level const used as a value: inline its initializer expression. The
+    # backends have no global-const storage; the interpreter evaluates consts
+    # eagerly, so inlining at each use keeps the three paths in agreement.
+    if (map_has lx.ctx.cur.consts id)
+        for d in lx.ctx.cur.decls
+            match d
+                case (DConst cname cty chas cexpr cexp)
+                    if (strings::eq cname id)
+                        return (lower_expr lx vs ts cexpr lx.ctx.cur.consts[id])
+                    end
+                else
+                    pass
+            end
+        end
+    end
     let ft = (checker::check_expr lx.ctx (EName ident: id) ts TNone)
     # a nullary sum variant constructed bare (e.g. `Leaf`)
     if (t_is_sum ft)
@@ -1004,7 +1019,10 @@ func lower_funclit (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (params {
     end
     let ft = (TFunc params: ptys ret: rty)
     set lx.lamn[0] = (+ lx.lamn[0] 1)
-    let lname = (mangle lx.ctx.cur.name (strings::concat "lambda" (convert::int_to_str lx.lamn[0])))
+    # The "0lambda" component starts with a digit, which no user identifier can
+    # (is_ident_start = letter or '_'), so the lifted symbol cl_<mod>__0lambdaN
+    # can never collide with a user function named lambdaN.
+    let lname = (mangle lx.ctx.cur.name (strings::concat "0lambda" (convert::int_to_str lx.lamn[0])))
     let dst = (ir::fresh_temp lx.b (irt ft))
     do (ir::emit lx.b (IMakeClosure dst: dst fn: lname env: env))
     do (lower_lambda_body lx lname params body caps cap_tys ptys rty)
@@ -2368,8 +2386,14 @@ func lower_fornum (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (startE E
     let ity = (pick_int cand)
     let un = (uniq lx var)
     let loc = (ir::add_local lx.b un (irt ity))
+    # A hidden counter drives the loop; the user-visible index `un` is copied from
+    # it at the top of each iteration. Mutating the index inside the body therefore
+    # cannot change the trip count — the interpreter oracle iterates an independent
+    # counter and rebinds the index each step (see son_checker for-loop tests).
+    let cntn = (uniq lx (strings::concat var "__cnt"))
+    let cntloc = (ir::add_local lx.b cntn (irt ity))
     let startv = (lower_expr lx vs ts startE ity)
-    do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt ity)) src: startv))
+    do (ir::emit lx.b (IAssign place: (PLocal name: cntn ty: (irt ity)) src: startv))
     # Snapshot the upper bound and the step into fresh temps at loop entry. The
     # range `for i = 0 to n` is i = 0,1,…,n-1 (DESIGN §"control flow"), a count
     # fixed when the loop begins — and the interpreter oracle evaluates the bound
@@ -2393,9 +2417,11 @@ func lower_fornum (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (startE E
     do (ir::emit lx.b (IBr target: head))
     do (ir::new_block lx.b head)
     let cond = (ir::fresh_temp lx.b (irt (bool_ty)))
-    do (ir::emit lx.b (IBin dst: cond op: "<" lhs: loc rhs: stopv ty: (irt ity) chk: false))
+    do (ir::emit lx.b (IBin dst: cond op: "<" lhs: cntloc rhs: stopv ty: (irt ity) chk: false))
     do (ir::emit lx.b (ICondBr cond: cond then_l: bodyl else_l: fin))
     do (ir::new_block lx.b bodyl)
+    # publish the counter into the user-visible index at the top of the iteration
+    do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt ity)) src: cntloc))
     let vs2 = (copy_iv vs)
     let ts2 = (copy_bind ts)
     # A loop variable captured by a closure gets a FRESH per-iteration box (the
@@ -2417,8 +2443,8 @@ func lower_fornum (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (startE E
     end
     do (ir::new_block lx.b post)
     let nxt = (ir::fresh_temp lx.b (irt ity))
-    do (ir::emit lx.b (IBin dst: nxt op: "+" lhs: loc rhs: stepv ty: (irt ity) chk: false))
-    do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt ity)) src: nxt))
+    do (ir::emit lx.b (IBin dst: nxt op: "+" lhs: cntloc rhs: stepv ty: (irt ity) chk: false))
+    do (ir::emit lx.b (IAssign place: (PLocal name: cntn ty: (irt ity)) src: nxt))
     do (ir::emit lx.b (IBr target: head))
     do (ir::new_block lx.b fin)
 end

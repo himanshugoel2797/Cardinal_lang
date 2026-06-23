@@ -1,0 +1,37 @@
+module t21_recursive_sum_null_return
+# ATTACK: recursive sum type where some branch returns null.
+# A function returning a recursive SumType can return null in one branch.
+# The checker allows null -> SumT. At runtime, recursing into a null
+# tree causes different crashes or corruption on different backends.
+
+import io
+
+type Tree
+    Leaf
+    Node (v i32) (left Tree) (right Tree)
+end
+
+func make_tree (depth i32) -> Tree
+    if (<= depth 0)
+        return null  # SOUNDNESS: returning null for Tree — checker accepts
+    end
+    return (Node v: depth
+                 left: (make_tree (- depth 1))
+                 right: (make_tree (- depth 1)))
+end
+
+func sum_tree (t Tree) -> i32
+    match t
+        case Leaf
+            return 0i32
+        case (Node v l r)
+            return (+ v (+ (sum_tree l) (sum_tree r)))
+    end
+    return 0i32
+end
+
+func main () -> i32
+    let t = (make_tree 2i32)
+    do (io::println (sum_tree t))
+    return 0i32
+end

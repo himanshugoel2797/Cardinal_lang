@@ -1,0 +1,29 @@
+module t28_compare_different_sums
+# ATTACK: compare two values of different sum types with ==.
+# The unify_comparable for == checks if a == b (same type) or one is null.
+# If we have SumA and SumB, a != b, so this should be REJECTED.
+# But both should agree on rejection. Verify they do.
+# Also: can we compare two same-sum-type values with ==? The checker might accept
+# this even though equality on sum types might not be defined.
+
+import io
+
+type Flag
+    On
+    Off
+end
+
+func main () -> i32
+    let a = On
+    let b = Off
+    # Compare same-sum-type values with ==
+    # Python checker: a == b (same SumT("mod::Flag")), so returns (no error)
+    # Cardinal checker: type_eq a b is true (same sum name), so returns (no error)
+    # At runtime: does == work on sum types? Or does it crash?
+    if (== a b)
+        do (io::println "equal")
+    else
+        do (io::println "not equal")
+    end
+    return 0i32
+end

@@ -1,0 +1,44 @@
+# Strategy 12: Signed/unsigned remainder sign.
+# For signed division, remainder sign follows the dividend (C99 truncation).
+# For unsigned division, remainder is always non-negative.
+# Test every width with negative dividends and divisors.
+module n17_unsigned_signed_rem
+
+import io
+
+func keep_i8 (x i8) -> i8
+    return x
+end
+
+func keep_i16 (x i16) -> i16
+    return x
+end
+
+func keep_u8 (x u8) -> u8
+    return x
+end
+
+func main () -> i32
+    # i8: -5 % 3 = -2 (sign follows dividend)
+    let a i8 = (- 5i8)
+    do (io::println (% a 3i8))
+    do (io::println (% (keep_i8 (- 5i8)) 3i8))
+
+    # i8: 5 % -3 = 2 (sign follows dividend, positive)
+    do (io::println (% 5i8 (- 3i8)))
+    do (io::println (% 5i8 (keep_i8 (- 3i8))))
+
+    # i16: -100 % 7 = -2
+    do (io::println (% (- 100i16) 7i16))
+    do (io::println (% (keep_i16 (- 100i16)) 7i16))
+
+    # u8: 200 % 11 = 2
+    do (io::println (% 200u8 11u8))
+    do (io::println (% (keep_u8 200u8) 11u8))
+
+    # u8: 1 % 200 = 1
+    do (io::println (% 1u8 200u8))
+    do (io::println (% (keep_u8 1u8) 200u8))
+
+    return 0i32
+end

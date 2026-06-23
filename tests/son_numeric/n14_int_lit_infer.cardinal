@@ -1,0 +1,52 @@
+# Strategy 9: Integer literal type inference in tricky contexts.
+# Unsuffixed integer literals inherit type from context.
+# Test: unsuffixed literal in comparison with typed variable.
+# Test: unsuffixed literal used as function arg determines its type.
+# Test: large unsuffixed literal assigned to small type context should fit-check.
+module n14_int_lit_infer
+
+import io
+
+func add_i32 (a i32) (b i32) -> i32
+    return (+ a b)
+end
+
+func add_i64 (a i64) (b i64) -> i64
+    return (+ a b)
+end
+
+func add_u8 (a u8) (b u8) -> u8
+    return (+ a b)
+end
+
+func main () -> i32
+    # Unsuffixed literal infers i32 from function arg context
+    let x i32 = 100i32
+    let r1 i32 = (add_i32 x 200)
+    do (io::println r1)
+
+    # Unsuffixed literal infers i64 from function arg context
+    let y i64 = 100i64
+    let r2 i64 = (add_i64 y 200)
+    do (io::println r2)
+
+    # Unsuffixed literal in comparison inherits type from the typed operand
+    let a i32 = 50i32
+    if (> a 40)
+        do (io::println "gt40: true")
+    else
+        do (io::println "gt40: false")
+    end
+
+    # Unsuffixed 0 and 255 used as u8 args: fit-check
+    let r3 u8 = (add_u8 100 155)
+    do (io::println r3)
+
+    # Const expression: does the type-folded value differ from runtime?
+    const LIMIT i32 = (+ 2000000000 147483647)
+    let rt_limit i32 = (+ (add_i32 2000000000i32 0i32) 147483647i32)
+    do (io::println LIMIT)
+    do (io::println rt_limit)
+
+    return 0i32
+end

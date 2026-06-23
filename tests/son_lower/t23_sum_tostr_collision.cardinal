@@ -1,0 +1,35 @@
+module t23_sum_tostr_collision
+
+# STRATEGY 23: Sum type named "Foo_to_str" -- the auto-generated function for
+# to_str of this sum type would be: mangle(mod, "Foo_to_str_to_str")
+# i.e. cl_<mod>__Foo_to_str_to_str
+# If the user also has a function named "Foo_to_str_to_str" in the same module,
+# that's a collision (duplicate function).
+#
+# Also: a function named "Foo_to_str" in the same module as struct "Foo"
+# means the AUTOGEN for struct Foo is skipped (pass 3 detects the user override).
+# But what about: struct "Foo" + func "Foo_to_str" (correct signature as override)
+# AND ALSO func "Foo_to_str_to_str" which is the autogen for a type named "Foo_to_str"?
+# This creates a puzzle: the user might define "Foo_to_str" intending to override Foo,
+# but that same "Foo_to_str" is ALSO a type that needs its OWN "Foo_to_str_to_str" autogen.
+#
+# Simpler: just test sum type "Foo_to_str" with user func that matches the name collision.
+
+import io
+
+type Foo_to_str
+    A (v i32)
+    B (v i32)
+end
+
+# This should be the autogen for struct Foo (but here Foo doesn't exist as struct):
+# Actually this tests user func "Foo_to_str_to_str" + sum type autogen for "Foo_to_str"
+func Foo_to_str_to_str (self Foo_to_str) -> str
+    return "user_defined_Foo_to_str_to_str"
+end
+
+func main () -> i32
+    let x = (A v: 5i32)
+    do (io::println (to_str x))  # calls Foo_to_str_to_str
+    return 0i32
+end

@@ -1,0 +1,37 @@
+# Strategy 11: f32 <-> int cast boundary cases.
+# f32 can exactly represent integers up to 2^24 = 16777216.
+# Beyond that, the next representable f32 is 16777218.0 (skips 16777217).
+# Test: cast large integers to f32, then back to i32.
+module n16_f32_cast_boundary
+
+import io
+
+func main () -> i32
+    # 2^24 = 16777216: exactly representable in f32
+    let x f32 = 16777216.0f32
+    let xi i32 = (as x i32)
+    do (io::println xi)
+
+    # 16777217: NOT representable in f32, rounds to 16777216
+    let y f32 = 16777217.0f32
+    let yi i32 = (as y i32)
+    do (io::println yi)
+
+    # 16777218 = 2^24 + 2: representable (even multiple of 2)
+    let z f32 = 16777218.0f32
+    let zi i32 = (as z i32)
+    do (io::println zi)
+
+    # i32 max = 2147483647: cast to f32 (rounds), then back to i32
+    let max_i32_as_f32 f32 = (as 2147483647i32 f32)
+    do (io::println max_i32_as_f32)
+    # Cast back: 2^31 is exactly representable in f32
+    # but 2^31 > INT32_MAX, so cast back to i32 is UB in C
+    # Skip roundtrip cast to avoid UB
+
+    # u32 max = 4294967295: cast to f32 (rounds to 2^32), back is out of range
+    let max_u32_as_f32 f32 = (as 4294967295u32 f32)
+    do (io::println max_u32_as_f32)
+
+    return 0i32
+end

@@ -1,0 +1,21 @@
+module t39_vec_equality
+# ATTACK: compare two vectors with ==.
+# Follows the same pattern as t38 (array equality).
+# Checks if checker accepts {i32} == {i32} and whether backends diverge.
+
+import io
+
+func main () -> i32
+    let a {i32} = (vec i32)
+    do (push a 1)
+    do (push a 2)
+    let b {i32} = (vec i32)
+    do (push b 1)
+    do (push b 2)
+    if (== a b)
+        do (io::println "equal")
+    else
+        do (io::println "not equal")
+    end
+    return 0i32
+end

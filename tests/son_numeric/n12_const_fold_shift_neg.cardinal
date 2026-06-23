@@ -1,0 +1,46 @@
+# Strategy 1e: Constant folding of negative shifts.
+# In C, shifting a negative value is undefined behavior for shl (left shift).
+# The interpreter uses Python bignum shifts which are always well-defined.
+# Key divergence: shl a negative value (sign bit propagation vs logical).
+# For shr (right shift) on signed values: arithmetic right shift (sign-extension).
+module n12_const_fold_shift_neg
+
+import io
+
+func keep_i32 (x i32) -> i32
+    return x
+end
+
+func keep_i64 (x i64) -> i64
+    return x
+end
+
+func main () -> i32
+    # Arithmetic right shift of negative value: -1 >> 1 = -1 (arithmetic)
+    let neg_one i32 = (- 1i32)
+    let lit_shr i32 = (shr (- 1i32) 1i32)
+    let rt_shr i32 = (shr (keep_i32 (- 1i32)) 1i32)
+    do (io::println lit_shr)
+    do (io::println rt_shr)
+
+    # -2147483648 >> 1 = -1073741824 (arithmetic)
+    let int_min i32 = (- 2147483648i32)
+    let lit_shr2 i32 = (shr int_min 1i32)
+    let rt_shr2 i32 = (shr (keep_i32 int_min) 1i32)
+    do (io::println lit_shr2)
+    do (io::println rt_shr2)
+
+    # Arithmetic right shift by 31: -1 >> 31 = -1
+    let lit_shr31 i32 = (shr (- 1i32) 31i32)
+    let rt_shr31 i32 = (shr (keep_i32 (- 1i32)) 31i32)
+    do (io::println lit_shr31)
+    do (io::println rt_shr31)
+
+    # i64: -1 >> 63 = -1
+    let lit_i64shr i64 = (shr (- 1i64) 63i64)
+    let rt_i64shr i64 = (shr (keep_i64 (- 1i64)) 63i64)
+    do (io::println lit_i64shr)
+    do (io::println rt_i64shr)
+
+    return 0i32
+end

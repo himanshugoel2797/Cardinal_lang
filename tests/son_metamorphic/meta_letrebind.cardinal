@@ -1,0 +1,96 @@
+module meta_letrebind
+
+import io
+
+# Strategy A: METAMORPHIC — let rebinding (shadowing) with complex types
+# Tests that let rebinding in branches produces correct codegen.
+# A divergence would indicate wrong slot allocation for shadowed vars.
+
+type Shape
+    Circle (r i32)
+    Square (s i32)
+    Rect (w i32) (h i32)
+end
+
+func area (s Shape) -> i32
+    match s
+        case (Circle r)
+            return (* 3 (* r r))
+        case (Square side)
+            return (* side side)
+        case (Rect w h)
+            return (* w h)
+    end
+    return 0
+end
+
+# Variant 1: let rebinding in if-chain
+func compute_v1 (n i32) -> i32
+    let x = n
+    let x = (* x 2)
+    let x = (+ x 1)
+    return x
+end
+
+# Variant 2: same via intermediate vars
+func compute_v2 (n i32) -> i32
+    let a = n
+    let b = (* a 2)
+    let c = (+ b 1)
+    return c
+end
+
+# Variant 3: rebinding inside branches
+func compute_branch (n i32) -> i32
+    let result = 0i32
+    if (> n 0)
+        let result = (* n 2)
+        let result = (+ result 1)
+        return result
+    elsif (< n 0)
+        let result = (- 0 n)
+        let result = (* result 3)
+        return result
+    else
+        let result = 999
+        return result
+    end
+    return result
+end
+
+# Variant 4: rebinding with sum types
+func process_shape (s Shape) -> i32
+    let a = (area s)
+    let a = (* a 2)
+    let a = (+ a 100)
+    return a
+end
+
+# Metamorphic: factor out the "double + add 100" part
+func scale_area (s Shape) -> i32
+    return (+ (* (area s) 2) 100)
+end
+
+func main () -> i32
+    # Test let rebinding arithmetic
+    let inputs [i32] = [(- 0 5) 0 3 10]
+    for n in inputs
+        let a = (compute_v1 n)
+        let b = (compute_v2 n)
+        let c = (compute_branch n)
+        do (io::println a)
+        do (io::println b)
+        do (io::println c)
+    end
+
+    # Test shape rebinding variants
+    let shapes [Shape] = [(Circle r: 5) (Square s: 4) (Rect w: 3 h: 7)]
+    for s in shapes
+        let a = (process_shape s)
+        let b = (scale_area s)
+        do (io::println a)
+        do (io::println b)
+    end
+
+    return 0i32
+end

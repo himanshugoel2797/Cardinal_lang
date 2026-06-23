@@ -1,0 +1,26 @@
+module t17_scope_leak_if_branch
+# ATTACK: scope leak through if-branch mutation.
+# The check_block makes inner = dict(scope). Mutations inside the if-branch
+# modify the `inner` dict, not the outer `scope`.
+# BUT: the INTERPRETER uses Env (parent-chain) for scopes. set x inside
+# an if walks up the chain and modifies the OUTER binding.
+# So: a `let x = 0` in outer scope, `set x = 99` inside if-branch:
+# - Python checker: inner scope is copy, so outer `x` stays at 0 type-wise
+# - Interpreter: set modifies the parent env binding (x becomes 99)
+# - C/x86: should also modify x in outer scope
+# This is actually CORRECT behavior - the question is whether there's divergence.
+# Let's test something more subtle: a NEW `let x` inside the branch vs set.
+
+import io
+
+func main () -> i32
+    let x = 10i32
+    if true
+        # Shadow x with new let inside if-block
+        let x = 99i32
+        do (io::println x)
+    end
+    # x should still be 10 here (outer scope)
+    do (io::println x)
+    return 0i32
+end

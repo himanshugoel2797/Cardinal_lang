@@ -1,0 +1,134 @@
+module interact_enum_map
+
+import io
+
+# Strategy B: INTERACTION — enum keys in maps + closures + sum types for matching
+# Features: enum, map with enum keys, closures over map, sum type for priority logic
+
+enum Day
+    Mon
+    Tue
+    Wed
+    Thu
+    Fri
+    Sat
+    Sun
+end
+
+# Priority as a sum type so we can match on it
+type Priority
+    Low
+    Medium
+    High
+    Critical
+end
+
+func priority_score (p Priority) -> i32
+    match p
+        case Low
+            return 1
+        case Medium
+            return 5
+        case High
+            return 10
+        case Critical
+            return 100
+    end
+    return 0
+end
+
+func day_weight (d Day) -> i32
+    if (== d Day::Mon)
+        return 1
+    elsif (== d Day::Tue)
+        return 2
+    elsif (== d Day::Wed)
+        return 3
+    elsif (== d Day::Thu)
+        return 4
+    elsif (== d Day::Fri)
+        return 5
+    elsif (== d Day::Sat)
+        return 6
+    else
+        return 7
+    end
+    return 0
+end
+
+# Build a day-weight sum using enum keys
+func build_day_map () -> {Day i32}
+    let weights {Day i32} = (map Day i32)
+    set weights[Day::Mon] = 1
+    set weights[Day::Tue] = 2
+    set weights[Day::Wed] = 3
+    set weights[Day::Thu] = 4
+    set weights[Day::Fri] = 5
+    set weights[Day::Sat] = 6
+    set weights[Day::Sun] = 7
+    return weights
+end
+
+func sum_weights (m {Day i32}) -> i32
+    let total = 0i32
+    for d in (map_keys m)
+        set total = (+ total m[d])
+    end
+    return total
+end
+
+# Sum type priorities in a vector
+func priority_total (priorities {Priority}) -> i32
+    let total = 0i32
+    for p in priorities
+        set total = (+ total (priority_score p))
+    end
+    return total
+end
+
+# Variant: same sum via closure
+func priority_total_closure (priorities {Priority}) -> i32
+    let total = 0i32
+    let add_score = func (p Priority) -> unit
+        set total = (+ total (priority_score p))
+    end
+    for p in priorities
+        do (add_score p)
+    end
+    return total
+end
+
+func main () -> i32
+    # Test day_weight via direct function vs map lookup
+    let weights = (build_day_map)
+    let sw1 = (sum_weights weights)
+    do (io::println sw1)
+
+    # Verify: 1+2+3+4+5+6+7 = 28
+    let sw2 = 0i32
+    let days [Day] = [Day::Mon Day::Tue Day::Wed Day::Thu Day::Fri Day::Sat Day::Sun]
+    for d in days
+        set sw2 = (+ sw2 (day_weight d))
+    end
+    do (io::println sw2)
+
+    # Test priority_total
+    let prios {Priority} = (vec Priority)
+    do (push prios Low)
+    do (push prios Medium)
+    do (push prios High)
+    do (push prios Critical)
+    do (push prios Low)
+    do (push prios Medium)
+
+    let pt1 = (priority_total prios)
+    let pt2 = (priority_total_closure prios)
+    do (io::println pt1)
+    do (io::println pt2)
+
+    # Individual priority scores
+    do (io::println (priority_score Critical))
+    do (io::println (priority_score Low))
+
+    return 0i32
+end

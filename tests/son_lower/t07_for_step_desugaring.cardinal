@@ -1,0 +1,45 @@
+module t07_for_step_desugaring
+
+# STRATEGY 7: for-loop with step desugaring.
+# The lowerer evaluates START, STOP, STEP expressions once at loop entry.
+# It then stores STOP into a fresh temp (adding 0), and STEP into a fresh temp.
+# This should prevent mutation of bounds from changing iteration.
+# Let's verify: mutation of the stop variable inside loop doesn't change count.
+# Also test negative step (which is valid syntax but potentially wrong behavior).
+
+import io
+
+func main () -> i32
+    # Test 1: stop variable mutated inside loop -- should not affect trip count
+    let n = 5i32
+    let acc = 0i32
+    for i = 0i32 to n
+        set acc = (+ acc 1i32)
+        set n = (+ n 100i32)   # this mutation should NOT affect the loop bound
+    end
+    do (io::println acc)     # should be 5
+
+    # Test 2: step larger than range
+    let acc2 = 0i32
+    for i = 0i32 to 10i32 step 3i32
+        set acc2 = (+ acc2 i)
+    end
+    do (io::println acc2)    # 0+3+6+9 = 18
+
+    # Test 3: step == 1 (default)
+    let acc3 = 0i32
+    for i = 0i32 to 5i32
+        set acc3 = (+ acc3 i)
+    end
+    do (io::println acc3)    # 0+1+2+3+4 = 10
+
+    # Test 4: for i in array while mutating the array
+    let arr [i32] = [1i32 2i32 3i32 4i32 5i32]
+    let sum = 0i32
+    for x in arr
+        set sum = (+ sum x)
+    end
+    do (io::println sum)     # 15
+
+    return 0i32
+end

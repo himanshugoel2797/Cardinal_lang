@@ -1,0 +1,74 @@
+module t05_to_str_collision
+
+# STRATEGY 5: to_str synthesized function collision.
+# synth_struct_to_str emits: mangle(modname, sname + "_to_str")
+# = "cl_<mod>__<sname>_to_str"
+#
+# A struct named "Foo" generates: cl_<mod>__Foo_to_str
+# A struct named "Foo_to_str" generates: cl_<mod>__Foo_to_str_to_str
+# These are different. But:
+#
+# A user-defined function named "Foo_to_str" should REPLACE the autogen
+# (the lowerer skips synthesis for it in pass 3). BUT the pass 3 check
+# looks at tsig.decls DFunc names and skips if fname matches "<SName>_to_str".
+# However, the check is: `userfns[fname] = true` and then
+# `if not map_has userfns (sname+"_to_str")` -> skip.
+#
+# ATTACK: struct named "Bar" with a user func "Bar_to_str" (replaces autogen).
+# Also struct named "Bar_to_str" (autogen: "Bar_to_str_to_str").
+# Now there's a potential if the user has BOTH a struct "Bar" AND a func
+# "Bar_to_str" that collides with the autogen.
+#
+# Actually simpler: struct named "Baz" and a function "Baz_to_str" with
+# WRONG signature -- the checker may or may not catch it.
+# Let's try: a struct S and a user function S_to_str that has the right signature.
+# The lowerer should skip synth. But what if we have TWO structs whose auto-
+# generated to_str names match?
+#
+# Struct "A_to_str" → synth func: cl_<mod>__A_to_str_to_str
+# Struct "A" + user func "A_to_str" → user func: cl_<mod>__A_to_str
+# NO collision there.
+#
+# But what about: struct "Foo" (autogen cl_<mod>__Foo_to_str)
+# and explicitly a function "Foo_to_str" in the same module --
+# the lowerer skips autogen. But what if the user also happens to have a
+# DIFFERENT struct that would autogen the same symbol?
+# Struct "Foo_to" (autogen: cl_<mod>__Foo_to_to_str) -- different.
+# No, let's try: struct whose name WHEN SUFFIXED WITH _to_str equals another func's
+# mangled name. This is hard to do purely in one module.
+#
+# New angle: Two structs with names "X_to" and "X" in the same module.
+# "X" autogen: cl_mod__X_to_str
+# "X_to" autogen: cl_mod__X_to_to_str
+# Different.
+#
+# Let me try a simpler concrete collision:
+# struct Xto_str -> synth: cl_mod__Xto_str_to_str
+# func Xto_str_to_str() -> str -- user defines this function
+# Now lowerer in pass 2 emits cl_mod__Xto_str_to_str as user function.
+# Then pass 3 tries to synth for struct Xto_str: it generates cl_mod__Xto_str_to_str.
+# The skip check: userfns["Xto_str_to_str"] = true. sname+"_to_str" = "Xto_str_to_str".
+# So it SHOULD skip. Let me verify by trying a case where the skip doesn't work.
+#
+# Actually, let me test a straightforward structural case: just verify that
+# to_str output for nested structs / enums is correct across all three paths.
+
+import io
+
+struct Point
+    x i32
+    y i32
+end
+
+struct Rect
+    lo Point
+    hi Point
+end
+
+func main () -> i32
+    let p = (Point x: 3i32 y: 4i32)
+    let r = (Rect lo: (Point x: 0i32 y: 0i32) hi: (Point x: 10i32 y: 20i32))
+    do (io::println (to_str p))
+    do (io::println (to_str r))
+    return 0i32
+end

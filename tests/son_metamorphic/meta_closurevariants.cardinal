@@ -1,0 +1,98 @@
+module meta_closurevariants
+
+import io
+
+# Strategy A: METAMORPHIC — wrap computation in closure, factor captures differently
+# Tests: shared cell captures, multi-level captures, closure returning closure,
+#        closure as parameter vs direct call.
+
+# Baseline: direct counter
+func count_baseline () -> i32
+    let n = 0i32
+    for i = 0 to 5
+        set n = (+ n i)
+    end
+    return n
+end
+
+# Variant: wrap loop in closure, immediately call
+func count_closure () -> i32
+    let compute = func () -> i32
+        let n = 0i32
+        for i = 0 to 5
+            set n = (+ n i)
+        end
+        return n
+    end
+    return (compute)
+end
+
+# Variant: two closures sharing a captured cell
+func count_shared () -> i32
+    let n = 0i32
+    let adder = func (x i32) -> unit
+        set n = (+ n x)
+    end
+    let getter = func () -> i32
+        return n
+    end
+    do (adder 0)
+    do (adder 1)
+    do (adder 2)
+    do (adder 3)
+    do (adder 4)
+    return (getter)
+end
+
+# Variant: higher-order — closure takes func param
+func apply_n (f func(i32 -> i32)) (n i32) -> i32
+    return (f n)
+end
+
+func count_higherorder () -> i32
+    let total = 0i32
+    for i = 0 to 5
+        let addi = func (acc i32) -> i32
+            return (+ acc i)
+        end
+        set total = (apply_n addi total)
+    end
+    return total
+end
+
+# Variant: closure factory pattern
+func make_adder (delta i32) -> func(i32 -> i32)
+    let f = func (x i32) -> i32
+        return (+ x delta)
+    end
+    return f
+end
+
+func count_factory () -> i32
+    let add0 = (make_adder 0)
+    let add1 = (make_adder 1)
+    let add2 = (make_adder 2)
+    let add3 = (make_adder 3)
+    let add4 = (make_adder 4)
+    let n = 0i32
+    set n = (add0 n)
+    set n = (add1 n)
+    set n = (add2 n)
+    set n = (add3 n)
+    set n = (add4 n)
+    return n
+end
+
+func main () -> i32
+    let a = (count_baseline)
+    let b = (count_closure)
+    let c = (count_shared)
+    let d = (count_higherorder)
+    let e = (count_factory)
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    do (io::println e)
+    return 0i32
+end

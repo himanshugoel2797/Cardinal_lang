@@ -1,0 +1,28 @@
+module t01_lambda_name_collision
+
+# STRATEGY 1: Lambda naming collision.
+# The lowerer names lambdas as: mangle(module, "lambda" + N)
+# i.e. cl_t01_lambda_name_collision__lambda1, ...
+# If the MODULE has a function named "lambda1", the lowerer will
+# try to emit TWO definitions of the same mangled symbol.
+
+import io
+
+func lambda1 () -> i32
+    return 42i32
+end
+
+func make_fn () -> func(-> i32)
+    let f = func () -> i32
+        return 99i32
+    end
+    return f
+end
+
+func main () -> i32
+    let v = (make_fn)
+    let r = (v)
+    do (io::println (lambda1))
+    do (io::println r)
+    return 0i32
+end

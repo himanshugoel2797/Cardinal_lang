@@ -1,0 +1,34 @@
+# Strategy 13: f64 -> i64 cast at exact boundary.
+# 2^63 - 1 (INT64_MAX) = 9223372036854775807
+# As f64 it rounds to 9223372036854775808.0 (= 2^63, out of range for i64).
+# Casting 2^63 as f64 back to i64 is UB in C.
+# The interpreter (Python int(float)) gives a different result.
+# Test: large f64 values just below and at 2^63.
+module n18_f64_to_i64_boundary
+
+import io
+
+func main () -> i32
+    # 2^62 = 4611686018427387904: fits in i64
+    let two62 f64 = 4611686018427387904.0
+    let cast_two62 i64 = (as two62 i64)
+    do (io::println cast_two62)
+
+    # 2^62 + 0.5: rounds down to 2^62 on cast to i64
+    let two62_half f64 = 4611686018427387904.5
+    let cast_two62_half i64 = (as two62_half i64)
+    do (io::println cast_two62_half)
+
+    # 2^63 - 1024 (last representable f64 below 2^63)
+    # 2^63 = 9223372036854775808, nearest f64 below = 9223372036854774784
+    let near_max f64 = 9223372036854774784.0
+    let cast_near_max i64 = (as near_max i64)
+    do (io::println cast_near_max)
+
+    # Negative: -2^63 = -9223372036854775808 (exactly INT64_MIN)
+    let neg_two63 f64 = (- 9223372036854775808.0)
+    let cast_neg_two63 i64 = (as neg_two63 i64)
+    do (io::println cast_neg_two63)
+
+    return 0i32
+end

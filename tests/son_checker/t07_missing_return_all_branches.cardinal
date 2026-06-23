@@ -1,0 +1,23 @@
+module t07_missing_return_all_branches
+# ATTACK: non-void function where the if has both branches returning,
+# but the outer function has no return after the if. This SHOULD be fine
+# since all branches return, but let's try a subtle variant: what about
+# a while loop that may not execute, followed by fallthrough?
+
+import io
+
+func maybe_return (x i32) -> i32
+    let i = 0i32
+    while (< i x)
+        return i
+        set i = (+ i 1)
+    end
+    # if x <= 0, the while never executes and we fall off end
+    # The checker has NO control-flow analysis, so it will ACCEPT this
+end
+
+func main () -> i32
+    let v = (maybe_return 0i32)
+    do (io::println v)
+    return 0i32
+end

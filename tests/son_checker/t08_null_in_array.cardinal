@@ -1,0 +1,20 @@
+module t08_null_in_array
+# ATTACK: store null in a typed array element, then access non-null fields.
+# An array literal [null, null] with annotation [SomeStruct] should type-check
+# because null coerces to StructT. At runtime, accessing a field on the null
+# element crashes.
+
+import io
+
+struct Point
+    x i32
+    y i32
+end
+
+func main () -> i32
+    # This SHOULD fail because array elements are StructT but we give null
+    # The checker allows null -> StructT via coerce
+    let pts [Point] = [null null]
+    do (io::println pts[0].x)
+    return 0i32
+end

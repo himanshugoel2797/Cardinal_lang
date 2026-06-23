@@ -1,0 +1,22 @@
+module t11_closure_wrong_param_type
+# ATTACK: a higher-order function takes func(i32 -> i32).
+# We pass a closure with the wrong param type func(i64 -> i32).
+# The FuncT equality check in coerce uses type_eq which does deep comparison.
+# This SHOULD be rejected. Let's verify both checkers agree.
+
+import io
+
+func apply (f func(i32 -> i32)) (x i32) -> i32
+    return (f x)
+end
+
+func main () -> i32
+    # This closure takes i64 but apply expects func(i32 -> i32)
+    let f = func (x i64) -> i32
+        return (as x i32)
+    end
+    # Passing wrong func type — SHOULD be rejected
+    let result = (apply f 5)
+    do (io::println result)
+    return 0i32
+end

@@ -1,0 +1,45 @@
+# Strategy 1c: Constant-folding for shifts — shift by exactly the type width.
+# The interpreter shifts by literal Python integer count (no masking).
+# C compilers with -fwrapv may still constant-fold shifts at parse time
+# differently from runtime x86 masked shifts.
+# Already known: x86 backend gives 1 for shl 1u64 64u64. Let's test:
+# - shift by width-1 (must be 0 since bit is shifted out, but test all widths)
+# - shift by width (known x86 bug for u64, check others)
+# - shift by 0 (no-op)
+module n03_const_fold_shift
+
+import io
+
+func keep_u32 (x u32) -> u32
+    return x
+end
+
+func keep_u64 (x u64) -> u64
+    return x
+end
+
+func keep_i32 (x i32) -> i32
+    return x
+end
+
+func main () -> i32
+    # u32 shl by 32: literal constant vs runtime
+    let lit_u32_shl i32 = (as (shl 1u32 32u32) i32)
+    let rt_u32_shl i32 = (as (shl (keep_u32 1u32) 32u32) i32)
+    do (io::println lit_u32_shl)
+    do (io::println rt_u32_shl)
+
+    # u64 shl by 64: already known x86 bug, but let's confirm constant vs runtime
+    let lit_u64_shl i64 = (as (shl 1u64 64u64) i64)
+    let rt_u64_shl i64 = (as (shl (keep_u64 1u64) 64u64) i64)
+    do (io::println lit_u64_shl)
+    do (io::println rt_u64_shl)
+
+    # i32 shr by 32 (arithmetic right shift): literal vs runtime
+    let lit_i32_shr i32 = (shr (- 1i32) 32i32)
+    let rt_i32_shr i32 = (shr (keep_i32 (- 1i32)) 32i32)
+    do (io::println lit_i32_shr)
+    do (io::println rt_i32_shr)
+
+    return 0i32
+end

@@ -1,0 +1,28 @@
+module t13_match_wrong_variant_binding_count
+# ATTACK: match arm provides FEWER bindings than the variant has fields.
+# The checker checks len(bindings) != len(vfields) and ERRORS.
+# BUT: what if bindings > fields? The zip in Python truncates silently.
+# Let's test with extra bindings (more than variant fields).
+# The Python checker: for b, (fn, ft) in zip(bindings, vfields) — zip truncates!
+# Extra bindings beyond the field count are silently IGNORED.
+# The cardinal checker: while (and (< i (len arm.bindings)) (< i (len vi.fields)))
+# also truncates. So extra bindings are not type-checked.
+# This means: binding variables declared in the match arm may be undefined at runtime.
+
+import io
+
+type Shape
+    Circle (radius i32)
+end
+
+func main () -> i32
+    let s = (Circle radius: 5)
+    # Pattern binds TWO names but Circle only has ONE field
+    # Python checker raises error for wrong count. Let's verify.
+    match s
+        case (Circle r extra)
+            do (io::println r)
+            do (io::println extra)
+    end
+    return 0i32
+end

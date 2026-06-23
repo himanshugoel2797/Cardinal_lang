@@ -1,0 +1,27 @@
+module t15_null_sum_match
+# ATTACK: assign null to a sum-typed variable, then match on it.
+# null -> SumT is allowed by coerce. But at runtime, the match dispatch
+# on a null sum type may crash (no variant tag) or produce garbage.
+# This is a soundness hole if both checkers accept it.
+
+import io
+
+type Option
+    Some (value i32)
+    None
+end
+
+func get_opt () -> Option
+    return null
+end
+
+func main () -> i32
+    let opt = (get_opt)
+    match opt
+        case (Some v)
+            do (io::println v)
+        case None
+            do (io::println "none")
+    end
+    return 0i32
+end

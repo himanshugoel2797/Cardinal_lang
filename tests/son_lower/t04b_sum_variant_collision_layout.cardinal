@@ -1,0 +1,43 @@
+module t04b_sum_variant_collision_layout
+
+# STRATEGY 4b: Sum variant name collision where the layouts DIFFER.
+# Sum type "A__B" with variant "C" that has field (x i64)
+# Sum type "A" with variant "B__C" that has field (x i32)
+# Both generate struct: cl_struct_<mod>__A__B__C
+# But the layouts differ (i64 vs i32 field), causing a silent type confusion.
+# The same C typedef name is defined with TWO incompatible layouts.
+# One of the match arms will read wrong bytes.
+
+import io
+
+type A__B
+    C (x i64)
+    D (x i64)
+end
+
+type A
+    B__C (x i32)
+    B__D (x i32)
+end
+
+func main () -> i32
+    # Create an A variant B__C with value 42 (i32)
+    let y = (B__C x: 42i32)
+    match y
+        case (B__C v)
+            do (io::println v)  # should print 42
+        case (B__D v)
+            do (io::println v)
+    end
+
+    # Create an A__B variant C with value 1000000 (i64)
+    let x = (C x: 1000000i64)
+    match x
+        case (C v)
+            do (io::println v)  # should print 1000000
+        case (D v)
+            do (io::println v)
+    end
+
+    return 0i32
+end

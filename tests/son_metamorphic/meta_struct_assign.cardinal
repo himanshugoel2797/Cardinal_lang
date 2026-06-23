@@ -1,0 +1,118 @@
+module meta_struct_assign
+
+import io
+
+# Strategy A: METAMORPHIC — struct assignment through arrays, copy semantics
+# Tests that struct value semantics (deep copy on assign) are consistent
+# across all backends when combined with array indexing and loops.
+
+struct Point
+    x i32
+    y i32
+end
+
+struct Rectangle
+    topLeft Point
+    w i32
+    h i32
+end
+
+func make_point (x i32) (y i32) -> Point
+    return (Point x: x y: y)
+end
+
+func make_rect (x i32) (y i32) (w i32) (h i32) -> Rectangle
+    return (Rectangle topLeft: (Point x: x y: y) w: w h: h)
+end
+
+func rect_area (r Rectangle) -> i32
+    return (* r.w r.h)
+end
+
+func translate (r Rectangle) (dx i32) (dy i32) -> Rectangle
+    return (Rectangle topLeft: (Point x: (+ r.topLeft.x dx) y: (+ r.topLeft.y dy))
+                      w: r.w h: r.h)
+end
+
+# Variant 1: build array of structs, mutate via set arr[i].field = v
+func test_array_struct () -> i32
+    let pts [Point] = [(Point x: 0 y: 0) (Point x: 1 y: 1) (Point x: 2 y: 2) (Point x: 3 y: 3)]
+    # Mutate each point
+    for i = 0 to 4
+        set pts[i].x = (* i 10)
+        set pts[i].y = (* i 10)
+    end
+    let sum = 0i32
+    for p in pts
+        set sum = (+ sum (+ p.x p.y))
+    end
+    return sum
+end
+
+# Variant 2: same computation via closures
+func test_closure_struct () -> i32
+    let pts [Point] = [(Point x: 0 y: 0) (Point x: 1 y: 1) (Point x: 2 y: 2) (Point x: 3 y: 3)]
+    let transform = func (i i32) -> unit
+        set pts[i].x = (* i 10)
+        set pts[i].y = (* i 10)
+    end
+    for i = 0 to 4
+        do (transform i)
+    end
+    let sum = 0i32
+    for p in pts
+        set sum = (+ sum (+ p.x p.y))
+    end
+    return sum
+end
+
+# Variant 3: copy semantics test — modifying copy doesn't affect original
+func test_copy_semantics () -> i32
+    let original = (make_point 5 10)
+    let copy = original
+    # Modifying via a local reassignment
+    let copy = (Point x: 99 y: 99)
+    # original should still be (5, 10)
+    return (+ original.x original.y)
+end
+
+# Variant 4: nested struct copy
+func test_nested_copy () -> i32
+    let r1 = (make_rect 0 0 10 20)
+    let r2 = r1
+    let r2 = (translate r2 5 5)
+    # r1 unchanged, r2 moved
+    let sum = (+ r1.topLeft.x r2.topLeft.x)
+    return sum
+end
+
+# Variant 5: vec of rectangles, compute total area
+func test_vec_of_rects () -> i32
+    let rects {Rectangle} = (vec Rectangle)
+    do (push rects (make_rect 0 0 3 4))
+    do (push rects (make_rect 1 1 5 6))
+    do (push rects (make_rect 2 2 2 2))
+    let total = 0i32
+    for r in rects
+        set total = (+ total (rect_area r))
+    end
+    return total
+end
+
+func main () -> i32
+    let a = (test_array_struct)
+    let b = (test_closure_struct)
+    do (io::println a)
+    do (io::println b)
+
+    let c = (test_copy_semantics)
+    do (io::println c)
+
+    let d = (test_nested_copy)
+    do (io::println d)
+
+    let e = (test_vec_of_rects)
+    do (io::println e)
+
+    return 0i32
+end

@@ -1,0 +1,44 @@
+# Strategy 2b: NaN accumulated through arithmetic then compared.
+# NaN + anything = NaN; NaN * anything = NaN.
+# The comparison NaN < NaN should be false; the branch should go to else.
+module n13_nan_accumulate
+
+import io
+
+func make_nan () -> f64
+    let inf f64 = (* 1e308 10.0)
+    return (- inf inf)
+end
+
+func main () -> i32
+    let nan f64 = (make_nan)
+
+    # NaN arithmetic propagation
+    let nan2 f64 = (+ nan 1.0)
+    let nan3 f64 = (* nan 2.0)
+    let nan4 f64 = (- 0.0 nan)
+
+    # Branch on NaN: should always take else path
+    if (< nan2 nan3)
+        do (io::println "NaN branch taken (WRONG)")
+    else
+        do (io::println "NaN branch not taken (correct)")
+    end
+
+    # NaN in min/max computation via conditional
+    if (< nan 100.0)
+        do (io::println "max_is: 100")
+    else
+        do (io::println "max_is: nan")
+    end
+
+    # NaN as a loop condition: should not iterate if NaN < 10.0 is false
+    let counter i32 = 0i32
+    let x f64 = nan
+    while (< x 10.0)
+        set x = (+ x 1.0)
+    end
+    do (io::println counter)
+
+    return 0i32
+end

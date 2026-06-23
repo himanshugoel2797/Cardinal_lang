@@ -1,0 +1,35 @@
+module t09_return_wrong_sum
+# ATTACK: function declared to return SumA actually returns a SumB value.
+# Both SumA and SumB have a variant named "Ok" with same field type.
+# When the checker looks up variant "Ok" via find_variant (first-match-wins),
+# it may accept the wrong sum type being returned.
+# If this is accepted by checkers but at runtime the match arms mismatch, SOUNDNESS.
+
+import io
+
+type ResultA
+    Ok (value i32)
+    ErrA (msg str)
+end
+
+type ResultB
+    Ok (value i32)
+    ErrB (code i32)
+end
+
+func get_result_a () -> ResultA
+    # Build a ResultB::Ok, return as ResultA — cross-sum contamination
+    let b = (Ok value: 42)
+    return b
+end
+
+func main () -> i32
+    let r = (get_result_a)
+    match r
+        case (Ok v)
+            do (io::println v)
+        case (ErrA msg)
+            do (io::println msg)
+    end
+    return 0i32
+end

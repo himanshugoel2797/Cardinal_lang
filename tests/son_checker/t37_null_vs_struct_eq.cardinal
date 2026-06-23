@@ -1,0 +1,25 @@
+module t37_null_vs_struct_eq
+# ATTACK: compare a struct value with null using ==.
+# unify_comparable: if one side is NullT, comparison is accepted (for == and !=).
+# Python: `if a == b or isinstance(a, NullT) or isinstance(b, NullT): return`
+# Cardinal: `if (or (or (type_eq a b) (is_null a)) (is_null b)): return`
+# So null == struct_value is accepted by BOTH checkers.
+# At runtime: does null == struct mean pointer equality? Field comparison?
+# All three backends should agree.
+
+import io
+
+struct Box
+    v i32
+end
+
+func main () -> i32
+    let b = (Box v: 5)
+    # Compare struct with null -- checker accepts it
+    if (== b null)
+        do (io::println "is null")
+    else
+        do (io::println "not null")
+    end
+    return 0i32
+end

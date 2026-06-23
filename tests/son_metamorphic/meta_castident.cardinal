@@ -1,0 +1,81 @@
+module meta_castident
+
+import io
+
+# Strategy A: METAMORPHIC — add identity casts and const-to-func transforms
+# All variants must produce identical output.
+# Computes: mixed int/float arithmetic result.
+
+func compute_nocast () -> i32
+    let a = 7i32
+    let b = 3i32
+    let c = (* a b)
+    let d = (+ c (- a b))
+    return d
+end
+
+# Same computation with redundant identity casts sprinkled in
+func compute_withcast () -> i32
+    let a = (as 7i32 i32)
+    let b = (as 3i32 i32)
+    let c = (as (* a b) i32)
+    let d = (as (+ c (as (- a b) i32)) i32)
+    return (as d i32)
+end
+
+# Same but using casts at different granularities
+func compute_castmid () -> i32
+    let a = 7i32
+    let b = 3i32
+    let prod = (* a b)
+    let diff = (- a b)
+    return (+ (as prod i32) diff)
+end
+
+# Move constant from literal to function-returned value
+func seven () -> i32
+    return 7i32
+end
+
+func three () -> i32
+    return 3i32
+end
+
+func compute_constfunc () -> i32
+    let a = (seven)
+    let b = (three)
+    let c = (* a b)
+    let d = (+ c (- a b))
+    return d
+end
+
+# Float variant: (3.5 * 2.0) + 1.5 = 8.5
+func float_nocast () -> f64
+    let x = 3.5
+    let y = 2.0
+    let z = 1.5
+    return (+ (* x y) z)
+end
+
+func float_withcast () -> f64
+    let x = (as 3.5 f64)
+    let y = (as 2.0 f64)
+    let z = (as 1.5 f64)
+    return (as (+ (as (* x y) f64) z) f64)
+end
+
+func main () -> i32
+    let a = (compute_nocast)
+    let b = (compute_withcast)
+    let c = (compute_castmid)
+    let d = (compute_constfunc)
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    let fa = (float_nocast)
+    let fb = (float_withcast)
+    do (io::println fa)
+    do (io::println fb)
+    return 0i32
+end

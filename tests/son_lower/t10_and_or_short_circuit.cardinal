@@ -1,0 +1,39 @@
+module t10_and_or_short_circuit
+
+# STRATEGY 10: and/or short-circuit desugaring.
+# lower_andor creates a local "sc_N" + label "sc_end" + "sc_nx" for each arg.
+# For (and a b c), it checks a first, if false jumps to end, else checks b, etc.
+# For (or a b c), it checks a first, if true jumps to end, else checks b, etc.
+# Check: does the result local correctly capture the LAST evaluated value?
+# The result local is assigned on EACH argument evaluation, so the final
+# assignment before exiting determines the result. For (and a b), if a is false,
+# the result local gets the value of a (false), then jumps to end. Correct.
+# For (or a b), if a is true, result gets a (true), jumps to end. Correct.
+# Let's verify short-circuit behavior (second operand not evaluated if first determines result).
+
+import io
+
+func side_effect (label str) (val bool) -> bool
+    do (io::println label)
+    return val
+end
+
+func main () -> i32
+    # (and false ...) -- second should NOT be evaluated
+    let r1 = (and (side_effect "and_a" false) (side_effect "and_b" true))
+    do (io::println r1)
+
+    # (or true ...) -- second should NOT be evaluated
+    let r2 = (or (side_effect "or_a" true) (side_effect "or_b" false))
+    do (io::println r2)
+
+    # (and true false) -- both evaluated
+    let r3 = (and (side_effect "both_a" true) (side_effect "both_b" false))
+    do (io::println r3)
+
+    # Deeply nested: (and (or a b) (or c d))
+    let r4 = (and (or (side_effect "n_a" false) (side_effect "n_b" true)) (side_effect "n_c" false))
+    do (io::println r4)
+
+    return 0i32
+end

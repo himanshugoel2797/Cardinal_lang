@@ -1,0 +1,39 @@
+module t05_enum_as_wrong_enum
+# ATTACK: two enums with same variant names. Can a value of EnumA be used
+# where EnumB is expected? The checker uses qualified names (mod::EnumName)
+# for enum type equality, so this SHOULD be caught.
+# But let's verify: if check_path resolves Color::Red to the FIRST
+# matching enum in imported modules, ambiguity could arise.
+# This also tests whether the checker catches wrong-enum-type in function call.
+
+import io
+
+enum Direction
+    North
+    South
+    East
+    West
+end
+
+enum Cardinal
+    North
+    South
+    East
+    West
+end
+
+func go_cardinal (d Cardinal) -> i32
+    if (== d Cardinal::North)
+        return 1i32
+    end
+    return 0i32
+end
+
+func main () -> i32
+    # Pass a Direction where Cardinal is expected
+    let d = Direction::North
+    # This SHOULD be rejected: Direction != Cardinal
+    let v = (go_cardinal d)
+    do (io::println v)
+    return 0i32
+end

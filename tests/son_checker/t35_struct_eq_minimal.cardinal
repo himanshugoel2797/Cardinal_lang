@@ -1,0 +1,24 @@
+module t35_struct_eq_minimal
+# MINIMAL REPRO of t34 soundness bug:
+# Struct equality (==) is accepted by both type checkers but the C backend
+# generates invalid C code (struct comparison with ==).
+# The C backend panics with "invalid operands to binary ==" while
+# the interpreter and x86 backend succeed.
+
+import io
+
+struct Pair
+    a i32
+    b i32
+end
+
+func main () -> i32
+    let p = (Pair a: 1 b: 2)
+    let q = (Pair a: 1 b: 2)
+    if (== p q)
+        do (io::println "yes")
+    else
+        do (io::println "no")
+    end
+    return 0i32
+end

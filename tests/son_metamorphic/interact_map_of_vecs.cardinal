@@ -1,0 +1,125 @@
+module interact_map_of_vecs
+
+import io
+
+# Strategy B: INTERACTION — map of vecs as output from recursive functions
+# Features: maps with vec values, recursive functions populating maps,
+#           closures over maps, struct data, sum types for option-like logic
+
+# Partition a vec of ints into groups by value mod N
+func partition_by_mod (values {i32}) (n i32) -> {i32 {i32}}
+    let groups = (map i32 {i32})
+    for v in values
+        let bucket = (- v (* n (/ v n)))
+        if (map_has groups bucket)
+            do (push groups[bucket] v)
+        else
+            let new_vec {i32} = (vec i32)
+            do (push new_vec v)
+            set groups[bucket] = new_vec
+        end
+    end
+    return groups
+end
+
+# Sum all values in a map of vecs
+func sum_all (groups {i32 {i32}}) -> i32
+    let total = 0i32
+    for k in (map_keys groups)
+        for v in groups[k]
+            set total = (+ total v)
+        end
+    end
+    return total
+end
+
+# Count elements per bucket
+func count_per_bucket (groups {i32 {i32}}) -> {i32 i32}
+    let counts {i32 i32} = (map i32 i32)
+    for k in (map_keys groups)
+        set counts[k] = (as (len groups[k]) i32)
+    end
+    return counts
+end
+
+# Recursive function: build a Pascal's triangle row as a vec
+func pascal_row (row {i32}) -> {i32}
+    let n = (as (len row) i32)
+    let next {i32} = (vec i32)
+    do (push next 1)
+    let i = 1i32
+    while (< i n)
+        do (push next (+ row[(- i 1)] row[i]))
+        set i = (+ i 1)
+    end
+    do (push next 1)
+    return next
+end
+
+func pascal_triangle (depth i32) -> {{i32}}
+    let rows {{i32}} = (vec {i32})
+    let first {i32} = (vec i32)
+    do (push first 1)
+    do (push rows first)
+    let i = 1i32
+    while (< i depth)
+        let prev = rows[(- i 1)]
+        let next = (pascal_row prev)
+        do (push rows next)
+        set i = (+ i 1)
+    end
+    return rows
+end
+
+func main () -> i32
+    # Test 1: partition 1..20 by mod 3
+    let values {i32} = (vec i32)
+    let i = 1i32
+    while (<= i 20)
+        do (push values i)
+        set i = (+ i 1)
+    end
+
+    let groups = (partition_by_mod values 3)
+
+    # Sum should equal 1+2+...+20 = 210
+    let total = (sum_all groups)
+    do (io::println total)
+
+    # Each bucket should have about 6-7 elements
+    let counts = (count_per_bucket groups)
+    let bucket_total = 0i32
+    for k in (map_keys counts)
+        set bucket_total = (+ bucket_total counts[k])
+    end
+    do (io::println bucket_total)
+
+    # Test 2: Pascal's triangle rows 0..5
+    let triangle = (pascal_triangle 6)
+    for row in triangle
+        let s = 0i32
+        for v in row
+            set s = (+ s v)
+        end
+        do (io::println s)
+    end
+
+    # Row sums should be powers of 2: 1 2 4 8 16 32
+
+    # Test 3: store Pascal rows in a map by row index
+    let tri_map = (map i32 {i32})
+    let j = 0i32
+    while (< j (as (len triangle) i32))
+        set tri_map[j] = triangle[j]
+        set j = (+ j 1)
+    end
+
+    # Verify lookup: row 3 = [1 3 3 1]
+    let r3 = tri_map[3]
+    do (io::println r3[0])
+    do (io::println r3[1])
+    do (io::println r3[2])
+    do (io::println r3[3])
+
+    return 0i32
+end

@@ -1,0 +1,23 @@
+module t16_for_loop_mutation_minimal
+# MINIMAL repro of t14 soundness bug:
+# Mutating the for-num loop variable inside the body.
+# Interpreter ignores the mutation (uses Python-local counter).
+# C/x86 backends see the mutation (loop var is a real variable).
+# Result: SOUNDNESS divergence - same program, different outputs.
+
+import io
+
+func main () -> i32
+    let total = 0i32
+    for i = 0 to 5
+        set total = (+ total i)
+        if (== i 2i32)
+            set i = 10i32
+        end
+    end
+    # Interpreter: i goes 0,1,2,3,4 -> total = 0+1+2+3+4 = 10
+    # C/x86: after set i=10, loop checks i<5, so 10>=5, loop ends
+    #        total = 0+1+2 = 3
+    do (io::println total)
+    return 0i32
+end

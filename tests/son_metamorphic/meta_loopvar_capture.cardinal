@@ -1,0 +1,68 @@
+module meta_loopvar_capture
+
+import io
+
+# Strategy A: METAMORPHIC — closure capture of loop variable (fresh-per-iteration)
+# Cardinal: "capture of a for-loop var = fresh per iteration"
+# This tests that each closure captures a distinct copy.
+# Expected: closures[0]() = 0, closures[1]() = 1, ..., closures[4]() = 4
+
+func test_for_capture () -> unit
+    let closures {func(-> i32)} = (vec func(-> i32))
+    for i = 0 to 5
+        let f = func () -> i32
+            return i
+        end
+        do (push closures f)
+    end
+    # Each closure should return its respective i value
+    for f in closures
+        do (io::println (f))
+    end
+end
+
+# Variant: while-loop — captures the SHARED cell (current value of i when called)
+# This is semantically DIFFERENT: while-loop var is NOT fresh per iteration.
+# But if we snapshot the value manually, it should work.
+func test_while_snapshot () -> unit
+    let closures {func(-> i32)} = (vec func(-> i32))
+    let i = 0i32
+    while (< i 5)
+        let snap = i
+        let f = func () -> i32
+            return snap
+        end
+        do (push closures f)
+        set i = (+ i 1)
+    end
+    for f in closures
+        do (io::println (f))
+    end
+end
+
+# Metamorphic variant: factor snapshot out into helper
+func make_const_closure (v i32) -> func(-> i32)
+    let f = func () -> i32
+        return v
+    end
+    return f
+end
+
+func test_outlined_snapshot () -> unit
+    let closures {func(-> i32)} = (vec func(-> i32))
+    let i = 0i32
+    while (< i 5)
+        do (push closures (make_const_closure i))
+        set i = (+ i 1)
+    end
+    for f in closures
+        do (io::println (f))
+    end
+end
+
+func main () -> i32
+    do (test_for_capture)
+    do (test_while_snapshot)
+    do (test_outlined_snapshot)
+    return 0i32
+end

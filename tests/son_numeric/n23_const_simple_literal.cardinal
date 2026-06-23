@@ -1,0 +1,11 @@
+# Even simpler const test: does a simple typed-literal const work?
+module n23_const_simple_literal
+
+import io
+
+const A i32 = 42i32
+
+func main () -> i32
+    do (io::println A)
+    return 0i32
+end

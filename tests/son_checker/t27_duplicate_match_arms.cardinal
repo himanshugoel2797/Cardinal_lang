@@ -1,0 +1,36 @@
+module t27_duplicate_match_arms
+# ATTACK: duplicate match arms (same variant twice).
+# The Python checker uses a `covered` set. When the same arm appears twice,
+# both checkers add it to covered but don't raise an error for duplicates.
+# This is a soundness hole if the second arm's body is never reached at runtime
+# but the checker assumes it's valid code.
+# The question: do both checkers ACCEPT duplicate arms? If one rejects and
+# one accepts, DIFF bug.
+
+import io
+
+type Val
+    Pos (n i32)
+    Neg (n i32)
+    Zero
+end
+
+func show (v Val) -> i32
+    match v
+        case (Pos n)
+            return n
+        case (Neg n)
+            return (- 0 n)
+        case Zero
+            return 0i32
+        case Zero
+            return (- 1)  # duplicate arm -- dead code
+    end
+    return 0i32
+end
+
+func main () -> i32
+    do (io::println (show (Pos n: 5)))
+    do (io::println (show Zero))
+    return 0i32
+end

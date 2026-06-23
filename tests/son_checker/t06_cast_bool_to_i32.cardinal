@@ -1,0 +1,31 @@
+module t06_cast_bool_to_i32
+# ATTACK: cast bool/char/enum to numeric.
+# The Python checker check_cast only allows src in (IntT, FloatT, UntypedIntT, UntypedFloatT).
+# PrimT("bool") is NOT in that list -> Python should REJECT.
+# Cardinal checker: check_cast uses is_numish(src) which checks int/float/uint/ufloat.
+# bool is PrimT, NOT numish -> Cardinal also rejects.
+# But what about casting enum -> i32? EnumT is not numeric either.
+# Let's test: both checkers may agree on rejection, OR one accepts it.
+# If they DISAGREE that is a DIFF bug.
+
+import io
+
+enum Color
+    Red
+    Green
+    Blue
+end
+
+func main () -> i32
+    let b = true
+    # cast bool to i32: SHOULD be rejected by both checkers
+    let n = (as b i32)
+    do (io::println n)
+
+    let c = Color::Red
+    # cast enum to i32: also should be rejected
+    let m = (as c i32)
+    do (io::println m)
+
+    return 0i32
+end

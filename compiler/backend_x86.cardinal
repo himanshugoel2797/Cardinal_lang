@@ -927,24 +927,28 @@ func float_arith_op (op str) (sfx str) -> str
     return ""
 end
 
-# setcc for a float comparison after ucomisd/ucomiss (ordered, C-like).
-func float_setcc (op str) -> str
+# Set %al to the C-semantics result of a float comparison after `ucomi`. NaN is
+# UNORDERED: ucomi sets ZF=PF=CF=1, so a plain sete/setb/setbe would wrongly report
+# NaN as equal/less. C says ==,<,<=,>,>= are all FALSE and != is TRUE when either
+# operand is NaN. >,>= already use seta/setae (require CF=0, false on unordered);
+# the rest fold in the parity flag. Clobbers %cl.
+func float_cmp_seq (op str) -> str
     if (strings::eq op "==")
-        return "sete"
+        return (strings::concat (line "    sete %al") (strings::concat (line "    setnp %cl") (line "    andb %cl, %al")))
     end
     if (strings::eq op "!=")
-        return "setne"
+        return (strings::concat (line "    setne %al") (strings::concat (line "    setp %cl") (line "    orb %cl, %al")))
     end
     if (strings::eq op "<")
-        return "setb"
+        return (strings::concat (line "    setb %al") (strings::concat (line "    setnp %cl") (line "    andb %cl, %al")))
     end
     if (strings::eq op "<=")
-        return "setbe"
+        return (strings::concat (line "    setbe %al") (strings::concat (line "    setnp %cl") (line "    andb %cl, %al")))
     end
     if (strings::eq op ">")
-        return "seta"
+        return (line "    seta %al")
     end
-    return "setae"
+    return (line "    setae %al")
 end
 
 # --------------------------------------------------------------------------- #
@@ -1008,7 +1012,7 @@ func emit_bin (bx BX) (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk
         set fout = (strings::concat fout (load_xmm bx "%xmm1" rhs))
         if (is_cmp_op op)
             set fout = (strings::concat fout (line (cat3 "    ucomi" sfx " %xmm1, %xmm0")))
-            set fout = (strings::concat fout (line (cat3 "    " (float_setcc op) " %al")))
+            set fout = (strings::concat fout (float_cmp_seq op))
             set fout = (strings::concat fout (line "    movzbq %al, %rax"))
             return (strings::concat fout (store_rax bx dst))
         end

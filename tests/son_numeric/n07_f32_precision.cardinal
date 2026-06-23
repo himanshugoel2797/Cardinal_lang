@@ -1,0 +1,38 @@
+# Strategy 5: f32 intermediate rounding vs f64.
+# The interpreter uses Python float (f64) for all calculations, then rounds
+# to f32 only at the end via struct.pack/unpack.
+# The C backend promotes f32 operations through f32 C arithmetic.
+# Key: 0.1 in f32 is a different value from 0.1 in f64.
+# Chained f32 adds should produce different accumulated rounding.
+module n07_f32_precision
+
+import io
+
+func main () -> i32
+    # Sum of 10 x 0.1 in f32: accumulated rounding may differ from 1.0
+    let a f32 = 0.1f32
+    let sum f32 = (+ a (+ a (+ a (+ a (+ a (+ a (+ a (+ a (+ a a)))))))))
+    do (io::println sum)
+
+    # 2^24 in f32: the last integer exactly representable
+    let big f32 = 16777216.0f32
+    let big1 f32 = (+ big 1.0f32)
+    do (io::println big1)
+
+    # 2^24 + 1 should round to 2^24 in f32 (not representable)
+    let next f32 = 16777217.0f32
+    do (io::println next)
+
+    # 2^53 in f64: last integer exactly representable
+    let big64 f64 = 9007199254740992.0
+    let big641 f64 = (+ big64 1.0)
+    do (io::println big641)
+
+    # f32 multiply precision loss vs f64
+    let x f32 = 1000000.0f32
+    let y f32 = 1000000.0f32
+    let prod f32 = (* x y)
+    do (io::println prod)
+
+    return 0i32
+end

@@ -1,0 +1,20 @@
+module t14_for_loop_var_mutation
+# ATTACK: the for-num loop variable is placed in scope with mutable: True
+# in the Python checker. In the cardinal checker, SForNum sets mutable: true.
+# This means `set i = ...` inside a for loop SHOULD be allowed.
+# But does mutating the loop counter produce consistent behavior across backends?
+# This is a soundness test — if interp, C, and x86 disagree on loop behavior.
+
+import io
+
+func main () -> i32
+    let total = 0i32
+    for i = 0 to 10
+        set total = (+ total i)
+        if (== i 5i32)
+            set i = 100i32  # skip rest of loop? or UB?
+        end
+    end
+    do (io::println total)
+    return 0i32
+end

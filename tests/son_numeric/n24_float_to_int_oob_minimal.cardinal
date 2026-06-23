@@ -1,0 +1,20 @@
+# Minimal repro: float-to-int cast for out-of-range values.
+# The interpreter raises an OverflowError from Python's int() on infinity,
+# which becomes a panic (status 1 / no stdout).
+# C and x86 backends: UB in C, produces INT_MIN (-2147483648) typically.
+# x86 and C disagree on the first two outputs.
+module n24_float_to_int_oob_minimal
+
+import io
+
+func make_big () -> f64
+    # 2^40 = 1099511627776, doesn't fit in i32
+    return 1099511627776.0
+end
+
+func main () -> i32
+    let big f64 = (make_big)
+    let x i32 = (as big i32)
+    do (io::println x)
+    return 0i32
+end

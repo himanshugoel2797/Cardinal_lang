@@ -1,0 +1,43 @@
+# Strategy 7: Chained mixed-width arithmetic via casts.
+# Cast a large u64 value down to i32 (truncation + sign extension),
+# then do arithmetic on the i32. Also test widening then narrowing round trips.
+module n10_mixed_width_cast_chain
+
+import io
+
+func keep_u64 (x u64) -> u64
+    return x
+end
+
+func main () -> i32
+    # u64 max truncated to i32: 0xFFFFFFFF FFFFFFFF & 0xFFFFFFFF = 0xFFFFFFFF = -1 as i32
+    let max_u64 u64 = 18446744073709551615u64
+    let trunc_i32 i32 = (as max_u64 i32)
+    do (io::println trunc_i32)
+
+    # 0x100000000 truncated to i32: the low 32 bits are 0
+    let two32 u64 = 4294967296u64
+    let trunc2 i32 = (as two32 i32)
+    do (io::println trunc2)
+
+    # 0x80000000 as u32 = 2147483648, then as i32 = -2147483648 (INT_MIN)
+    let v u32 = 2147483648u32
+    let as_i32 i32 = (as v i32)
+    do (io::println as_i32)
+
+    # Then arithmetic on the truncated value
+    let result i32 = (+ as_i32 1i32)
+    do (io::println result)
+
+    # i8 widen to i32 preserving sign: -1i8 -> -1i32
+    let neg_i8 i8 = (- 1i8)
+    let wide_i32 i32 = (as neg_i8 i32)
+    do (io::println wide_i32)
+
+    # u8 widen to i32: 255u8 -> 255i32 (zero-extend, not sign-extend)
+    let max_u8 u8 = 255u8
+    let wide_from_u8 i32 = (as max_u8 i32)
+    do (io::println wide_from_u8)
+
+    return 0i32
+end

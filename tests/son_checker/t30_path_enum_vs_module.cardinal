@@ -1,0 +1,24 @@
+module t30_path_enum_vs_module
+# ATTACK: path `A::B` where `A` could be either an enum name or a module.
+# The cardinal checker's check_path checks enums BEFORE checking if parts[0]
+# is a module, so an enum named after an imported module would shadow the module.
+# Python checker also checks local enums first.
+# This creates a potential for DIVERGENCE if the two checkers order lookups differently.
+# Let's test a simpler variant: an enum named 'strings' that could shadow the module.
+
+import strings
+import io
+
+enum io
+    In
+    Out
+end
+
+func main () -> i32
+    # io::Out is an enum variant since we have enum io
+    # But io is also an imported module. Which wins?
+    # If checkers disagree on resolution order, DIFF.
+    let x = io::Out
+    do (io::println (to_str x))
+    return 0i32
+end

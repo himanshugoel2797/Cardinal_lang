@@ -1,0 +1,29 @@
+module t09_struct_field_tag
+
+# STRATEGY 9: Sum variant payload field named "tag" (allowed per lower.cardinal).
+# Tests that "tag" works as a payload field name (only "cl_tag" is reserved).
+
+import io
+
+type Shape
+    Circle (radius f64) (tag i32)
+    Square (side f64) (tag i32)
+end
+
+func main () -> i32
+    let c = (Circle radius: 3.14 tag: 1i32)
+    let s = (Square side: 5.0 tag: 2i32)
+    match c
+        case (Circle r t)
+            do (io::println t)
+        case (Square side t)
+            do (io::println t)
+    end
+    match s
+        case (Circle r t)
+            do (io::println t)
+        case (Square side t)
+            do (io::println t)
+    end
+    return 0i32
+end

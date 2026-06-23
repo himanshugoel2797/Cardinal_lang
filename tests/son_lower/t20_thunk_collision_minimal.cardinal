@@ -1,0 +1,29 @@
+module t20_thunk_collision_minimal
+
+# MINIMAL REPRO for the thunk naming collision bug.
+# When function "foo" is used as a first-class value, the lowerer emits a thunk:
+#   cl_<mod>__foo__thunk
+# If the user defines a function named "foo__thunk" in the same module,
+# both get mangled to the same C/asm symbol → duplicate symbol error.
+#
+# Identifiers with __ are valid: "foo__thunk" is a legal Cardinal identifier.
+
+import io
+
+func foo () -> i32
+    return 10i32
+end
+
+func foo__thunk () -> i32
+    return 20i32
+end
+
+func apply (f func(-> i32)) -> i32
+    return (f)
+end
+
+func main () -> i32
+    do (io::println (apply foo))   # passes foo as value, generates thunk
+    do (io::println (foo__thunk))  # calls foo__thunk directly
+    return 0i32
+end

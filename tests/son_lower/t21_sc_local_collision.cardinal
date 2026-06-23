@@ -1,0 +1,47 @@
+module t21_sc_local_collision
+
+# STRATEGY 21: Short-circuit (and/or) creates IR local "sc_N" via uniq(lx, "sc").
+# The uniq counter is function-wide. If user also has a local named "sc",
+# then uniq("sc") = "sc_1" might collide with user's var that got uniq'd to "sc_1".
+# Similarly, if user has var "sc" and the SC creates "sc_1", that's the unique IR
+# name for BOTH if user also has another "sc" binding.
+#
+# The issue: user has "let sc = ..." which becomes IR local "sc_1" (first let in fn).
+# Then (and a b) creates IR local "sc_2" (next uniq). But if user has TWO "sc" bindings
+# and one (and ...), the third uniq call for "sc" would be "sc_3". No collision.
+#
+# Harder collision: user has "let sc_2 = ..." as first let (-> IR "sc_2_1"),
+# then later a (and a b) -> SC creates "sc_1" (first uniq("sc")). "sc_2_1" != "sc_1".
+# No collision there either.
+#
+# TRUE COLLISION: user names their variable "sc" AND the SC local also becomes "sc_1".
+# Wait - user var "sc" -> uniq("sc") -> "sc_1". Then (and x y) -> uniq("sc") -> "sc_2".
+# So user gets "sc_1", SC gets "sc_2". No collision.
+#
+# Unless: user names their variable "sc_2" first (-> IR: "sc_2_1"). Then user names
+# another "sc" (-> IR: "sc_2"). Then the SC tries (and) -> uniq("sc") -> "sc_3".
+# "sc_2" (from user's "sc" let) vs "sc_2_1" (from user's "sc_2" let) -- DIFFERENT.
+# But "sc_2" from user let is REUSED by the next SC which also gets "sc_3".
+#
+# It's hard to force this. Let's instead try a test that verifies the SC locals
+# don't interfere with user variables, and check output agreement.
+
+import io
+
+func test_sc_with_locals () -> i32
+    let sc = 0i32
+    let result = 0i32
+    if (and (> sc (- 1i32)) (< sc 10i32))
+        set result = 1i32
+    end
+    let sc_2 = 5i32   # explicit name similar to auto-generated SC local
+    if (or (> sc_2 3i32) (< sc_2 0i32))
+        set result = (+ result 10i32)
+    end
+    return result
+end
+
+func main () -> i32
+    do (io::println (test_sc_with_locals))  # should be 11
+    return 0i32
+end

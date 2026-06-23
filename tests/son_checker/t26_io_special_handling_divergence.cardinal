@@ -1,0 +1,23 @@
+module t26_io_special_handling_divergence
+# ATTACK: The io module is treated specially in BOTH checkers for type-checking
+# of print/println arguments. The Python checker accepts ANY concrete type for io.
+# The Cardinal checker also accepts any concrete type for io.
+# But what about: io::println called with a function value?
+# Python checker: for io calls, checks each arg -- if arg is FuncT, not UntypedInt/Float -> ok
+# Cardinal checker: same logic.
+# However: what if we pass a STRUCT to io::println? Does it produce the same output?
+# This is a runtime behavior question, not type-checking.
+
+import io
+
+struct Pt
+    x i32
+    y i32
+end
+
+func main () -> i32
+    let p = (Pt x: 1 y: 2)
+    # to_str dispatches to auto-generated struct formatter
+    do (io::println (to_str p))
+    return 0i32
+end

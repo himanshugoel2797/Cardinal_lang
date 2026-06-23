@@ -1,0 +1,71 @@
+module t06_deeply_nested_labels
+
+# STRATEGY 6: Label uniqueness under deep nesting.
+# The lowerer uses ir::fresh_label which appends a counter. But the counter
+# is shared with ir::fresh_temp. All labels and temps share the SAME counter.
+# Under very deep nesting (many if/while/loop/match/for), we get many labels.
+# The x86 backend uses: lbl(bx, name) = ".L" + bx.fname + "_" + name
+# where name is the IR label. The IR label names come from fresh_label which
+# uses the function's internal counter.
+# Let's generate many labels and check all three backends agree.
+
+import io
+
+func nested_ifs (x i32) -> i32
+    if (> x 0i32)
+        if (> x 10i32)
+            if (> x 20i32)
+                if (> x 30i32)
+                    if (> x 40i32)
+                        if (> x 50i32)
+                            if (> x 60i32)
+                                if (> x 70i32)
+                                    if (> x 80i32)
+                                        if (> x 90i32)
+                                            return 100i32
+                                        end
+                                        return 90i32
+                                    end
+                                    return 80i32
+                                end
+                                return 70i32
+                            end
+                            return 60i32
+                        end
+                        return 50i32
+                    end
+                    return 40i32
+                end
+                return 30i32
+            end
+            return 20i32
+        end
+        return 10i32
+    end
+    return 0i32
+end
+
+func nested_loops (n i32) -> i32
+    let acc = 0i32
+    let i = 0i32
+    while (< i n)
+        let j = 0i32
+        while (< j n)
+            let k = 0i32
+            while (< k n)
+                set acc = (+ acc 1i32)
+                set k = (+ k 1i32)
+            end
+            set j = (+ j 1i32)
+        end
+        set i = (+ i 1i32)
+    end
+    return acc
+end
+
+func main () -> i32
+    do (io::println (nested_ifs 55i32))
+    do (io::println (nested_ifs 95i32))
+    do (io::println (nested_loops 3i32))
+    return 0i32
+end

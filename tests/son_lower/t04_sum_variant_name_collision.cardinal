@@ -1,0 +1,44 @@
+module t04_sum_variant_name_collision
+
+# STRATEGY 4: Sum variant name mangling collision.
+# variant_qual(sumq, variant) = sumq + "__" + variant
+# where sumq = mod + "::" + SumName
+# C struct: cl_struct_<mod>__<SumName>__<VariantName>
+#
+# COLLISION: Sum type "A__B" with variant "C" gives struct:
+#   cl_struct_t04_...___A__B__C
+# Sum type "A" with variant "B__C" gives struct:
+#   cl_struct_t04_...__A__B__C
+# These ARE the same C struct name -- DUPLICATE DEFINITION!
+#
+# NOTE: The variant names contain "__" which is valid in identifiers.
+
+import io
+
+type A__B
+    C (val i32)
+    Other (val i32)
+end
+
+type A
+    B__C (val i32)
+    B__Other (val i32)
+end
+
+func main () -> i32
+    let x = (C val: 1i32)
+    let y = (B__C val: 2i32)
+    match x
+        case (C v)
+            do (io::println v)
+        case (Other v)
+            do (io::println v)
+    end
+    match y
+        case (B__C v)
+            do (io::println v)
+        case (B__Other v)
+            do (io::println v)
+    end
+    return 0i32
+end

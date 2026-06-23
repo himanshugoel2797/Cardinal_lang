@@ -1,0 +1,27 @@
+module t02_null_to_int_field
+# ATTACK: null assigned to a struct that contains non-reference fields.
+# In Python checker, PrimT is in REF_KINDS so str/handle accept null,
+# but so does any PrimT (including bool/char theoretically).
+# More critically: can we store null into a struct-typed variable, then
+# access its integer fields?
+# The coerce allows null -> StructT, EnumT, ArrayT, FuncT, (PrimT only str/handle).
+# A struct field of type i32 is NOT a ref type, but null -> StructT is allowed.
+# At runtime: dereferencing a null struct crashes or reads garbage.
+
+import io
+
+struct Wrapper
+    value i32
+end
+
+func get_wrap () -> Wrapper
+    # Return null for a Wrapper — checker allows null -> StructT
+    return null
+end
+
+func main () -> i32
+    let w = (get_wrap)
+    # Access field of what is actually null — should crash but type-checks
+    do (io::println w.value)
+    return 0i32
+end

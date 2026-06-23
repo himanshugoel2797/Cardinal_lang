@@ -1,0 +1,22 @@
+module t12_shadowing_const_then_mutate
+# ATTACK: shadow a const binding with a let (mutable), then set the shadow.
+# The outer const x=10 is immutable. The inner let x=20 shadows it.
+# After the inner scope ends, which x does `set x = 99` refer to?
+# In Python checker, check_block makes inner = dict(scope) — the inner scope
+# is a COPY, so after the block ends, the outer scope still has x=const.
+# But does set after the if-block modify the right binding?
+
+import io
+
+func main () -> i32
+    let x = 10i32
+    if true
+        let x = 20i32
+        do (io::println x)
+    end
+    # After if-block, x is back to the outer x (const/immutable let)
+    # This set SHOULD be rejected (x is immutable let)
+    set x = 99i32
+    do (io::println x)
+    return 0i32
+end

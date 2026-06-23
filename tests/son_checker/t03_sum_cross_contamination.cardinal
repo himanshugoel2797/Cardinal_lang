@@ -1,0 +1,39 @@
+module t03_sum_cross_contamination
+# ATTACK: two sum types with the SAME variant names.
+# The checker uses variant-name-only lookup (find_variant) which is first-match.
+# If both SumA and SumB have variant "Leaf", a value of SumA could be used
+# where SumB is expected because find_variant finds SumA::Leaf first.
+# This tests whether the type system prevents cross-sum usage.
+# Expected: REJECT (checker should catch mismatch).
+# If both checkers ACCEPT, this is a SOUNDNESS hole.
+
+import io
+
+type ShapeA
+    Circle (radius i32)
+    Square (side i32)
+end
+
+type ShapeB
+    Circle (radius i32)
+    Triangle (base i32)
+end
+
+func describe_b (s ShapeB) -> i32
+    match s
+        case (Circle r)
+            return r
+        case (Triangle b)
+            return b
+    end
+    return 0i32
+end
+
+func main () -> i32
+    # Build a ShapeA and pass it where ShapeB is expected
+    let a = (Circle radius: 5)
+    # Both ShapeA and ShapeB have Circle. find_variant may accept this.
+    let result = (describe_b a)
+    do (io::println result)
+    return 0i32
+end

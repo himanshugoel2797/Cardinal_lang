@@ -1,0 +1,150 @@
+module meta_multireturn
+
+import io
+
+# Strategy A: METAMORPHIC — multiple return paths through match + let rebinding
+# Tests: multiple return points, let rebinding (shadowing), match exhaustiveness,
+#        interaction between if/match and return.
+
+type MaybeI32
+    Nothing
+    Just (val i32)
+end
+
+func unwrap_or (m MaybeI32) (default i32) -> i32
+    match m
+        case Nothing
+            return default
+        case (Just v)
+            return v
+    end
+    return default
+end
+
+# Variant 1: direct returns from if-chain
+func classify_direct (n i32) -> str
+    if (< n 0)
+        return "negative"
+    elsif (== n 0)
+        return "zero"
+    else
+        return "positive"
+    end
+    return "unknown"
+end
+
+# Variant 2: let binding + single return
+func classify_letbind (n i32) -> str
+    let result = "unknown"
+    if (< n 0)
+        let result = "negative"
+        return result
+    elsif (== n 0)
+        let result = "zero"
+        return result
+    else
+        let result = "positive"
+        return result
+    end
+    return result
+end
+
+# Variant 3: use sign helper + match
+func sign (n i32) -> i32
+    if (< n 0)
+        return (- 0 1)
+    elsif (== n 0)
+        return 0
+    else
+        return 1
+    end
+    return 0
+end
+
+func classify_via_sign (n i32) -> str
+    let s = (sign n)
+    if (== s (- 0 1))
+        return "negative"
+    elsif (== s 0)
+        return "zero"
+    else
+        return "positive"
+    end
+    return "unknown"
+end
+
+# Variant 4: closure wrapping the classification
+func classify_closure (n i32) -> str
+    let classify = func () -> str
+        if (< n 0)
+            return "negative"
+        elsif (== n 0)
+            return "zero"
+        else
+            return "positive"
+        end
+        return "unknown"
+    end
+    return (classify)
+end
+
+# Variant 5: via MaybeI32 wrapping/unwrapping
+func wrap_classify (n i32) -> MaybeI32
+    if (< n 0)
+        return (Just val: (- 0 1))
+    elsif (== n 0)
+        return (Just val: 0)
+    else
+        return (Just val: 1)
+    end
+    return Nothing
+end
+
+func classify_via_maybe (n i32) -> str
+    let m = (wrap_classify n)
+    match m
+        case Nothing
+            return "unknown"
+        case (Just v)
+            if (< v 0)
+                return "negative"
+            elsif (== v 0)
+                return "zero"
+            else
+                return "positive"
+            end
+    end
+    return "unknown"
+end
+
+func test_all (n i32) -> unit
+    let a = (classify_direct n)
+    let b = (classify_letbind n)
+    let c = (classify_via_sign n)
+    let d = (classify_closure n)
+    let e = (classify_via_maybe n)
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    do (io::println e)
+end
+
+func safe_div (a i32) (b i32) -> MaybeI32
+    if (== b 0)
+        return Nothing
+    end
+    return (Just val: (/ a b))
+end
+
+func main () -> i32
+    do (test_all (- 0 5))
+    do (test_all 0)
+    do (test_all 7)
+
+    do (io::println (unwrap_or (safe_div 10 3) (- 0 1)))
+    do (io::println (unwrap_or (safe_div 10 0) (- 0 1)))
+    do (io::println (unwrap_or (safe_div 0 5) (- 0 1)))
+
+    return 0i32
+end

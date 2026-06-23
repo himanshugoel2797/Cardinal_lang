@@ -1,0 +1,46 @@
+# Strategy 6: -0.0 propagation through arithmetic.
+# -0.0 * 1.0 = -0.0 (IEEE 754)
+# -0.0 + 0.0 = 0.0 (not -0.0)
+# -0.0 * -1.0 = 0.0
+# 1.0 / -0.0 = -inf
+# The interpreter uses Python floats which correctly handle -0.0.
+# Question: do the backends agree?
+module n09_neg_zero_arith
+
+import io
+
+func make_neg_zero () -> f64
+    return (* (- 0.0) 1.0)
+end
+
+func main () -> i32
+    let nz f64 = (make_neg_zero)
+
+    # -0.0 + 0.0 should be 0.0 (not -0.0), prints as 0
+    let add_z f64 = (+ nz 0.0)
+    do (io::println add_z)
+
+    # -0.0 * -1.0 should be 0.0 (positive)
+    let mul_neg f64 = (* nz (- 1.0))
+    do (io::println mul_neg)
+
+    # Check -0.0 == 0.0
+    if (== nz 0.0)
+        do (io::println "neg_zero_eq_zero: true")
+    else
+        do (io::println "neg_zero_eq_zero: false")
+    end
+
+    # Check -0.0 < 0.0 (should be false)
+    if (< nz 0.0)
+        do (io::println "neg_zero_lt_zero: true")
+    else
+        do (io::println "neg_zero_lt_zero: false")
+    end
+
+    # Multiplying by -0.0
+    let pos_times_neg_z f64 = (* 1.0 nz)
+    do (io::println pos_times_neg_z)
+
+    return 0i32
+end

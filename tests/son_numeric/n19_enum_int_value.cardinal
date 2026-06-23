@@ -1,0 +1,53 @@
+# Strategy 14: Enum underlying integer values and comparisons.
+# Enums are stored as i32 in the C backend (int32_t).
+# The interpreter stores the ordinal index.
+# Test: enum with many variants, equality/ordering comparisons.
+module n19_enum_int_value
+
+import io
+
+enum Color
+    Red
+    Green
+    Blue
+    Alpha
+    Cyan
+    Magenta
+    Yellow
+end
+
+func color_to_int (c Color) -> i32
+    return (as c i32)
+end
+
+func main () -> i32
+    # Enum ordinals: Red=0, Green=1, Blue=2, Alpha=3, ...
+    do (io::println (color_to_int Color::Red))
+    do (io::println (color_to_int Color::Green))
+    do (io::println (color_to_int Color::Blue))
+    do (io::println (color_to_int Color::Alpha))
+
+    # Equality
+    if (== Color::Red Color::Red)
+        do (io::println "Red==Red: true")
+    else
+        do (io::println "Red==Red: false")
+    end
+
+    if (== Color::Red Color::Green)
+        do (io::println "Red==Green: true")
+    else
+        do (io::println "Red==Green: false")
+    end
+
+    # Comparison of enum cast to int
+    let r i32 = (color_to_int Color::Red)
+    let g i32 = (color_to_int Color::Green)
+    if (< r g)
+        do (io::println "Red<Green as int: true")
+    else
+        do (io::println "Red<Green as int: false")
+    end
+
+    return 0i32
+end

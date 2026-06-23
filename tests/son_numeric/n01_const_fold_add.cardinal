@@ -1,0 +1,41 @@
+# Strategy 1: Constant-folding divergence
+# Compare a literal-foldable expression against the same computation forced
+# at runtime through a function parameter.
+# Targets: i32 overflow at INT_MAX+1, and u32 overflow at UINT_MAX+1.
+# The compiler may constant-fold the literal form; does the folded value match
+# the runtime wrapped value?
+module n01_const_fold_add
+
+import io
+
+# Return the value unchanged so the compiler cannot fold through it.
+func keep_i32 (x i32) -> i32
+    return x
+end
+
+func keep_u32 (x u32) -> u32
+    return x
+end
+
+func main () -> i32
+    # i32 INT_MAX+1: literal form (may be constant-folded at compile time)
+    let lit_i32 i32 = (+ 2147483647i32 1i32)
+    # Runtime form: pass through a function so the value is not a literal
+    let rt_i32 i32 = (+ (keep_i32 2147483647i32) 1i32)
+    do (io::println lit_i32)
+    do (io::println rt_i32)
+
+    # u32 UINT_MAX+1: literal form vs runtime form
+    let lit_u32 u32 = (+ 4294967295u32 1u32)
+    let rt_u32 u32 = (+ (keep_u32 4294967295u32) 1u32)
+    do (io::println lit_u32)
+    do (io::println rt_u32)
+
+    # i32 INT_MIN-1
+    let lit_min_i32 i32 = (- (- 2147483648i32) 1i32)
+    let rt_min_i32 i32 = (- (keep_i32 (- 2147483648i32)) 1i32)
+    do (io::println lit_min_i32)
+    do (io::println rt_min_i32)
+
+    return 0i32
+end

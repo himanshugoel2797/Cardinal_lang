@@ -1,0 +1,72 @@
+module t11_match_many_variants
+
+# STRATEGY 11: Sum type with many variants (tag exhaustion test).
+# Tests that tag assignment and match dispatch work for a large sum.
+# The lowerer uses i32 tags. Checks all three backends agree.
+
+import io
+
+type BigSum
+    V0 (x i32)
+    V1 (x i32)
+    V2 (x i32)
+    V3 (x i32)
+    V4 (x i32)
+    V5 (x i32)
+    V6 (x i32)
+    V7 (x i32)
+    V8 (x i32)
+    V9 (x i32)
+    V10 (x i32)
+    V11 (x i32)
+    V12 (x i32)
+    V13 (x i32)
+    V14 (x i32)
+    V15 (x i32)
+end
+
+func describe (v BigSum) -> i32
+    match v
+        case (V0 x)
+            return (+ x 0i32)
+        case (V1 x)
+            return (+ x 1i32)
+        case (V2 x)
+            return (+ x 2i32)
+        case (V3 x)
+            return (+ x 3i32)
+        case (V4 x)
+            return (+ x 4i32)
+        case (V5 x)
+            return (+ x 5i32)
+        case (V6 x)
+            return (+ x 6i32)
+        case (V7 x)
+            return (+ x 7i32)
+        case (V8 x)
+            return (+ x 8i32)
+        case (V9 x)
+            return (+ x 9i32)
+        case (V10 x)
+            return (+ x 10i32)
+        case (V11 x)
+            return (+ x 11i32)
+        case (V12 x)
+            return (+ x 12i32)
+        case (V13 x)
+            return (+ x 13i32)
+        case (V14 x)
+            return (+ x 14i32)
+        case (V15 x)
+            return (+ x 15i32)
+    end
+    return (- 1i32)
+end
+
+func main () -> i32
+    do (io::println (describe (V0 x: 100i32)))   # 100
+    do (io::println (describe (V15 x: 100i32)))  # 115
+    do (io::println (describe (V7 x: 0i32)))     # 7
+    do (io::println (describe (V8 x: 0i32)))     # 8
+    return 0i32
+end

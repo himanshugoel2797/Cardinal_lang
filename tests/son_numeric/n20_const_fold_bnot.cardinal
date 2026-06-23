@@ -1,0 +1,46 @@
+# Strategy 15: Constant folding for bitwise NOT.
+# bnot of INT_MIN, INT_MAX, 0, -1 at various widths.
+# Compare constant-folded form against runtime form.
+module n20_const_fold_bnot
+
+import io
+
+func keep_i8 (x i8) -> i8
+    return x
+end
+
+func keep_i32 (x i32) -> i32
+    return x
+end
+
+func keep_u64 (x u64) -> u64
+    return x
+end
+
+func main () -> i32
+    # bnot 0i8 = -1i8
+    let lit_bnot_0i8 i8 = (bnot 0i8)
+    let rt_bnot_0i8 i8 = (bnot (keep_i8 0i8))
+    do (io::println lit_bnot_0i8)
+    do (io::println rt_bnot_0i8)
+
+    # bnot -1i8 = 0i8
+    let lit_bnot_m1i8 i8 = (bnot (- 1i8))
+    let rt_bnot_m1i8 i8 = (bnot (keep_i8 (- 1i8)))
+    do (io::println lit_bnot_m1i8)
+    do (io::println rt_bnot_m1i8)
+
+    # bnot 0x7FFFFFFF (INT32_MAX) = 0x80000000 = INT32_MIN
+    let lit_bnot_max i32 = (bnot 2147483647i32)
+    let rt_bnot_max i32 = (bnot (keep_i32 2147483647i32))
+    do (io::println lit_bnot_max)
+    do (io::println rt_bnot_max)
+
+    # bnot 0u64 = 18446744073709551615
+    let lit_bnot_0u64 u64 = (bnot 0u64)
+    let rt_bnot_0u64 u64 = (bnot (keep_u64 0u64))
+    do (io::println lit_bnot_0u64)
+    do (io::println rt_bnot_0u64)
+
+    return 0i32
+end

@@ -71,3 +71,51 @@ interning/pinning variant is what preserves the permanently-rooted invariant.
 - e2e sweeps: arith+floats+aggregates+control **116/116**, collections+sums+gc
   **105/105** (one GC test flaked on a timeout under parallel load; passes solo).
 - All 4 bug repros + siblings now PASS three-way; string regressions clean.
+
+---
+
+# Campaign 3 — Sonnet implementation-aware fleet (`tests/son_*`)
+
+6 Sonnet agents read the backend/checker/lowering source to find fragile paths,
+each tasked to find ≥5 ways to break the compiler. (A mid-run OOM crash from too
+many simultaneous agents lost 4 agents' summaries, but their ~146 test files were
+recovered and swept single-process.) Suites: son_abi (17), son_gc (17),
+son_checker (41), son_lower (25), son_numeric (26), son_metamorphic (20).
+Clean: son_gc (0 breaks even at GC_THRESHOLD=0), son_metamorphic (0), and
+checker-parity over son_checker (AGREE=41, DIFF=0).
+
+## Confirmed bugs found AND fixed (8)
+
+| # | Where | Bug | Fix |
+|---|-------|-----|-----|
+| N | `backend_x86.cardinal` `emit_thunk` | A named-function VALUE returning a >16B struct segfaulted: the thunk's GP-arg shift clobbered `%rdi` (the SysV MEMORY hidden return pointer). | Shift starts at index 1 for a MEMORY return, preserving the sret pointer. |
+| O | `backend_x86.cardinal` `emit_thunk` | A named-function value with enough args to spill GP registers silently dropped the stack-passed args (`argreg` clamps ≥5 to `%r9`). | Detect the spill and emit a loud compile-time panic instead of a silent miscompile. (Full stack-arg forwarding remains a later milestone; lambdas already handle it.) |
+| P | `backend_x86.cardinal` float compare | Ordered float comparisons with a runtime NaN were all wrong (`NaN<0`→true, `NaN==NaN`→true, `NaN!=NaN`→false): `ucomisd` sets ZF=PF=CF=1 on unordered, and `sete`/`setb`/`setbe` ignore the parity flag. (Missed by campaign-2 floats tests, which never branched on an unfoldable runtime NaN.) | `==`,`<`,`<=` AND with `setnp`; `!=` ORs with `setp`; `>`,`>=` already NaN-safe via `seta`/`setae`. |
+| Q | `lower.cardinal` lambda naming | An anonymous function lifted as `cl_<mod>__lambdaN` collided with a user `func lambdaN` → duplicate C symbol / asm "already defined". | Name lifted lambdas `cl_<mod>__0lambdaN`; a digit-led component can't be a user identifier (`is_ident_start` = letter/`_`), so collision is impossible. |
+| R | `lower.cardinal` `lower_name` | A module-level `const` used as a value — even `const A i32 = 42i32` — panicked `lower: cannot use as a value` in BOTH backends (the interpreter evaluates consts eagerly). | Inline the const's initializer expression at each use (backends have no global-const storage). |
+| S | `lower.cardinal` `lower_fornum` | Mutating the numeric for-loop index inside the body changed the trip count (the index variable WAS the loop counter); the interpreter iterates an independent counter (interp 10 vs backends 3). | Drive the loop with a hidden counter; copy it into the user-visible index at the top of each iteration, so body mutations can't affect the count. |
+
+(Bugs N/O were committed earlier with the son_abi suite; P/Q/R/S here.)
+
+## Known divergences DOCUMENTED, not yet fixed (need a design call or are
+## adversarial/milestone-sized) — repros under `tests/son_*`
+
+- **Aggregate `==`** (son_checker t34–t40): both checkers accept `==`/`!=` on
+  struct/array/vec/func, but the C backend emits `==` on a C struct (compile
+  error) while interp + x86 do structural/word comparison. SOUNDNESS gap.
+  Recommendation: the checker should reject `==` on `func`/closure (meaningless)
+  and either implement structural equality in the C backend or reject it for
+  struct/array/vec — a language-semantics decision.
+- **Named-function-value thunk symbol collision** (son_lower t02, t20): a thunk
+  is `<mangled>__thunk`; a user `func X__thunk` whose `X` is used as a value
+  collides. Adversarial; fix needs a digit-led thunk symbol at 3 emit sites.
+- **x86 int→f32 rounding at 2^24** (son_numeric n16, n25): one boundary value
+  rounds to 16777218 vs the oracle's 16777216 (`cvtsi2ss` rounding).
+- **float→int out-of-range** (son_numeric n05, n24): interp + x86 give 0, C gives
+  INT_MIN — genuinely platform-defined; needs a chosen saturating semantics.
+- **`null`/handle features** (son_checker t18, t24): `lower: null/handles not
+  supported yet` (both backends) / a C handle type mismatch — an unimplemented
+  area, fails loudly.
+- **Enum shadows imported module** (son_checker t30, t31): `enum io` next to
+  `import io` resolves `io::X` differently between interp (enum) and backends
+  (module). Obscure name-resolution corner.

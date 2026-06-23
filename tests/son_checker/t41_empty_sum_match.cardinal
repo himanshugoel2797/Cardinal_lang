@@ -1,0 +1,25 @@
+module t41_empty_sum_match
+# ATTACK: match on an empty sum type (no variants).
+# Python checker: sum_table returns None (empty dict is falsy).
+#   -> table is None -> for each arm, reports "not a variant"
+# Cardinal checker: stbl.found = true but stbl.variants is empty.
+#   -> have_table = true, but any arm's find_variant_in_sum returns found=false
+#   -> each arm: (and have_table fv.found) = false -> known=false -> error
+# But for EXHAUSTIVENESS:
+#   Python: table is None -> no exhaustiveness check -> no error for empty match
+#   Cardinal: have_table = true, vnames = empty -> missing = "" -> no error
+# So an empty match on an empty sum type might behave differently!
+# More importantly: what does `let x = Empty...` look like?
+
+import io
+
+# Empty sum type -- no variants!
+type Empty
+end
+
+func main () -> i32
+    # This is invalid -- can't construct an Empty value
+    # But we can try to receive one as a parameter
+    do (io::println "hello")
+    return 0i32
+end

@@ -1,0 +1,45 @@
+# Strategy 4: char arithmetic at boundary code points.
+# char is stored as i32 (int32_t) in C backend (see ctype(CHAR) = "int32_t").
+# The interpreter stores char as a raw Python int (ordinal).
+# Test: char at '\0', '\x7f', '\xff', '\u{ffff}', and arithmetic on chars.
+module n06_char_boundary
+
+import io
+
+func keep_char (c char) -> char
+    return c
+end
+
+func main () -> i32
+    # Boundary characters
+    let nul = '\0'
+    let del = '\x7f'
+
+    do (io::println (as nul i32))
+    do (io::println (as del i32))
+
+    # Cast char to i32 and back (round-trip)
+    let a = 'A'
+    let a_int i32 = (as a i32)
+    do (io::println a_int)
+
+    # Cast from i32 to char: boundary values
+    let c0 char = (as 0i32 char)
+    let c127 char = (as 127i32 char)
+    do (io::println (as c0 i32))
+    do (io::println (as c127 i32))
+
+    # Large char code point (within Unicode range)
+    let high char = (as 65535i32 char)
+    do (io::println (as high i32))
+
+    # Char comparison at boundary
+    let is_null = (== '\0' c0)
+    if is_null
+        do (io::println "null_eq: true")
+    else
+        do (io::println "null_eq: false")
+    end
+
+    return 0i32
+end

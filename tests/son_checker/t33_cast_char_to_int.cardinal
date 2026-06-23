@@ -1,0 +1,16 @@
+module t33_cast_char_to_int
+# ATTACK: cast char to i32. Char is PrimT("char"), not in (IntT, FloatT, UntypedIntT, UntypedFloatT).
+# Python checker: not isinstance(src, (IntT, FloatT, UntypedIntT, UntypedFloatT)) -> ERROR
+# Cardinal checker: not is_numish(src) -> ERROR
+# Both should reject. But let's verify they AGREE on rejection.
+# If they disagree (one allows char->int cast), DIFF bug.
+
+import io
+
+func main () -> i32
+    let c = 'A'
+    # cast char to i32 -- should be rejected by both checkers
+    let n = (as c i32)
+    do (io::println n)
+    return 0i32
+end

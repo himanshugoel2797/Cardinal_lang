@@ -1,0 +1,111 @@
+module interact_ast_eval
+
+import io
+
+# Strategy B: INTERACTION — small interpreter over a sum-type AST
+# Features combined: sum types, recursion, structs, closures, maps, vectors
+# Expected output is independently checkable.
+
+type Expr
+    Lit (val i32)
+    Add (l Expr) (r Expr)
+    Mul (l Expr) (r Expr)
+    Sub (l Expr) (r Expr)
+    Neg (e Expr)
+    Let (name str) (val Expr) (body Expr)
+    Var (name str)
+    If (cond Expr) (then_e Expr) (else_e Expr)
+end
+
+# Environment: str -> i32 map passed by value (functional env)
+# To avoid mutable map issues, we use a simple assoc-list via a vec of structs.
+
+struct Binding
+    key str
+    val i32
+end
+
+func env_lookup (env {Binding}) (name str) -> i32
+    let i = 0i32
+    while (< i (as (len env) i32))
+        if (== env[i].key name)
+            return env[i].val
+        end
+        set i = (+ i 1)
+    end
+    return (- 0 999)
+end
+
+func env_extend (env {Binding}) (name str) (val i32) -> {Binding}
+    # Return new env with binding prepended
+    let new_env {Binding} = (vec Binding)
+    let b = (Binding key: name val: val)
+    do (push new_env b)
+    let i = 0i32
+    while (< i (as (len env) i32))
+        do (push new_env env[i])
+        set i = (+ i 1)
+    end
+    return new_env
+end
+
+func eval_expr (e Expr) (env {Binding}) -> i32
+    match e
+        case (Lit v)
+            return v
+        case (Add l r)
+            return (+ (eval_expr l env) (eval_expr r env))
+        case (Mul l r)
+            return (* (eval_expr l env) (eval_expr r env))
+        case (Sub l r)
+            return (- (eval_expr l env) (eval_expr r env))
+        case (Neg x)
+            return (- 0 (eval_expr x env))
+        case (Let nm vexpr body)
+            let v = (eval_expr vexpr env)
+            let new_env = (env_extend env nm v)
+            return (eval_expr body new_env)
+        case (Var nm)
+            return (env_lookup env nm)
+        case (If cond then_e else_e)
+            let cv = (eval_expr cond env)
+            if (!= cv 0)
+                return (eval_expr then_e env)
+            else
+                return (eval_expr else_e env)
+            end
+    end
+    return 0
+end
+
+func main () -> i32
+    let empty {Binding} = (vec Binding)
+
+    # Test 1: (2 + 3) * 4 = 20
+    let e1 = (Mul l: (Add l: (Lit val: 2) r: (Lit val: 3))
+                   r: (Lit val: 4))
+    do (io::println (eval_expr e1 empty))
+
+    # Test 2: let x = 10; let y = 5; x - y = 5
+    let e2 = (Let name: "x" val: (Lit val: 10)
+                  body: (Let name: "y" val: (Lit val: 5)
+                              body: (Sub l: (Var name: "x") r: (Var name: "y"))))
+    do (io::println (eval_expr e2 empty))
+
+    # Test 3: if (1) then 42 else 0  = 42
+    let e3 = (If cond: (Lit val: 1) then_e: (Lit val: 42) else_e: (Lit val: 0))
+    do (io::println (eval_expr e3 empty))
+
+    # Test 4: let x = 3; (x * x) + neg(x) = 9 + (-3) = 6
+    let e4 = (Let name: "x" val: (Lit val: 3)
+                  body: (Add l: (Mul l: (Var name: "x") r: (Var name: "x"))
+                              r: (Neg e: (Var name: "x"))))
+    do (io::println (eval_expr e4 empty))
+
+    # Test 5: if (0) then 1 else (2 + 3) = 5
+    let e5 = (If cond: (Lit val: 0) then_e: (Lit val: 1)
+                 else_e: (Add l: (Lit val: 2) r: (Lit val: 3)))
+    do (io::println (eval_expr e5 empty))
+
+    return 0i32
+end

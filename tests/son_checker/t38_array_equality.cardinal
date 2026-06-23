@@ -1,0 +1,19 @@
+module t38_array_equality
+# ATTACK: compare two arrays with ==.
+# Arrays are ArrayT, and type_eq works for arrays (same elem type).
+# unify_comparable: `if a == b` would check ArrayT("i32") == ArrayT("i32") -> True.
+# So both checkers should accept array == array.
+# At runtime: does this work on all backends?
+
+import io
+
+func main () -> i32
+    let a [i32] = [1 2 3]
+    let b [i32] = [1 2 3]
+    if (== a b)
+        do (io::println "equal")
+    else
+        do (io::println "not equal")
+    end
+    return 0i32
+end

@@ -1,0 +1,41 @@
+# Strategy 3: float-to-int cast for out-of-range values.
+# In C, casting a float to int when the value is out of range is UB.
+# The interpreter uses Python's int(float) which saturates/wraps differently.
+# Test: cast infinity and large floats to i32/i64.
+# Also test: NaN cast to int.
+module n05_float_to_int_oob
+
+import io
+
+func make_inf () -> f64
+    return (* 1e308 10.0)
+end
+
+func make_nan () -> f64
+    let inf = (make_inf)
+    return (- inf inf)
+end
+
+func main () -> i32
+    # f64 -> i32: value too large (2^40 doesn't fit in i32)
+    let big f64 = 1099511627776.0
+    let cast_big i32 = (as big i32)
+    do (io::println cast_big)
+
+    # f64 -> i32: negative value too negative (-2^40 doesn't fit in i32)
+    let neg_big f64 = (- 1099511627776.0)
+    let cast_neg_big i32 = (as neg_big i32)
+    do (io::println cast_neg_big)
+
+    # f64 infinity -> i32: undefined behavior in C
+    let inf f64 = (make_inf)
+    let cast_inf i32 = (as inf i32)
+    do (io::println cast_inf)
+
+    # f64 -> i64: 2^63 is exactly out of range for i64
+    let big64 f64 = 9223372036854775808.0
+    let cast_big64 i64 = (as big64 i64)
+    do (io::println cast_big64)
+
+    return 0i32
+end

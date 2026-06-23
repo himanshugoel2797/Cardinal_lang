@@ -1,0 +1,19 @@
+module t32_for_step_negative
+# ATTACK: for loop with a negative step value.
+# The for-num semantics says "half-open [start, end)" with step.
+# If step is negative and start < end, the loop doesn't execute.
+# If step is negative and start > end... what happens?
+# The interpreter: while i < limit -> never enters if step < 0 and i >= limit
+# C backends: for(i=start; i<end; i+=step) -- if step < 0, undefined behavior?
+# Let's test for = 10 to 0 step (- 1)
+
+import io
+
+func main () -> i32
+    let total = 0i32
+    for i = 10 to 0 step (- 1)
+        set total = (+ total i)
+    end
+    do (io::println total)
+    return 0i32
+end

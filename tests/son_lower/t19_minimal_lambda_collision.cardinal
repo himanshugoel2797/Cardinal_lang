@@ -1,0 +1,30 @@
+module t19_minimal_lambda_collision
+
+# MINIMAL REPRO for the lambda naming collision bug.
+# The lowerer names the N-th anonymous function in module M as:
+#   cl_M__lambdaN   (N = 1, 2, 3, ...)
+# If the user defines a function named "lambdaN" in module M,
+# both the user function and the auto-generated closure body
+# get the same mangled C/asm symbol → duplicate symbol error.
+#
+# Minimal: ONE lambda in a function + user func "lambda1" → collision.
+
+import io
+
+func lambda1 () -> i32
+    return 42i32
+end
+
+func get_fn () -> func(-> i32)
+    let f = func () -> i32
+        return 99i32
+    end
+    return f
+end
+
+func main () -> i32
+    do (io::println (lambda1))
+    let fn = (get_fn)
+    do (io::println (fn))
+    return 0i32
+end

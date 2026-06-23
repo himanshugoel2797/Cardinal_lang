@@ -1,0 +1,15 @@
+module t19_integer_overflow_cast
+# ATTACK: cast a large i64 to i8 (truncation). The checker allows numeric casts.
+# The question is whether interp, C, and x86 agree on the truncation result.
+# i64 to i8: should truncate to lowest 8 bits, treating as signed.
+# 300 as i8 = 300 % 256 = 44 (or -44 depending on interpretation).
+# If backends disagree on cast semantics, SOUNDNESS.
+
+import io
+
+func main () -> i32
+    let x = 300i64
+    let y = (as x i8)
+    do (io::println (as y i32))  # print as i32 to avoid to_str issues
+    return 0i32
+end

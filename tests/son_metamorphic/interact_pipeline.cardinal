@@ -1,0 +1,110 @@
+module interact_pipeline
+
+import io
+
+# Strategy B: INTERACTION — data pipeline with maps of vecs of structs + closures
+# Features: structs, vectors, maps, closures as transforms, for-in loops
+# Expected output is independently checkable.
+
+struct Product
+    name str
+    price i32
+    qty i32
+end
+
+func make_product (name str) (price i32) (qty i32) -> Product
+    return (Product name: name price: price qty: qty)
+end
+
+# Apply a transform closure to every element of a vec, return new vec
+func map_vec (items {Product}) (f func(Product -> Product)) -> {Product}
+    let result {Product} = (vec Product)
+    for item in items
+        do (push result (f item))
+    end
+    return result
+end
+
+# Filter: keep items where predicate is true
+func filter_vec (items {Product}) (pred func(Product -> bool)) -> {Product}
+    let result {Product} = (vec Product)
+    for item in items
+        if (pred item)
+            do (push result item)
+        end
+    end
+    return result
+end
+
+# Reduce: sum a field
+func sum_revenue (items {Product}) -> i32
+    let total = 0i32
+    for item in items
+        set total = (+ total (* item.price item.qty))
+    end
+    return total
+end
+
+# Group by price bucket: cheap (<10), mid (10..=20), expensive (>20)
+func bucket (p Product) -> str
+    if (< p.price 10)
+        return "cheap"
+    elsif (<= p.price 20)
+        return "mid"
+    else
+        return "expensive"
+    end
+    return "cheap"
+end
+
+func main () -> i32
+    # Build inventory
+    let inventory {Product} = (vec Product)
+    do (push inventory (make_product "apple" 3 100))
+    do (push inventory (make_product "banana" 2 150))
+    do (push inventory (make_product "laptop" 50 10))
+    do (push inventory (make_product "book" 15 30))
+    do (push inventory (make_product "pen" 5 200))
+    do (push inventory (make_product "monitor" 25 5))
+
+    # Total revenue before any transform
+    let raw_revenue = (sum_revenue inventory)
+    do (io::println raw_revenue)
+
+    # Apply a 10% discount (approximate: price * 9 / 10) via closure
+    let discount = func (p Product) -> Product
+        let new_price = (/ (* p.price 9) 10)
+        return (Product name: p.name price: new_price qty: p.qty)
+    end
+
+    let discounted = (map_vec inventory discount)
+    let disc_revenue = (sum_revenue discounted)
+    do (io::println disc_revenue)
+
+    # Filter: keep only items with qty > 50
+    let high_qty = func (p Product) -> bool
+        return (> p.qty 50)
+    end
+
+    let filtered = (filter_vec inventory high_qty)
+    do (io::println (len filtered))
+    let filtered_revenue = (sum_revenue filtered)
+    do (io::println filtered_revenue)
+
+    # Count items per bucket using a map
+    let buckets {str i32} = (map str i32)
+    set buckets["cheap"] = 0
+    set buckets["mid"] = 0
+    set buckets["expensive"] = 0
+
+    for item in inventory
+        let b = (bucket item)
+        set buckets[b] = (+ buckets[b] 1)
+    end
+
+    do (io::println buckets["cheap"])
+    do (io::println buckets["mid"])
+    do (io::println buckets["expensive"])
+
+    return 0i32
+end

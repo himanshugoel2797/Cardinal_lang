@@ -1,0 +1,38 @@
+module t13_for_in_nested_with_break
+
+# STRATEGY 13: for-in loop with break/continue.
+# The lowerer pushes brk/cont stacks in lower_forin.
+# Test that break exits only the innermost for-in,
+# and that the loop variable naming (uniq'd) doesn't cause IR conflicts.
+
+import io
+
+func main () -> i32
+    let outer [i32] = [1i32 2i32 3i32]
+    let inner [i32] = [10i32 20i32 30i32]
+    let acc = 0i32
+
+    # nested for-in with break on inner
+    for a in outer
+        for b in inner
+            if (== b 20i32)
+                break
+            end
+            set acc = (+ acc (+ a b))
+        end
+    end
+    do (io::println acc)  # (1+10) + (2+10) + (3+10) = 11+12+13 = 36
+
+    # for-in with continue
+    let acc2 = 0i32
+    let arr [i32] = [1i32 2i32 3i32 4i32 5i32]
+    for x in arr
+        if (== (% x 2i32) 0i32)
+            continue
+        end
+        set acc2 = (+ acc2 x)
+    end
+    do (io::println acc2)  # 1+3+5 = 9
+
+    return 0i32
+end

@@ -1,0 +1,60 @@
+module t14_match_in_loop_label_uniqueness
+
+# STRATEGY 14: match inside a loop -- label uniqueness.
+# Each fresh_label call increments the IR counter. The x86 backend prefixes
+# all labels with ".L" + fname + "_". So labels are globally unique per function.
+# But if the SAME function generates many match+loop combinations, the counter
+# runs up. Let's stress test to verify correct output.
+
+import io
+
+type Maybe
+    Nothing
+    Just (v i32)
+end
+
+func process (items {Maybe}) -> i32
+    let total = 0i32
+    for x in items
+        match x
+            case Nothing
+                pass
+            case (Just v)
+                set total = (+ total v)
+        end
+    end
+    return total
+end
+
+func main () -> i32
+    let items {Maybe} = (vec Maybe)
+    do (push items (Just v: 1i32))
+    do (push items Nothing)
+    do (push items (Just v: 2i32))
+    do (push items Nothing)
+    do (push items (Just v: 3i32))
+    do (io::println (process items))  # 6
+
+    # match inside while loop inside another match
+    let outer = (Just v: 10i32)
+    let result = 0i32
+    match outer
+        case Nothing
+            pass
+        case (Just v)
+            let i = 0i32
+            while (< i v)
+                let inner = (Just v: i)
+                match inner
+                    case Nothing
+                        pass
+                    case (Just n)
+                        set result = (+ result n)
+                end
+                set i = (+ i 1i32)
+            end
+    end
+    do (io::println result)  # 0+1+2+...+9 = 45
+
+    return 0i32
+end

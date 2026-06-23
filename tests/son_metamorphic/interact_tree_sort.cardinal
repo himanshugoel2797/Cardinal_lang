@@ -1,0 +1,110 @@
+module interact_tree_sort
+
+import io
+
+# Strategy B: INTERACTION — recursive algorithm using arrays + structs + sum types + closures
+# BST insert, search, and in-order traversal.
+# Expected output: sorted sequence 1 2 3 5 7 8 10
+
+type BST
+    Empty
+    Node (val i32) (left BST) (right BST)
+end
+
+func bst_insert (tree BST) (v i32) -> BST
+    match tree
+        case Empty
+            return (Node val: v left: Empty right: Empty)
+        case (Node cur l r)
+            if (< v cur)
+                return (Node val: cur left: (bst_insert l v) right: r)
+            elsif (> v cur)
+                return (Node val: cur left: l right: (bst_insert r v))
+            else
+                return tree
+            end
+    end
+    return Empty
+end
+
+func bst_contains (tree BST) (v i32) -> bool
+    match tree
+        case Empty
+            return false
+        case (Node cur l r)
+            if (== v cur)
+                return true
+            elsif (< v cur)
+                return (bst_contains l v)
+            else
+                return (bst_contains r v)
+            end
+    end
+    return false
+end
+
+# In-order traversal: push values into a vec
+func inorder (tree BST) (acc {i32}) -> unit
+    match tree
+        case Empty
+            return
+        case (Node v l r)
+            do (inorder l acc)
+            do (push acc v)
+            do (inorder r acc)
+    end
+end
+
+func bst_size (tree BST) -> i32
+    match tree
+        case Empty
+            return 0
+        case (Node v l r)
+            return (+ 1 (+ (bst_size l) (bst_size r)))
+    end
+    return 0
+end
+
+func main () -> i32
+    # Build a BST by inserting values
+    let values [i32] = [5 3 7 1 8 2 10]
+    let tree = Empty
+    for v in values
+        set tree = (bst_insert tree v)
+    end
+
+    # Check size
+    do (io::println (bst_size tree))
+
+    # Check membership
+    do (io::println (bst_contains tree 7))
+    do (io::println (bst_contains tree 4))
+
+    # In-order traversal gives sorted sequence
+    let sorted {i32} = (vec i32)
+    do (inorder tree sorted)
+    for v in sorted
+        do (io::println v)
+    end
+
+    # Now use a closure-based approach to verify same result
+    # Build via closure
+    let inserter = func (t BST) (v i32) -> BST
+        return (bst_insert t v)
+    end
+
+    let tree2 = Empty
+    let tree2 = (inserter tree2 5)
+    let tree2 = (inserter tree2 3)
+    let tree2 = (inserter tree2 7)
+    let tree2 = (inserter tree2 1)
+    let tree2 = (inserter tree2 8)
+    let tree2 = (inserter tree2 2)
+    let tree2 = (inserter tree2 10)
+
+    let sorted2 {i32} = (vec i32)
+    do (inorder tree2 sorted2)
+    do (io::println (len sorted2))
+
+    return 0i32
+end

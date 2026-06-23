@@ -1,0 +1,39 @@
+# Strategy 1b: Constant-folding divergence for multiply
+# i8 * i8 overflow: constant vs runtime.
+module n02_const_fold_mul
+
+import io
+
+func keep_i8 (x i8) -> i8
+    return x
+end
+
+func keep_i32 (x i32) -> i32
+    return x
+end
+
+func keep_i64 (x i64) -> i64
+    return x
+end
+
+func main () -> i32
+    # i8: 64 * 2 = 128 wraps to -128
+    let lit_i8 i8 = (* 64i8 2i8)
+    let rt_i8 i8 = (* (keep_i8 64i8) 2i8)
+    do (io::println lit_i8)
+    do (io::println rt_i8)
+
+    # i32: 2^30 * 4 = 2^32 wraps (to 0)
+    let lit_i32 i32 = (* 1073741824i32 4i32)
+    let rt_i32 i32 = (* (keep_i32 1073741824i32) 4i32)
+    do (io::println lit_i32)
+    do (io::println rt_i32)
+
+    # i64: near INT64_MAX multiply
+    let lit_i64 i64 = (* 4611686018427387904i64 2i64)
+    let rt_i64 i64 = (* (keep_i64 4611686018427387904i64) 2i64)
+    do (io::println lit_i64)
+    do (io::println rt_i64)
+
+    return 0i32
+end

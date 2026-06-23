@@ -1,0 +1,127 @@
+module interact_deep_sumtype
+
+import io
+
+# Strategy B: INTERACTION — deeply nested sum type matching + closures as transforms
+# Features: nested sum types, multi-level pattern matching, closures stored in maps,
+#           structs, recursive traversal
+
+type Shape
+    Circle (radius i32)
+    Rect (w i32) (h i32)
+    Triangle (base i32) (height i32)
+    Composite (a Shape) (b Shape)
+end
+
+func area (s Shape) -> i32
+    match s
+        case (Circle r)
+            # approximate pi*r^2 ~ 3*r*r
+            return (* 3 (* r r))
+        case (Rect w h)
+            return (* w h)
+        case (Triangle b height)
+            return (/ (* b height) 2)
+        case (Composite a b)
+            return (+ (area a) (area b))
+    end
+    return 0
+end
+
+func perimeter (s Shape) -> i32
+    match s
+        case (Circle r)
+            # approximate 2*pi*r ~ 6*r
+            return (* 6 r)
+        case (Rect w h)
+            return (* 2 (+ w h))
+        case (Triangle b height)
+            # approximate: b + 2*sqrt(h^2 + (b/2)^2), simplified here
+            return (+ b (* 2 height))
+        case (Composite a b)
+            return (+ (perimeter a) (perimeter b))
+    end
+    return 0
+end
+
+func depth (s Shape) -> i32
+    match s
+        case (Circle r)
+            return 1
+        case (Rect w h)
+            return 1
+        case (Triangle b h)
+            return 1
+        case (Composite a b)
+            let da = (depth a)
+            let db = (depth b)
+            if (> da db)
+                return (+ 1 da)
+            else
+                return (+ 1 db)
+            end
+    end
+    return 0
+end
+
+# Apply a transform closure to every leaf shape
+func map_shapes (s Shape) (f func(Shape -> Shape)) -> Shape
+    match s
+        case (Composite a b)
+            return (Composite a: (map_shapes a f) b: (map_shapes b f))
+        else
+            return (f s)
+    end
+    return s
+end
+
+func main () -> i32
+    let s1 = (Circle radius: 5)
+    let s2 = (Rect w: 4 h: 6)
+    let s3 = (Triangle base: 3 height: 4)
+    let compound = (Composite a: (Composite a: s1 b: s2) b: s3)
+
+    # Test area
+    do (io::println (area s1))
+    do (io::println (area s2))
+    do (io::println (area s3))
+    do (io::println (area compound))
+
+    # Test perimeter
+    do (io::println (perimeter s1))
+    do (io::println (perimeter s2))
+    do (io::println (perimeter compound))
+
+    # Test depth
+    do (io::println (depth s1))
+    do (io::println (depth compound))
+
+    # Map: double all dimensions of leaf shapes
+    let doubler = func (s Shape) -> Shape
+        match s
+            case (Circle r)
+                return (Circle radius: (* 2 r))
+            case (Rect w h)
+                return (Rect w: (* 2 w) h: (* 2 h))
+            case (Triangle b height)
+                return (Triangle base: (* 2 b) height: (* 2 height))
+            else
+                return s
+        end
+        return s
+    end
+
+    let doubled = (map_shapes compound doubler)
+    do (io::println (area doubled))
+
+    # Verify: area should be 4x for squares/circles/triangles (all dimensions doubled)
+    # Circle: 3*(10)^2 = 300 vs 3*(5)^2=75 * 4 = 300
+    # Rect: 8*12 = 96 vs 4*6=24 * 4 = 96
+    # Triangle: 6*8/2=24 vs 3*4/2=6 * 4 = 24
+    # Total: 300 + 96 + 24 = 420
+    do (io::println (area (map_shapes s1 doubler)))
+    do (io::println (area (map_shapes s2 doubler)))
+    do (io::println (area (map_shapes s3 doubler)))
+
+    return 0i32
+end

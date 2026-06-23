@@ -1,0 +1,47 @@
+# Strategy 8: u64 -> f64 precision loss at 2^53 boundary.
+# u64 values above 2^53 cannot be exactly represented in f64.
+# The interpreter may use Python's exact integer arithmetic for intermediate
+# steps then convert at the end; the backends use hardware f64.
+# Also: i64 max -> f64 -> i64 round trip.
+module n11_u64_to_f64_precision
+
+import io
+
+func keep_u64 (x u64) -> u64
+    return x
+end
+
+func main () -> i32
+    # 2^53 exactly representable in f64
+    let exact u64 = 9007199254740992u64
+    let exact_f f64 = (as exact f64)
+    do (io::println exact_f)
+
+    # 2^53 + 1: first integer NOT exactly representable in f64
+    let inexact u64 = 9007199254740993u64
+    let inexact_f f64 = (as inexact f64)
+    do (io::println inexact_f)
+
+    # 2^53 + 2: rounds to 2^53 + 2 (even, so representable)
+    let next2 u64 = 9007199254740994u64
+    let next2_f f64 = (as next2 f64)
+    do (io::println next2_f)
+
+    # u64 max -> f64: large rounding
+    let u64max u64 = 18446744073709551615u64
+    let u64max_f f64 = (as u64max f64)
+    do (io::println u64max_f)
+
+    # Cast the f64 back to u64 and compare
+    # u64max_f rounds up to 2^64 which doesn't fit in u64 -> UB in C
+    # The interp uses Python which would give a different result
+    # let roundtrip u64 = (as u64max_f u64)
+    # do (io::println roundtrip)
+
+    # i64 max -> f64 (rounds to 2^63, which overflows i64 on cast back)
+    let i64max i64 = 9223372036854775807i64
+    let i64max_f f64 = (as i64max f64)
+    do (io::println i64max_f)
+
+    return 0i32
+end

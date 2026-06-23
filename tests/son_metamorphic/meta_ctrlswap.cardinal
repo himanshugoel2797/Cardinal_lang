@@ -1,0 +1,123 @@
+module meta_ctrlswap
+
+import io
+
+# Strategy A: METAMORPHIC — swap equivalent control forms
+# Computes sum of 1..20 = 210 using for, while, loop+break, and recursion.
+# All variants must agree on output.
+
+# for-loop version
+func sum_for () -> i32
+    let s = 0i32
+    for i = 1 to 21
+        set s = (+ s i)
+    end
+    return s
+end
+
+# while-loop version
+func sum_while () -> i32
+    let s = 0i32
+    let i = 1i32
+    while (<= i 20)
+        set s = (+ s i)
+        set i = (+ i 1)
+    end
+    return s
+end
+
+# loop+break version
+func sum_loop () -> i32
+    let s = 0i32
+    let i = 1i32
+    loop
+        if (> i 20)
+            break
+        end
+        set s = (+ s i)
+        set i = (+ i 1)
+    end
+    return s
+end
+
+# tail-recursive version
+func sum_rec (acc i32) (n i32) -> i32
+    if (> n 20)
+        return acc
+    end
+    return (sum_rec (+ acc n) (+ n 1))
+end
+
+# if-chain vs match for branch selection
+# Classify numbers 1..5 into categories and sum the categories
+type Category
+    Small
+    Medium
+    Large
+end
+
+func classify_if (n i32) -> i32
+    if (<= n 2)
+        return 1
+    elsif (<= n 4)
+        return 2
+    else
+        return 3
+    end
+    return 0i32
+end
+
+func classify_match (n i32) -> Category
+    if (<= n 2)
+        return Small
+    elsif (<= n 4)
+        return Medium
+    else
+        return Large
+    end
+    return Small
+end
+
+func cat_to_int (c Category) -> i32
+    match c
+        case Small
+            return 1
+        case Medium
+            return 2
+        case Large
+            return 3
+    end
+    return 0i32
+end
+
+func sum_classify_if () -> i32
+    let s = 0i32
+    for i = 1 to 6
+        set s = (+ s (classify_if i))
+    end
+    return s
+end
+
+func sum_classify_match () -> i32
+    let s = 0i32
+    for i = 1 to 6
+        set s = (+ s (cat_to_int (classify_match i)))
+    end
+    return s
+end
+
+func main () -> i32
+    let a = (sum_for)
+    let b = (sum_while)
+    let c = (sum_loop)
+    let d = (sum_rec 0 1)
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    let e = (sum_classify_if)
+    let f = (sum_classify_match)
+    do (io::println e)
+    do (io::println f)
+    return 0i32
+end

@@ -1,0 +1,26 @@
+module t36_sum_type_equality
+# ATTACK: compare two sum-type values with ==.
+# Both checkers accept this (SumT a == SumT b, same name -> ok).
+# But at runtime: sum types are tagged unions; == on them is complex.
+# Does the interpreter do deep equality? Do C/x86 compare tag+value?
+# If they disagree, SOUNDNESS.
+
+import io
+
+type Opt
+    Some (v i32)
+    None
+end
+
+func main () -> i32
+    let a = (Some v: 5)
+    let b = (Some v: 5)
+    let c = None
+    if (== a b)
+        do (io::println "a==b")
+    end
+    if (== a c)
+        do (io::println "a==c")
+    end
+    return 0i32
+end

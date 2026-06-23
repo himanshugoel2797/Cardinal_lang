@@ -1,0 +1,21 @@
+# Minimal repro: f32 literal precision.
+# 16777217.0f32 should round to 16777216.0 (nearest even, 2^24).
+# interp and C give 16777216, but x86 gives 16777218.
+# This is likely because the x86 backend computes the cast to f32 differently.
+module n25_f32_literal_precision
+
+import io
+
+func main () -> i32
+    # 2^24 + 1 = 16777217: not representable in f32, rounds to 16777216 (nearest even)
+    let y f32 = 16777217.0f32
+    let yi i32 = (as y i32)
+    do (io::println yi)
+
+    # 2^24 = 16777216: exactly representable
+    let x f32 = 16777216.0f32
+    let xi i32 = (as x i32)
+    do (io::println xi)
+
+    return 0i32
+end

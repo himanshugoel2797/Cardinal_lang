@@ -1,0 +1,63 @@
+module t03_local_uniq_collision
+
+# STRATEGY 3: Local variable uniquifier collision.
+# lower_stmt for SLet calls: uniq(lx, name) = name + "_" + counter
+# Counter starts at 0 per function and increments.
+# If user has local "x_1" and later another local "x", the uniq of "x" might be "x_1"
+# which collides with the explicit "x_1" variable.
+# The uniquifier counter is shared across ALL let bindings in a function.
+# Let's engineer the exact collision:
+# uniq counter starts at 0.
+# First: let a = ... -> uniq("a") -> counter becomes 1 -> name "a_1"
+# Then: let a_1 = ... -> uniq("a_1") -> counter becomes 2 -> name "a_1_2"
+# No collision there. Let me think differently:
+# In lower_forin, var gets uniq: (uniq lx var) -> var + "_" + N
+# And idx gets uniq: (uniq lx "i") -> "i" + "_" + N
+# If user names their loop variable "i_1" and the idx happens to also be "i_1"...
+# Actually the idx is named "i" uniq'd separately.
+#
+# Better: two let bindings with same name in same scope (shadowing):
+# let x = 5; let x = 10; -- second x gets uniq'd to x_2 (counter=2 after x_1 was skipped??)
+# Wait -- first x: counter=0->1, name = "x_1". Second x: counter=1->2, name = "x_2".
+# So if user has variable "x_1": first let x_1=... -> uniq("x_1") -> "x_1_1"
+# Then let x=... -> uniq("x") -> "x_2"  -- no collision.
+#
+# Actual collision: user names their variable "x" and also "x_1":
+# let x = 1  -> IR name: x_1 (counter 1)
+# let x_1 = 2 -> IR name: x_1_2 (counter 2)
+# These DON'T collide in IR names. But if BOTH map to "x_1"...
+# Counter starts at 0. uniq increments first: counter becomes 1, then returns base+"_1".
+# So: let x -> "x_1" (counter=1). let x_1 -> "x_1_2" (counter=2). No collision.
+#
+# But what if user has:
+# let x_2 = ...  (IR local: x_2_1)
+# let x = ...    (IR local: x_1)   <- wait counter is now 1+1 = 2 actually
+# No wait, after let x_2, counter becomes 1, so x_2 -> "x_2_1"
+# Then let x -> counter becomes 2, x -> "x_2"
+# Now "x_2" and "x_2_1" are distinct IR names. But user had "x_2" which got IR name "x_2_1".
+# The IR local for the original "x_2" binding is stored as name "x_2_1".
+# And the IR local for "x" binding is "x_2".
+# These don't collide with each other in IR, but we need them to conflict in C output.
+#
+# Actually let me try a simpler collision: the `lts_seq` helper uses (uniq lx "tsacc")
+# and (uniq lx "tsi"). These share the global counter. If two nested arrays are
+# printed via to_str, the second call to lts_seq will get tsacc_2 and tsi_4 etc.
+# But those are all distinct. Hard to collide.
+#
+# Let me try: two let bindings with the same source name in the SAME function.
+# The second one might shadow the first in the IR local map, causing the first
+# binding to be unreachable or overwritten.
+
+import io
+
+func test_shadow () -> i32
+    let x = 1i32
+    let x = (+ x 1i32)
+    let x = (+ x 1i32)
+    return x
+end
+
+func main () -> i32
+    do (io::println (test_shadow))
+    return 0i32
+end

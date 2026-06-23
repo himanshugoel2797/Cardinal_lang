@@ -1,0 +1,80 @@
+module interact_closure_mutate_vec
+
+import io
+
+# Strategy B: INTERACTION — closures that mutate captured vars and use vectors
+# Tests: closure capturing primitive and vec vars, mutation order matters
+
+func main () -> i32
+    # Test 1: closure mutates a captured counter, vec used outside
+    let count = 0i32
+    let xs {i32} = (vec i32)
+
+    let record = func (n i32) -> unit
+        set count = (+ count 1)
+        do (push xs n)
+    end
+
+    do (record 10)
+    do (record 20)
+    do (record 30)
+
+    do (io::println count)
+    do (io::println (len xs))
+    do (io::println xs[0])
+    do (io::println xs[2])
+    # Expected: 3, 3, 10, 30
+
+    # Test 2: two closures sharing counter, results ordered
+    let a_count = 0i32
+    let b_count = 0i32
+
+    let inc_a = func () -> unit
+        set a_count = (+ a_count 1)
+    end
+    let inc_b = func () -> unit
+        set b_count = (+ b_count 1)
+    end
+
+    do (inc_a)
+    do (inc_a)
+    do (inc_b)
+    do (inc_a)
+    do (inc_b)
+    do (inc_b)
+    do (inc_b)
+
+    do (io::println a_count)
+    do (io::println b_count)
+    # Expected: 3, 4
+
+    # Test 3: closure in a loop, closure captures loop variable via snapshot
+    let results {i32} = (vec i32)
+    let i = 0i32
+    while (< i 5)
+        let snap = i
+        let f = func () -> i32
+            return (* snap snap)
+        end
+        do (push results (f))
+        set i = (+ i 1)
+    end
+
+    let sum = 0i32
+    for r in results
+        set sum = (+ sum r)
+    end
+    do (io::println sum)
+    # Expected: 0+1+4+9+16 = 30
+
+    # Test 4: closure returns modified captured value
+    let base = 100i32
+    let add_to_base = func (n i32) -> i32
+        return (+ base n)
+    end
+    do (io::println (add_to_base 5))
+    do (io::println (add_to_base (- 0 10)))
+    # Expected: 105, 90
+
+    return 0i32
+end

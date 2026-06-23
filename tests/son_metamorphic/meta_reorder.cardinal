@@ -1,0 +1,61 @@
+module meta_reorder
+
+import io
+
+# Strategy A: METAMORPHIC — reorder independent statements and top-level functions
+# Computes: fib(10) = 55, factorial(6) = 720
+# Two independent computations are interleaved in different orders across variants.
+
+func fib (n i32) -> i32
+    if (< n 2)
+        return n
+    end
+    return (+ (fib (- n 1)) (fib (- n 2)))
+end
+
+func factorial (n i32) -> i32
+    if (<= n 1)
+        return 1
+    end
+    return (* n (factorial (- n 1)))
+end
+
+# Variant 1: compute fib first, then factorial
+func compute_v1 () -> i32
+    let f = (fib 10)
+    let g = (factorial 6)
+    return (+ f g)
+end
+
+# Variant 2: compute factorial first, then fib (reordered independent statements)
+func compute_v2 () -> i32
+    let g = (factorial 6)
+    let f = (fib 10)
+    return (+ f g)
+end
+
+# Variant 3: inline both computations directly without let bindings
+func compute_v3 () -> i32
+    return (+ (fib 10) (factorial 6))
+end
+
+# Variant 4: factor sum into a helper
+func add_results (a i32) (b i32) -> i32
+    return (+ a b)
+end
+
+func compute_v4 () -> i32
+    return (add_results (fib 10) (factorial 6))
+end
+
+func main () -> i32
+    let r1 = (compute_v1)
+    let r2 = (compute_v2)
+    let r3 = (compute_v3)
+    let r4 = (compute_v4)
+    do (io::println r1)
+    do (io::println r2)
+    do (io::println r3)
+    do (io::println r4)
+    return 0i32
+end

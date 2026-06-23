@@ -1,0 +1,21 @@
+module t01_missing_return
+# ATTACK: non-void function that falls off the end without return.
+# Neither checker enforces control-flow exhaustion (no return-analysis).
+# Should be REJECTED but both checkers ACCEPT it.
+# At runtime: interpreter returns unit/garbage; C/x86 backends may crash or return
+# an undefined value.
+
+import io
+
+func get_value (x i32) -> i32
+    if (> x 0)
+        return 42i32
+    end
+    # NO return here if x <= 0 — falls off end of non-void function
+end
+
+func main () -> i32
+    let v = (get_value (- 0 1))
+    do (io::println v)
+    return 0i32
+end

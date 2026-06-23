@@ -1,0 +1,23 @@
+module t40_func_equality
+# ATTACK: compare two function values with ==.
+# The unify_comparable for == checks type_eq(a, b).
+# If both sides are FuncT with same signature, type_eq returns true.
+# At runtime: function pointer comparison -- do backends agree?
+
+import io
+
+func add_one (x i32) -> i32
+    return (+ x 1)
+end
+
+func main () -> i32
+    let f = add_one
+    let g = add_one
+    # Compare two function values -- checker accepts (same FuncT)
+    if (== f g)
+        do (io::println "equal")
+    else
+        do (io::println "not equal")
+    end
+    return 0i32
+end

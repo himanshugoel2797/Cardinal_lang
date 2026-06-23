@@ -1,0 +1,20 @@
+module t23_closure_captures_mutable_but_caller_sees_stale
+# ATTACK: Closure captures a mutable binding by reference.
+# The outer binding changes; does the closure see the new value?
+# Cheatsheet says closures "capture by reference (shared cell)".
+# If interp and C/x86 disagree on when the capture is "frozen", SOUNDNESS.
+
+import io
+
+func main () -> i32
+    let x = 0i32
+    let getter = func () -> i32
+        return x
+    end
+    set x = 42i32
+    # If capture is by reference: getter() should return 42
+    # If capture is by value at closure-creation time: returns 0
+    let v = (getter)
+    do (io::println v)
+    return 0i32
+end

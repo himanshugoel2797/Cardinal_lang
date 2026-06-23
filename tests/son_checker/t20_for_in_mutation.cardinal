@@ -1,0 +1,24 @@
+module t20_for_in_mutation
+# ATTACK: for-in loop where the iteration variable is mutated inside the body.
+# Similar to t14/t16: does mutating `x` in `for x in arr` affect the loop?
+# The checker marks the for-in variable as mutable: true.
+# Interpreter creates new loopenv per iteration with a copy of the element.
+# C/x86: the loop variable might be a register or stack slot.
+# If mutation of the for-in var persists to the element value (shared array),
+# that would be interesting. But since it's a copy, mutation shouldn't affect array.
+
+import io
+
+func main () -> i32
+    let arr [i32] = [1 2 3 4 5]
+    let total = 0i32
+    for x in arr
+        set total = (+ total x)
+        if (== x 3i32)
+            set x = 100i32  # try to skip rest
+        end
+    end
+    # Mutation of x doesn't affect arr or iteration order; total = 1+2+3+4+5=15
+    do (io::println total)
+    return 0i32
+end

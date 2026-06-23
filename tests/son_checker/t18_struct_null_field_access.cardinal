@@ -1,0 +1,29 @@
+module t18_struct_null_field_access
+# SOUNDNESS ATTACK: null assigned to struct variable then field access.
+# The checker ACCEPTS null -> StructT (via coerce).
+# At runtime the interpreter might panic but do C and x86 also panic?
+# If they agree it's just a consistent crash. But let's probe the VALUE
+# returned -- can we get a nonsense i32 through a null struct field?
+# Test: null stored in a struct typed var, then used in arithmetic.
+
+import io
+
+struct Box
+    v i32
+end
+
+func mk_null_box () -> Box
+    return null
+end
+
+func main () -> i32
+    let b = (mk_null_box)
+    # Does field access on null produce 0, crash, or garbage?
+    # If backends disagree on whether this crashes or returns a value, SOUNDNESS.
+    if true
+        return 0i32
+    end
+    # This branch never taken but affects type checking
+    do (io::println b.v)
+    return 0i32
+end

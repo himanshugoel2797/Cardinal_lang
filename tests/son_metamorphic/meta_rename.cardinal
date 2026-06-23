@@ -1,0 +1,73 @@
+module meta_rename
+
+import io
+
+# Strategy A: METAMORPHIC — identifier rename
+# Computes sum of squares 0..9 = 285 using renamed variants of the same logic.
+# Baseline: for-loop accumulator with explicit variable names.
+
+func sum_sq_baseline () -> i32
+    let acc = 0i32
+    for i = 0 to 10
+        set acc = (+ acc (* i i))
+    end
+    return acc
+end
+
+# Variant: renamed identifiers (acc -> result, i -> idx)
+func sum_sq_renamed () -> i32
+    let result = 0i32
+    for idx = 0 to 10
+        set result = (+ result (* idx idx))
+    end
+    return result
+end
+
+# Variant: subexpression factored into let-temp
+func sum_sq_lettemp () -> i32
+    let total = 0i32
+    for j = 0 to 10
+        let sq = (* j j)
+        set total = (+ total sq)
+    end
+    return total
+end
+
+# Variant: wrapped in immediately-called closure
+func sum_sq_closure () -> i32
+    let compute = func () -> i32
+        let s = 0i32
+        for k = 0 to 10
+            set s = (+ s (* k k))
+        end
+        return s
+    end
+    return (compute)
+end
+
+# Variant: helper function outlined, then called
+func sq_helper (n i32) -> i32
+    return (* n n)
+end
+
+func sum_sq_outlined () -> i32
+    let tot = 0i32
+    for m = 0 to 10
+        set tot = (+ tot (sq_helper m))
+    end
+    return tot
+end
+
+func main () -> i32
+    let a = (sum_sq_baseline)
+    let b = (sum_sq_renamed)
+    let c = (sum_sq_lettemp)
+    let d = (sum_sq_closure)
+    let e = (sum_sq_outlined)
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    do (io::println e)
+    return 0i32
+end

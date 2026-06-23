@@ -1,0 +1,17 @@
+module t29_null_func_call
+# ATTACK: assign null to a function-typed variable, then call it.
+# Checker: null -> FuncT is allowed (FuncT is in REF_KINDS in Python).
+# At runtime calling a null function pointer should crash, but do
+# all three backends crash the same way? Or does one return a value?
+# If they disagree, SOUNDNESS.
+
+import io
+
+func main () -> i32
+    # f is a null function pointer typed as func(i32 -> i32)
+    let f func(i32 -> i32) = null
+    # Call the null function -- should panic in all backends
+    let result = (f 42)
+    do (io::println result)
+    return 0i32
+end
