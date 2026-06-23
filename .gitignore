@@ -43,3 +43,6 @@ __pycache__/
 /usemathx
 /usestd
 /vectest
+
+# Local Claude Code tooling state (agent worktrees, etc.)
+.claude/
