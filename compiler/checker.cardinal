@@ -298,6 +298,15 @@ func is_str (t Type) -> bool
     return (is_prim_named t "str")
 end
 
+# Types whose `==`/`!=` is NOT a well-defined, uniformly-implemented value
+# comparison: aggregates and functions. The C backend can't emit `==` on a value
+# struct/array, and handle-backed vec/map would compare identity (the interpreter
+# compares structurally) — a soundness divergence. Equality is restricted to
+# numbers, char, bool, str (by content), enums, and null.
+func is_eq_aggregate (t Type) -> bool
+    return (or (or (or (is_struct t) (is_sum t)) (or (is_array t) (is_vec t))) (or (is_map t) (is_func t)))
+end
+
 func is_numish (t Type) -> bool
     return (or (or (is_int t) (is_float t)) (or (is_uint t) (is_ufloat t)))
 end
@@ -2168,6 +2177,10 @@ func unify_comparable (ctx Ctx) (op str) (types {Type}) -> unit
         return
     end
     if (or (strings::eq op "==") (strings::eq op "!="))
+        if (or (is_eq_aggregate a) (is_eq_aggregate b))
+            do (err ctx (strings::concat "cannot compare " (strings::concat (tystr a) (strings::concat " and " (strings::concat (tystr b) " with == (equality is defined only on numbers, char, bool, str, and enums; compare fields/elements or use match)")))))
+            return
+        end
         if (or (or (type_eq a b) (is_null a)) (is_null b))
             return
         end

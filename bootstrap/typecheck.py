@@ -989,9 +989,17 @@ class Checker:
         if a == CHAR and b == CHAR:        # chars compare by codepoint
             return
         if op in ("==", "!="):
-            if a == b or isinstance(a, NullT) or isinstance(b, NullT):
+            # Equality is defined only on numbers, char, bool, str, enums, and null.
+            # The C backend can't emit == on a value struct/array, and handle-backed
+            # vec/map would compare identity while the interpreter compares
+            # structurally — a soundness divergence. Reject aggregates/functions.
+            agg = (StructT, SumT, ArrayT, VecT, MapT, FuncT)
+            if isinstance(a, agg) or isinstance(b, agg):
+                self.err(f"cannot compare {tystr(a)} and {tystr(b)} with {op} "
+                         f"(equality is defined only on numbers, char, bool, str, and "
+                         f"enums; compare fields/elements or use match)", node)
                 return
-            if isinstance(a, (StructT, EnumT)) and a == b:
+            if a == b or isinstance(a, NullT) or isinstance(b, NullT):
                 return
             self.err(f"cannot compare {tystr(a)} and {tystr(b)}", node)
         else:
