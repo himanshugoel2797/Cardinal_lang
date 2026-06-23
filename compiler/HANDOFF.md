@@ -200,19 +200,25 @@ immutable static `cl_str`.** You must:
      (closed the repr-vs-%g divergence). Committee-gated (parity+integration
      APPROVE; GC-safety APPROVE after the cl_strlit pin fix it surfaced — see
      commit 8444a71: permanent roots must use `cl_gc_pin`, NOT the LIFO shadow
-     stack). **STEP 2 (pending):** (a) **function-ize** — emit a per-type
-     `cl_<mod>__<Type>_to_str` FUNCTION (always-emitted, exported) instead of
-     inline, and reroute io::print through `print(to_str(x))` so there's ONE
-     formatter (removes the lower_display/lower_to_str duplication; add a tracked
-     test round-tripping `io::print(x)` vs `io::print(to_str(x))`). (b) **enum**
-     `to_str` (int->variant-name switch from the enum def — also closes io::print
-     of enums). (c) **override** hooks: use a user-defined `<Type>_to_str` in the
-     type's defining module iff present with the right sig, else autogen; wrong
-     sig = error; mirror the lookup verdict-equivalently in both checkers. This is
-     also the foundation for recursive **sum-type display** (Stage 4) — a
-     per-type function recurses over data at runtime. (d) **runtime type
-     descriptors** (§5.6, user chose IN scope) — its own later subsystem; NOT
-     needed by to_str.
+     stack). **STEP 2 DONE (committee unanimous APPROVE, commit af99edc):**
+     function model — each struct/enum gets a synthesized
+     `cl_<mod>__<Type>_to_str(self T)` (lower_program Pass 3, always-emit,
+     deterministic); lower_to_str CALLS them for user types (scalars/containers
+     inline); recurse-via-calls (the model recursive sum-type display will reuse,
+     Stage 4). ENUM display works now. io::print rerouted to `print(to_str(x))` —
+     ONE formatter; lower_display + disp_* DELETED. GC-safe at threshold 0.
+     **STEP 3 (pending) — user OVERRIDES + descriptors:** (a) override hooks: a
+     user `<Type>_to_str` in the type's defining module replaces the autogen.
+     NATIVE needs Pass 3 to SKIP synthesis when the user defined it (else
+     duplicate symbol — current KNOWN hazard, no diagnostic). INTERPRETER needs
+     defining-module dispatch: `_display`/`to_str` of a StructV/EnumV must call the
+     module's `<Type>_to_str` if present — but StructV/EnumV DON'T carry their
+     defining module, so add a `defmod` field (set at construction via find_struct's
+     module) and split+lookup. CHECKER (both, verdict-equivalent): a
+     `<Type>_to_str` must be `(T)->str` (wrong sig = error). Without all three,
+     overrides would silently diverge interpreter-vs-native — that's why step 2
+     ships autogen-only. (b) **runtime type descriptors** (§5.6, user chose IN
+     scope) — its own later subsystem; NOT needed by to_str.
    * **`set m[k].field = v` — RESOLVED (user ruling): rejected in BOTH checkers.**
      Maps hold value-semantic copies, so taking a mutable field reference into a
      map element has no faithful semantics. `check_place` now threads a `via_map`
