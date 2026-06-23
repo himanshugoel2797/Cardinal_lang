@@ -59,6 +59,23 @@ void cl_gc_pop_roots(uint32_t n) {
     g_root_len -= n;
 }
 
+/* pinned (permanent) roots — never popped; scanned like shadow-stack roots */
+static void    **g_pin_addr;
+static uint32_t *g_pin_size;
+static uint32_t  g_pin_len, g_pin_cap;
+
+void cl_gc_pin(void *addr, uint32_t nbytes) {
+    if (g_pin_len == g_pin_cap) {
+        g_pin_cap = g_pin_cap ? g_pin_cap * 2 : 16;
+        g_pin_addr = (void **)realloc(g_pin_addr, g_pin_cap * sizeof(void *));
+        g_pin_size = (uint32_t *)realloc(g_pin_size, g_pin_cap * sizeof(uint32_t));
+        if (!g_pin_addr || !g_pin_size) cl_panic_cstr("out of memory (pinned roots)");
+    }
+    g_pin_addr[g_pin_len] = addr;
+    g_pin_size[g_pin_len] = nbytes;
+    g_pin_len++;
+}
+
 static void gc_print_stats(void) {
     fprintf(stderr, "gc: %llu collections, %llu objects live, %llu bytes live\n",
             (unsigned long long)g_collections,
@@ -153,6 +170,10 @@ void cl_gc_collect(void) {
     /* roots: precise — scan exactly the shadow-stack entries */
     for (uint32_t r = 0; r < g_root_len; r++)
         scan_range(g_root_addr[r], (char *)g_root_addr[r] + g_root_size[r]);
+
+    /* pinned (permanent) roots — runtime-internal globals (frame-independent) */
+    for (uint32_t r = 0; r < g_pin_len; r++)
+        scan_range(g_pin_addr[r], (char *)g_pin_addr[r] + g_pin_size[r]);
 
     /* transitive: scan each reachable object's bytes for more handles */
     while (g_work_len) {

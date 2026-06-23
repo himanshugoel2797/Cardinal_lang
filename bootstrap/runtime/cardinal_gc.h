@@ -29,6 +29,13 @@ void cl_gc_init(void *stack_base);
 void cl_gc_push_root(void *addr, uint32_t nbytes);
 void cl_gc_pop_roots(uint32_t n);
 
+/* Pin a root PERMANENTLY (never popped), scanned alongside the shadow stack.
+ * For runtime-internal globals (e.g. the string-literal intern table) that must
+ * stay reachable for the whole program but are first created mid-frame: pushing
+ * them on the LIFO shadow stack would be popped by the enclosing frame's
+ * cl_gc_pop_roots and corrupt the stack discipline. */
+void cl_gc_pin(void *addr, uint32_t nbytes);
+
 /* Allocate a zeroed managed object of `size` bytes; returns its handle. May
  * trigger a collection first. */
 cl_handle cl_gc_alloc(uint64_t size);

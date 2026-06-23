@@ -500,6 +500,22 @@ cl_str cl_convert__int_to_str(int64_t v) {
     return cl_str_from_utf8(buf, (uint64_t)n);
 }
 
+cl_str cl_u64_to_str(uint64_t v) {
+    char buf[24];
+    int n = snprintf(buf, sizeof buf, "%llu", (unsigned long long)v);
+    return cl_str_from_utf8(buf, (uint64_t)n);
+}
+
+cl_str cl_f64_to_str(double v) {
+    char buf[32];
+    int n = snprintf(buf, sizeof buf, "%g", v);
+    return cl_str_from_utf8(buf, (uint64_t)n);
+}
+
+cl_str cl_bool_to_str(int v) {
+    return v ? cl_str_from_utf8("true", 4) : cl_str_from_utf8("false", 5);
+}
+
 int64_t cl_convert__str_to_int(cl_str s) {
     uint64_t nbytes;
     const char *b = str_bytes(s, &nbytes);
@@ -528,7 +544,9 @@ cl_str cl_strlit(const char *utf8_cstr) {
     uint64_t key = (uint64_t)(uintptr_t)utf8_cstr;
     if (g_strlit_intern == CL_NULL) {
         g_strlit_intern = cl_map_new(sizeof(uint64_t), sizeof(cl_str), CL_MAP_SCALAR);
-        cl_gc_push_root(&g_strlit_intern, sizeof g_strlit_intern);   /* permanent */
+        /* PIN, not push_root: cl_strlit is called mid-frame, and a LIFO push here
+         * would be popped by the enclosing frame's cl_gc_pop_roots. */
+        cl_gc_pin(&g_strlit_intern, sizeof g_strlit_intern);
     }
     if (cl_map_has(g_strlit_intern, &key))
         return *(cl_str *)cl_map_get(g_strlit_intern, &key);
