@@ -1,0 +1,14 @@
+module s11_float_mod
+
+import io
+
+# The checker's unify_num accepts `%` on FLOAT operands (it does not special-case
+# modulo to integers). If the interpreter implements float % but a backend does
+# not (or vice versa), or they disagree on semantics, that is a divergence /
+# backend crash on a program the checker accepts.
+func main () -> i32
+    let a = 7.5
+    let b = 2.0
+    do (io::println (% a b))
+    return 0i32
+end

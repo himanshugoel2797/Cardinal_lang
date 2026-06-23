@@ -1,0 +1,15 @@
+module s03_null_str_concat
+
+import io
+import strings
+
+# null assignable to str. We hand a null to strings::concat which is typed
+# (str,str)->str. Interpreter and backends may treat a null str differently
+# (interp may panic / print "null"; C may pass a null char* into the runtime
+# concat => segfault).
+func main () -> i32
+    let s str = null
+    let r = (strings::concat s "x")
+    do (io::println r)
+    return 0i32
+end

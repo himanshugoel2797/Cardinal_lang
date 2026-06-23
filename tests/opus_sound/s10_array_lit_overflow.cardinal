@@ -1,0 +1,13 @@
+module s10_array_lit_overflow
+
+import io
+
+# An array literal annotated [u8] whose elements are untyped literals that do not
+# fit in u8. The checker coerces each element to u8 with no range check; the
+# interpreter range-checks at coercion and panics; the backends store the wrapped
+# byte => divergence.
+func main () -> i32
+    let xs [u8] = [10 300 20]   # 300 overflows u8; all elements untyped, typed by annotation
+    do (io::println xs[1])
+    return 0i32
+end

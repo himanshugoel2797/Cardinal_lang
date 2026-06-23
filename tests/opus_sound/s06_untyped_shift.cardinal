@@ -1,0 +1,13 @@
+module s06_untyped_shift
+
+import io
+
+# Untyped-literal shift whose true value exceeds the target width. (shl 1 40)
+# = 2^40, coerced into u32. Interpreter computes 2^40 untyped and panics in
+# _check_fits; backends evaluate the shift in u32 (1<<40 wraps the shift count or
+# the value) => divergence.
+func main () -> i32
+    let x u32 = (shl 1 40)
+    do (io::println x)
+    return 0i32
+end

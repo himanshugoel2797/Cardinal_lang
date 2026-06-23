@@ -1,0 +1,16 @@
+module s13_intmin_div
+
+import io
+
+# INT_MIN / -1 overflows (the true result +2147483648 is not representable in i32).
+# Two's-complement wrap semantics (which Cardinal documents) gives INT_MIN back.
+# The interpreter computes in Python ints and wraps; the x86 backend uses a
+# hardware idiv which RAISES #DE (SIGFPE) on this exact case => status-class
+# divergence between interp/C and x86.
+func main () -> i32
+    let lo = (shl 1i32 31i32)         # 0x80000000 = i32 minimum (-2147483648)
+    let neg1 = (- 0i32 1i32)
+    let q = (/ lo neg1)
+    do (io::println q)
+    return 0i32
+end

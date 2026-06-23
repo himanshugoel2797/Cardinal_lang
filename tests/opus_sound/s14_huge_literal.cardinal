@@ -1,0 +1,12 @@
+module s14_huge_literal
+
+import io
+
+# A single decimal literal larger than i64 max, suffixed i64. The interpreter's
+# coerce path runs _check_fits and panics ("does not fit"); the backend parses it
+# into a 64-bit register, wrapping. Both checkers accept (no literal-range check).
+func main () -> i32
+    let x i64 = 99999999999999999999i64
+    do (io::println x)
+    return 0i32
+end

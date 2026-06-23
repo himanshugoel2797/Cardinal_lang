@@ -1,0 +1,16 @@
+module s04_untyped_overflow
+
+import io
+
+# (* 200 200) is arithmetic on two UNTYPED int literals -> the checker types the
+# product as an untyped int and then coerces the whole expression into u8 with no
+# value-range check. The interpreter computes 40000 with no wrapping (untyped) and
+# panics in _check_fits ("does not fit in u8"). The backends must pick a concrete
+# width to evaluate the product in: if they evaluate in u8 they wrap to 64, if in
+# i64 then truncate -> divergence with the interpreter (panic) and possibly with
+# each other.
+func main () -> i32
+    let x u8 = (* 200 200)
+    do (io::println x)
+    return 0i32
+end

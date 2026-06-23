@@ -1,0 +1,14 @@
+module s15_suffixed_overflow
+
+import io
+
+# A SUFFIXED literal whose value does not fit its own declared type: 300u8.
+# The interpreter takes the v.ty==name fast path in coerce and NEVER range-checks
+# an explicitly-suffixed literal, so it stores 300 in a u8 binding (then prints
+# 300). Both backends store/print the wrapped byte 44. Both checkers accept.
+# A u8-typed value equal to 300 is a direct soundness violation.
+func main () -> i32
+    let x u8 = 300u8
+    do (io::println x)
+    return 0i32
+end

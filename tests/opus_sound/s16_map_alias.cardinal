@@ -1,0 +1,17 @@
+module s16_map_alias
+
+import io
+
+# Maps are reference-semantic in the interpreter (copy_value does not copy MapV),
+# so `let m2 = m1` aliases the same backing store and `set m2[k]=...` is visible
+# through m1. The DESIGN says maps "copy" (the cheatsheet notes `set m[k].field` is
+# rejected because maps hold value copies). If a backend deep-copies the map on
+# the `let m2 = m1` move, the write is NOT visible through m1 => divergence.
+func main () -> i32
+    let m1 {str i32} = (map str i32)
+    set m1["a"] = 1i32
+    let m2 = m1
+    set m2["a"] = 99i32
+    do (io::println m1["a"])    # interp: 99 (shared) ; copy-on-move backend: 1
+    return 0i32
+end

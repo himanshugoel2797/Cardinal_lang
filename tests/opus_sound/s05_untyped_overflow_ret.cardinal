@@ -1,0 +1,15 @@
+module s05_untyped_overflow_ret
+
+import io
+
+# Same class as s04 but through a RETURN-type boundary and producing a value that
+# differs *silently* between backends rather than just panic-vs-run. The literal
+# product 100000 overflows i16. Interpreter panics (does-not-fit); backends wrap.
+func f () -> i16
+    return (* 1000 100)
+end
+
+func main () -> i32
+    do (io::println (f))
+    return 0i32
+end

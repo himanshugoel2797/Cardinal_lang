@@ -119,3 +119,24 @@ checker-parity over son_checker (AGREE=41, DIFF=0).
 - **Enum shadows imported module** (son_checker t30, t31): `enum io` next to
   `import io` resolves `io::X` differently between interp (enum) and backends
   (module). Obscure name-resolution corner.
+
+## Aggregate `==` (son_checker t34–t40) — FIXED
+Both checkers now reject `==`/`!=` on struct/sum/array/vec/map/func (commit
+"checker: reject == / != on aggregate and function types"). Equality is
+restricted to numbers, char, bool, str, enum, null.
+
+---
+
+# Campaign 4 — Opus fleet (`tests/opus_*`, run one-at-a-time, RAM-safe)
+
+## opus_sound (17 tests) — literal-range soundness FAMILY (documented, fix deferred)
+Headline find: **neither checker range-checks literals**. Out-of-range constants
+diverge three ways — see `tests/opus_sound/FINDINGS.md` for the 8 repros. Three
+families: (1) untyped literal/arithmetic folded into a smaller type (interp panics
+in arbitrary precision; backends silently wrap — incl. s07 control-flow
+corruption); (2) suffixed literal overflowing its own type (3-way split, no two
+agree — s14/s15); (3) out-of-f32 float literal (interp Python crash / C inf / x86
+assembler error — s17). The proper fix is coordinated across lexer (lossless
+literal values), both checkers (range-check bare + suffixed + float literals), and
+the interpreter (wrap untyped arithmetic per DESIGN "overflow wraps"; never raise
+an uncaught Python exception). Captured as a focused follow-up.

@@ -1,0 +1,17 @@
+module s07_cmp_overflow
+
+import io
+
+# Comparison pins the untyped literal 5000000000 to i32 via the other operand.
+# 5e9 does not fit in i32. Interpreter _check_fits panics; backends truncate the
+# literal to 32 bits and compare the wrapped value => the comparison result and
+# run/panic status diverge.
+func main () -> i32
+    let n = 1i32
+    if (< 5000000000 n)
+        do (io::println 111i32)
+    else
+        do (io::println 222i32)
+    end
+    return 0i32
+end

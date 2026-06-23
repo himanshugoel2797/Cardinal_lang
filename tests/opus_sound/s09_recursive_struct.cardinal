@@ -1,0 +1,19 @@
+module s09_recursive_struct
+
+import io
+
+# A struct that contains ITSELF by value is infinite-size. The checker resolves
+# the field to StructT with no occurs-check / size check, so it is accepted. The
+# interpreter never builds a zero value here (we construct with null), but the C
+# backend must emit a C struct that contains itself by value => an illegal/
+# incomplete type, a cc error the interpreter does not have.
+struct Node
+    v i32
+    next Node
+end
+
+func main () -> i32
+    let n = (Node v: 1i32 next: null)
+    do (io::println n.v)
+    return 0i32
+end

@@ -1,0 +1,12 @@
+module s17_f32_overflow
+
+import io
+
+# A float literal far beyond the f32 range, suffixed f32. The interpreter rounds
+# via struct pack ("inf") on the coerce path; check whether the backends agree on
+# the f32 value of an out-of-range literal (inf) or store something else.
+func main () -> i32
+    let x f32 = 1.0e40f32
+    do (io::println x)
+    return 0i32
+end

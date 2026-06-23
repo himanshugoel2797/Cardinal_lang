@@ -1,0 +1,21 @@
+module s01_missing_return
+
+import io
+
+# `pick` declares -> i32 but on the path where n is even it falls off the
+# end of the function with NO return statement. The checker performs no
+# return-path analysis, so this is ACCEPTED. At runtime the interpreter
+# coerces the implicit UNIT to i32 and panics; the C / x86 backends instead
+# return whatever garbage is in the return register => divergence.
+func pick (n i32) -> i32
+    if (== (% n 2i32) 1i32)
+        return 99i32
+    end
+    # no return here -- falls off the end for even n
+end
+
+func main () -> i32
+    let r = (pick 4i32)        # even -> missing return path
+    do (io::println r)
+    return 0i32
+end

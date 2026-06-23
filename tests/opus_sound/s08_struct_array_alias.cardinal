@@ -1,0 +1,20 @@
+module s08_struct_array_alias
+
+import io
+
+# The checker / DESIGN says copying a struct is a DEEP copy (value semantics).
+# But the interpreter's copy_value only deep-copies nested StructV; an array FIELD
+# keeps reference semantics (shared list). So mutating the copy's array element
+# writes through to the original in the interpreter. If a backend honours the
+# documented deep-copy, the original is untouched => divergence.
+struct Box
+    xs [i32]
+end
+
+func main () -> i32
+    let a = (Box xs: [1i32 2i32 3i32])
+    let b = a                     # "deep copy" per the spec
+    set b.xs[0] = 99i32           # mutate the copy
+    do (io::println a.xs[0])      # interp: 99 (shared) ; deep-copy backend: 1
+    return 0i32
+end

@@ -1,0 +1,14 @@
+module s12_intdiv_zero
+
+import io
+
+# Neither checker does constant folding, so a literal division by zero type-checks.
+# Probe whether interpreter and both backends agree on integer division by zero
+# (all should panic). A backend that emits a hardware divide producing a trap with
+# a different status class, or silently continues, would diverge.
+func main () -> i32
+    let z = 0i32
+    let q = (/ 10i32 z)
+    do (io::println q)
+    return 0i32
+end

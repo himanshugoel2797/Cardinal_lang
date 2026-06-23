@@ -1,0 +1,22 @@
+module s02_null_struct_field
+
+import io
+
+# null is assignable to any reference type, including a struct type. The checker
+# then lets us read .x off a value it believes is a P. At runtime the value is
+# NULL; field access on null may panic in the interpreter but the C/x86 backends
+# may dereference a null pointer (segfault / garbage) => divergence.
+struct P
+    x i32
+    y i32
+end
+
+func get () -> P
+    return null
+end
+
+func main () -> i32
+    let p = (get)
+    do (io::println p.x)
+    return 0i32
+end
