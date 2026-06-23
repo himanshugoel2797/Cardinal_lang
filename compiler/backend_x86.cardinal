@@ -1249,6 +1249,34 @@ func place_abs_off (bx BX) (p IPlace) -> i64
     return 0i64
 end
 
+# Compute the byte ADDRESS of any place into %rax. Handles frame places (PLocal /
+# PField over frame) and heap places (PField over a container element, PArrElem /
+# PVecElem, PDeref) by computing element/box addresses dynamically. Used for
+# assignment targets the static-offset path can't express (e.g. set arr[i].x = v).
+func emit_place_addr (bx BX) (p IPlace) -> str
+    match p
+        case (PLocal name ty)
+            return (line (cat3 "    leaq " (off_mem (slot_off bx (lkey name))) ", %rax"))
+        case (PField base field ty)
+            let out = (emit_place_addr bx base)
+            let foff = (field_offset bx.structs (irt_struct_qn (place_ty base)) field)
+            if (== foff 0i64)
+                return out
+            end
+            return (strings::concat out (line (cat2 "    addq $" (cat2 (i2s foff) ", %rax"))))
+        case (PArrElem arr idx ty)
+            return (emit_array_at bx arr idx)
+        case (PVecElem vc idx ty)
+            let out = (load_into bx "%rdi" vc)
+            set out = (strings::concat out (load_into bx "%rsi" idx))
+            return (strings::concat out (line "    call cl_vec_at"))
+        case (PDeref ptr ty)
+            let out = (load_into bx "%rdi" ptr)
+            return (strings::concat out (line "    call cl_gc_deref"))
+    end
+    return ""
+end
+
 # cl_array_at(cl_array a, u64 i) -> element ptr in %rax. cl_array is 24 bytes, a
 # SysV MEMORY-class arg: copy it onto the stack (reserve 32 to keep %rsp 16-aligned)
 # while the INTEGER arg `i` goes in %rdi.
@@ -1383,21 +1411,17 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                     set out = (strings::concat out (store_sized (type_size ty bx.structs) "c" "(%rax)"))
                     return out
                 case (PField base field ty)
-                    # store into a struct field at a computed frame offset
-                    let abs = (+ (place_abs_off bx base) (field_offset bx.structs (irt_struct_qn (place_ty base)) field))
-                    if (> (nwords ty bx.structs) 1i64)
-                        let out = ""
-                        let nw = (nwords ty bx.structs)
-                        let w = 0i64
-                        while (< w nw)
-                            set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key src)) (* w 8i64))) ", %rax"))))
-                            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ abs (* w 8i64))) "")))
-                            set w = (+ w 1i64)
-                        end
-                        return out
+                    # store into a struct field. Compute the field's ADDRESS into
+                    # %rax (works whether the base is a frame local or a heap element
+                    # like arr[i]/vec[i]); park src first (may strlit), then store.
+                    let out = (emit_park_arg bx src 0i64)
+                    set out = (strings::concat out (emit_place_addr bx base))
+                    let foff = (field_offset bx.structs (irt_struct_qn (place_ty base)) field)
+                    if (not (== foff 0i64))
+                        set out = (strings::concat out (line (cat2 "    addq $" (cat2 (i2s foff) ", %rax"))))
                     end
-                    let out = (load_to_rax bx src)
-                    return (strings::concat out (store_sized (type_size ty bx.structs) "a" (off_mem abs)))
+                    set out = (strings::concat out (store_elem_at_rax bx ty))
+                    return out
                 case (PArrElem arr idx ty)
                     # set arr[i] = src  (element address via cl_array_at)
                     let out = (load_to_rax bx src)
@@ -1484,16 +1508,31 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             let k = 0u64
             while (< k (len fnames))
                 let foff = (field_offset bx.structs variant_qual fnames[k])
-                let fsz = (type_size (field_type bx.structs variant_qual fnames[k]) bx.structs)
-                # materialize the field value FIRST (may itself call cl_strlit), park
-                # it in a frame slot (NOT a push — that would misalign the stack across
-                # the cl_gc_deref call), then deref the (rooted) object and store.
-                set out = (strings::concat out (load_to_rax bx fvals[k]))
-                set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
-                set out = (strings::concat out (load_into bx "%rdi" dst))
-                set out = (strings::concat out (line "    call cl_gc_deref"))
-                set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
-                set out = (strings::concat out (store_sized fsz "c" (cat3 (i2s foff) "(%rax)" "")))
+                let fty = (field_type bx.structs variant_qual fnames[k])
+                if (> (nwords fty bx.structs) 1i64)
+                    # multi-word payload field (e.g. a value struct): copy all words
+                    # from its slot to (foff+8w)(obj). The field value is a slot, so
+                    # no pre-materialization is needed; deref the (rooted) object.
+                    set out = (strings::concat out (load_into bx "%rdi" dst))
+                    set out = (strings::concat out (line "    call cl_gc_deref"))
+                    let nwf = (nwords fty bx.structs)
+                    let w = 0i64
+                    while (< w nwf)
+                        set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key fvals[k])) (* w 8i64))) ", %rcx"))))
+                        set out = (strings::concat out (line (cat2 "    movq %rcx, " (cat2 (i2s (+ foff (* w 8i64))) "(%rax)"))))
+                        set w = (+ w 1i64)
+                    end
+                else
+                    # materialize the field value FIRST (may call cl_strlit), park it in
+                    # a frame slot (NOT a push — that would misalign %rsp across the
+                    # cl_gc_deref call), then deref the (rooted) object and store.
+                    set out = (strings::concat out (load_to_rax bx fvals[k]))
+                    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+                    set out = (strings::concat out (load_into bx "%rdi" dst))
+                    set out = (strings::concat out (line "    call cl_gc_deref"))
+                    set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
+                    set out = (strings::concat out (store_sized (type_size fty bx.structs) "c" (cat3 (i2s foff) "(%rax)" "")))
+                end
                 set k = (+ k 1)
             end
             return out
@@ -1505,10 +1544,20 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             return out
         case (ISumField dst sm variant_qual field ty)
             let foff = (field_offset bx.structs variant_qual field)
-            let fsz = (type_size ty bx.structs)
             let out = (load_into bx "%rdi" sm)
             set out = (strings::concat out (line "    call cl_gc_deref"))
-            set out = (strings::concat out (load_sized fsz (irt_signed ty) (cat3 (i2s foff) "(%rax)" "")))
+            if (> (nwords ty bx.structs) 1i64)
+                # multi-word payload field (e.g. a value struct): copy all its words
+                let nw = (nwords ty bx.structs)
+                let w = 0i64
+                while (< w nw)
+                    set out = (strings::concat out (line (cat2 "    movq " (cat2 (cat2 (i2s (+ foff (* w 8i64))) "(%rax)") ", %rcx"))))
+                    set out = (strings::concat out (line (cat3 "    movq %rcx, " (off_mem (+ (slot_off bx (iv_key dst)) (* w 8i64))) "")))
+                    set w = (+ w 1i64)
+                end
+                return out
+            end
+            set out = (strings::concat out (load_sized (type_size ty bx.structs) (irt_signed ty) (cat3 (i2s foff) "(%rax)" "")))
             set out = (strings::concat out (store_rax bx dst))
             return out
         case (IVecNew dst elem)
