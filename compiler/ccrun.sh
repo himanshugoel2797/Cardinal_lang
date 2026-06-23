@@ -17,7 +17,8 @@ case "$src" in
   *)  abssrc="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")" ;;
 esac
 base="$(basename "$src" .cardinal)"
-out="./$base"
+mkdir -p "$root/build"
+out="$root/build/$base"
 run=1
 while [ $# -gt 0 ]; do
   case "$1" in

@@ -1,0 +1,45 @@
+# Python bytecode (the bootstrap interpreter/checker)
+__pycache__/
+*.pyc
+
+# Build artifacts
+/build/
+*.o
+*.s
+
+# Emitted C / assembly from compiling example programs
+/examples/*.c
+/examples/*.s
+
+# Native binaries built by ccrun at the repo root (named after the program).
+# (ccrun now builds into ./build by default, but keep these as a safety net for
+# manual runs / older invocations.)
+/a
+/app
+/b1
+/baseline
+/closures
+/cdemo
+/demo
+/e
+/f
+/features
+/fib
+/g
+/gcs
+/gcstress
+/lits
+/main
+/maptest
+/mathx
+/stage0
+/stage2
+/strtest
+/sumtest
+/t1
+/t2
+/t3
+/t4
+/usemathx
+/usestd
+/vectest
