@@ -565,7 +565,12 @@ func int_regs_for (t IRType) (sm {str IRStruct}) -> i64
                 case (TFunc p r)
                     return 2i64
                 case (TStruct n)
-                    do (panic "x86: by-value struct argument (later milestone)")
+                    # all-integer struct ≤16B -> 1-2 regs (eightbytes); >16B is SysV
+                    # MEMORY class (stack) — not yet supported.
+                    if (> (type_size t sm) 16i64)
+                        do (panic "x86: by-value struct >16 bytes (MEMORY class, later milestone)")
+                    end
+                    return (nwords t sm)
                 case (TArray e)
                     do (panic "x86: by-value array argument (later milestone)")
                 else
@@ -575,6 +580,22 @@ func int_regs_for (t IRType) (sm {str IRStruct}) -> i64
             return 1i64
     end
     return 1i64
+end
+
+# The qualified struct name "mod::Name" of a TStruct IRType.
+func irt_struct_qn (t IRType) -> str
+    match t
+        case (TyOf st)
+            match st
+                case (TStruct n)
+                    return n
+                else
+                    do (panic "x86: expected a struct type")
+            end
+        else
+            do (panic "x86: expected a struct type")
+    end
+    return ""
 end
 
 func align_up (off i64) (a i64) -> i64
@@ -1128,6 +1149,35 @@ func irt_is_str (t IRType) -> bool
     return false
 end
 
+func place_ty (p IPlace) -> IRType
+    match p
+        case (PLocal name ty)
+            return ty
+        case (PField base field ty)
+            return ty
+        case (PDeref ptr ty)
+            return ty
+        case (PArrElem arr idx ty)
+            return ty
+        case (PVecElem vc idx ty)
+            return ty
+    end
+    return VoidPtr
+end
+
+# The absolute frame offset of a struct place (PLocal / nested PField).
+func place_abs_off (bx BX) (p IPlace) -> i64
+    match p
+        case (PLocal name ty)
+            return (slot_off bx (lkey name))
+        case (PField base field ty)
+            return (+ (place_abs_off bx base) (field_offset bx.structs (irt_struct_qn (place_ty base)) field))
+        else
+            do (panic "x86: place has no frame offset")
+    end
+    return 0i64
+end
+
 # cl_array_at(cl_array a, u64 i) -> element ptr in %rax. cl_array is 24 bytes, a
 # SysV MEMORY-class arg: copy it onto the stack (reserve 32 to keep %rsp 16-aligned)
 # while the INTEGER arg `i` goes in %rdi.
@@ -1198,6 +1248,40 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                     set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
                     set out = (strings::concat out (load_into bx "%rdi" ptr))
                     set out = (strings::concat out (line "    call cl_gc_deref"))
+                    set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
+                    set out = (strings::concat out (store_sized (type_size ty bx.structs) "c" "(%rax)"))
+                    return out
+                case (PField base field ty)
+                    # store into a struct field at a computed frame offset
+                    let abs = (+ (place_abs_off bx base) (field_offset bx.structs (irt_struct_qn (place_ty base)) field))
+                    if (> (nwords ty bx.structs) 1i64)
+                        let out = ""
+                        let nw = (nwords ty bx.structs)
+                        let w = 0i64
+                        while (< w nw)
+                            set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key src)) (* w 8i64))) ", %rax"))))
+                            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ abs (* w 8i64))) "")))
+                            set w = (+ w 1i64)
+                        end
+                        return out
+                    end
+                    let out = (load_to_rax bx src)
+                    return (strings::concat out (store_sized (type_size ty bx.structs) "a" (off_mem abs)))
+                case (PArrElem arr idx ty)
+                    # set arr[i] = src  (element address via cl_array_at)
+                    let out = (load_to_rax bx src)
+                    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+                    set out = (strings::concat out (emit_array_at bx arr idx))
+                    set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
+                    set out = (strings::concat out (store_sized (type_size ty bx.structs) "c" "(%rax)"))
+                    return out
+                case (PVecElem vc idx ty)
+                    # set vec[i] = src  (element address via cl_vec_at)
+                    let out = (load_to_rax bx src)
+                    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+                    set out = (strings::concat out (load_into bx "%rdi" vc))
+                    set out = (strings::concat out (load_into bx "%rsi" idx))
+                    set out = (strings::concat out (line "    call cl_vec_at"))
                     set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
                     set out = (strings::concat out (store_sized (type_size ty bx.structs) "c" "(%rax)"))
                     return out
@@ -1414,6 +1498,47 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                 set k = (+ k 1)
             end
             return out
+        case (IStructNew dst struct_name fnames fvals)
+            # build the struct value in dst's slot: store each field at its offset.
+            let out = ""
+            let k = 0u64
+            while (< k (len fnames))
+                let foff = (field_offset bx.structs struct_name fnames[k])
+                let fty = (field_type bx.structs struct_name fnames[k])
+                let fsz = (type_size fty bx.structs)
+                if (> (nwords fty bx.structs) 1i64)
+                    # nested multi-word field: copy word by word from the value slot
+                    let nw = (nwords fty bx.structs)
+                    let w = 0i64
+                    while (< w nw)
+                        set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key fvals[k])) (* w 8i64))) ", %rax"))))
+                        set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ (+ (slot_off bx (iv_key dst)) foff) (* w 8i64))) "")))
+                        set w = (+ w 1i64)
+                    end
+                else
+                    set out = (strings::concat out (load_to_rax bx fvals[k]))
+                    set out = (strings::concat out (store_sized fsz "a" (off_mem (+ (slot_off bx (iv_key dst)) foff))))
+                end
+                set k = (+ k 1)
+            end
+            return out
+        case (ILoadField dst base field ty)
+            let bqn = (irt_struct_qn (iv_ty base))
+            let foff = (field_offset bx.structs bqn field)
+            let boff = (slot_off bx (iv_key base))
+            if (> (nwords ty bx.structs) 1i64)
+                let out = ""
+                let nw = (nwords ty bx.structs)
+                let w = 0i64
+                while (< w nw)
+                    set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (+ boff foff) (* w 8i64))) ", %rax"))))
+                    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ (slot_off bx (iv_key dst)) (* w 8i64))) "")))
+                    set w = (+ w 1i64)
+                end
+                return out
+            end
+            let out = (load_sized (type_size ty bx.structs) (irt_signed ty) (off_mem (+ boff foff)))
+            return (strings::concat out (store_rax bx dst))
         case (IAlloc dst ty)
             # a 1-slot heap box holding a value of `ty` (captured-var cell)
             let out = (line (cat2 "    movq $" (cat2 (i2s (type_size ty bx.structs)) ", %rdi")))
