@@ -600,7 +600,9 @@ func lower_call (lx LX) (vs {str IVal}) (ts {str Binding}) (callee Expr) (args {
                 return ImmUnit
             end
             if (strings::eq id "to_str")
-                do (panic "lower: to_str lowering not yet implemented")
+                let at = (checker::check_expr lx.ctx args[0] ts TNone)
+                let av = (lower_expr lx vs ts args[0] TNone)
+                return (lower_to_str lx vs ts av at)
             end
             if (strings::eq id "len")
                 let at = (checker::check_expr lx.ctx args[0] ts TNone)
@@ -921,6 +923,206 @@ func lower_display_struct (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (
         set i = (+ i 1)
     end
     do (disp_str lx ")")
+end
+
+# --------------------------------------------------------------------------- #
+# to_str (DESIGN §5.5) — builds a cl_str (vs lower_display which prints directly).
+# Same canonical forms; used by the explicit `(to_str x)` builtin.
+# --------------------------------------------------------------------------- #
+
+# concat(a, b) -> fresh str temp
+func ts_concat (lx LX) (a IVal) (b IVal) -> IVal
+    let dst = (ir::fresh_temp lx.b (irt (str_ty)))
+    let args {IVal} = (vec IVal)
+    do (push args a)
+    do (push args b)
+    do (ir::emit lx.b (ICall has_dst: true dst: dst callee: "cl_strings__concat" args: args ty: (irt (str_ty))))
+    return dst
+end
+
+# acc(local `accn`) = concat(acc, piece)
+func ts_app (lx LX) (accn str) (acc IVal) (piece IVal) -> unit
+    let n = (ts_concat lx acc piece)
+    do (ir::emit lx.b (IAssign place: (PLocal name: accn ty: (irt (str_ty))) src: n))
+end
+
+# emit a single-arg ICall returning a str
+func ts_call1 (lx LX) (sym str) (arg IVal) -> IVal
+    let dst = (ir::fresh_temp lx.b (irt (str_ty)))
+    let args {IVal} = (vec IVal)
+    do (push args arg)
+    do (ir::emit lx.b (ICall has_dst: true dst: dst callee: sym args: args ty: (irt (str_ty))))
+    return dst
+end
+
+func lower_to_str (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) -> IVal
+    match t
+        case (TInt n)
+            if (== (strings::chars n)[0] 'i')
+                let c = (ir::fresh_temp lx.b (irt (TInt name: "i64")))
+                do (ir::emit lx.b (ICast dst: c val: iv toty: (irt (TInt name: "i64"))))
+                return (ts_call1 lx "cl_convert__int_to_str" c)
+            end
+            let c = (ir::fresh_temp lx.b (irt (u64_ty)))
+            do (ir::emit lx.b (ICast dst: c val: iv toty: (irt (u64_ty))))
+            return (ts_call1 lx "cl_u64_to_str" c)
+        case (TFloat n)
+            let c = (ir::fresh_temp lx.b (irt (TFloat name: "f64")))
+            do (ir::emit lx.b (ICast dst: c val: iv toty: (irt (TFloat name: "f64"))))
+            return (ts_call1 lx "cl_f64_to_str" c)
+        case (TPrim n)
+            if (strings::eq n "bool")
+                return (ts_call1 lx "cl_bool_to_str" iv)
+            elsif (strings::eq n "str")
+                return iv
+            elsif (strings::eq n "char")
+                return (ts_call1 lx "cl_strings__from_char" iv)
+            elsif (strings::eq n "unit")
+                return (ImmStr s: "unit")
+            else
+                do (panic "lower: to_str of this type unsupported")
+            end
+        case (TStruct nm)
+            return (lts_struct lx vs ts iv t)
+        case (TArray e)
+            return (lts_seq lx vs ts iv t "[" "]")
+        case (TVec e)
+            return (lts_seq lx vs ts iv t "{" "}")
+        case (TMap k v)
+            return (lts_map lx vs ts iv t)
+        case (TEnum nm)
+            do (panic "lower: to_str of enum values not yet implemented")
+        else
+            do (panic "lower: to_str of this type unsupported")
+    end
+    return (ImmStr s: "")
+end
+
+# if (idx > 0) acc = concat(acc, " ")
+func lts_sep (lx LX) (accn str) (acc IVal) (idx IVal) -> unit
+    let c = (ir::fresh_temp lx.b (irt (bool_ty)))
+    do (ir::emit lx.b (IBin dst: c op: ">" lhs: idx rhs: (ImmInt val: 0i64 ty: (irt (u64_ty))) ty: (irt (u64_ty)) chk: false))
+    let yes = (ir::fresh_label lx.b "tsep_y")
+    let no = (ir::fresh_label lx.b "tsep_n")
+    do (ir::emit lx.b (ICondBr cond: c then_l: yes else_l: no))
+    do (ir::new_block lx.b yes)
+    do (ts_app lx accn acc (ImmStr s: " "))
+    do (ir::emit lx.b (IBr target: no))
+    do (ir::new_block lx.b no)
+end
+
+func lts_seq (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) (openb str) (closeb str) -> IVal
+    let is_v = (t_is_vec t)
+    let elem = (t_elem t)
+    let accn = (uniq lx "tsacc")
+    let acc = (ir::add_local lx.b accn (irt (str_ty)))
+    do (ir::emit lx.b (IAssign place: (PLocal name: accn ty: (irt (str_ty))) src: (ImmStr s: openb)))
+    let idxn = (uniq lx "tsi")
+    let idx = (ir::add_local lx.b idxn (irt (u64_ty)))
+    let n = (ir::fresh_temp lx.b (irt (u64_ty)))
+    do (ir::emit lx.b (IAssign place: (PLocal name: idxn ty: (irt (u64_ty))) src: (ImmInt val: 0i64 ty: (irt (u64_ty)))))
+    if is_v
+        do (ir::emit lx.b (IVecLen dst: n vec: iv))
+    else
+        do (ir::emit lx.b (IArrLen dst: n arr: iv))
+    end
+    let head = (ir::fresh_label lx.b "tsq_head")
+    let bodyl = (ir::fresh_label lx.b "tsq_body")
+    let post = (ir::fresh_label lx.b "tsq_post")
+    let fin = (ir::fresh_label lx.b "tsq_end")
+    do (ir::emit lx.b (IBr target: head))
+    do (ir::new_block lx.b head)
+    let cond = (ir::fresh_temp lx.b (irt (bool_ty)))
+    do (ir::emit lx.b (IBin dst: cond op: "<" lhs: idx rhs: n ty: (irt (u64_ty)) chk: false))
+    do (ir::emit lx.b (ICondBr cond: cond then_l: bodyl else_l: fin))
+    do (ir::new_block lx.b bodyl)
+    do (lts_sep lx accn acc idx)
+    let elemv = (ir::fresh_temp lx.b (irt elem))
+    if is_v
+        do (ir::emit lx.b (IVecGet dst: elemv vec: iv idx: idx ty: (irt elem)))
+    else
+        do (ir::emit lx.b (IArrGet dst: elemv arr: iv idx: idx ty: (irt elem)))
+    end
+    let es = (lower_to_str lx vs ts elemv elem)
+    do (ts_app lx accn acc es)
+    do (ir::emit lx.b (IBr target: post))
+    do (ir::new_block lx.b post)
+    let nxt = (ir::fresh_temp lx.b (irt (u64_ty)))
+    do (ir::emit lx.b (IBin dst: nxt op: "+" lhs: idx rhs: (ImmInt val: 1i64 ty: (irt (u64_ty))) ty: (irt (u64_ty)) chk: false))
+    do (ir::emit lx.b (IAssign place: (PLocal name: idxn ty: (irt (u64_ty))) src: nxt))
+    do (ir::emit lx.b (IBr target: head))
+    do (ir::new_block lx.b fin)
+    do (ts_app lx accn acc (ImmStr s: closeb))
+    return acc
+end
+
+func lts_map (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) -> IVal
+    let kty = (t_map_key t)
+    let vty = (t_map_val t)
+    let accn = (uniq lx "tsmacc")
+    let acc = (ir::add_local lx.b accn (irt (str_ty)))
+    do (ir::emit lx.b (IAssign place: (PLocal name: accn ty: (irt (str_ty))) src: (ImmStr s: "{")))
+    let keys = (ir::fresh_temp lx.b (irt (TVec elem: kty)))
+    do (ir::emit lx.b (IMapKeys dst: keys map: iv))
+    let idxn = (uniq lx "tsmi")
+    let idx = (ir::add_local lx.b idxn (irt (u64_ty)))
+    let n = (ir::fresh_temp lx.b (irt (u64_ty)))
+    do (ir::emit lx.b (IAssign place: (PLocal name: idxn ty: (irt (u64_ty))) src: (ImmInt val: 0i64 ty: (irt (u64_ty)))))
+    do (ir::emit lx.b (IVecLen dst: n vec: keys))
+    let head = (ir::fresh_label lx.b "tsm_head")
+    let bodyl = (ir::fresh_label lx.b "tsm_body")
+    let post = (ir::fresh_label lx.b "tsm_post")
+    let fin = (ir::fresh_label lx.b "tsm_end")
+    do (ir::emit lx.b (IBr target: head))
+    do (ir::new_block lx.b head)
+    let cond = (ir::fresh_temp lx.b (irt (bool_ty)))
+    do (ir::emit lx.b (IBin dst: cond op: "<" lhs: idx rhs: n ty: (irt (u64_ty)) chk: false))
+    do (ir::emit lx.b (ICondBr cond: cond then_l: bodyl else_l: fin))
+    do (ir::new_block lx.b bodyl)
+    do (lts_sep lx accn acc idx)
+    let kv = (ir::fresh_temp lx.b (irt kty))
+    do (ir::emit lx.b (IVecGet dst: kv vec: keys idx: idx ty: (irt kty)))
+    let ks = (lower_to_str lx vs ts kv kty)
+    do (ts_app lx accn acc ks)
+    do (ts_app lx accn acc (ImmStr s: ": "))
+    let vv = (ir::fresh_temp lx.b (irt vty))
+    do (ir::emit lx.b (IMapGet dst: vv map: iv key: kv kty: (irt kty) vty: (irt vty)))
+    let vstr = (lower_to_str lx vs ts vv vty)
+    do (ts_app lx accn acc vstr)
+    do (ir::emit lx.b (IBr target: post))
+    do (ir::new_block lx.b post)
+    let nxt = (ir::fresh_temp lx.b (irt (u64_ty)))
+    do (ir::emit lx.b (IBin dst: nxt op: "+" lhs: idx rhs: (ImmInt val: 1i64 ty: (irt (u64_ty))) ty: (irt (u64_ty)) chk: false))
+    do (ir::emit lx.b (IAssign place: (PLocal name: idxn ty: (irt (u64_ty))) src: nxt))
+    do (ir::emit lx.b (IBr target: head))
+    do (ir::new_block lx.b fin)
+    do (ts_app lx accn acc (ImmStr s: "}"))
+    return acc
+end
+
+func lts_struct (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) -> IVal
+    let qn = (t_struct_name t)
+    let sl = (checker::struct_fields lx.ctx qn)
+    let accn = (uniq lx "tssacc")
+    let acc = (ir::add_local lx.b accn (irt (str_ty)))
+    do (ir::emit lx.b (IAssign place: (PLocal name: accn ty: (irt (str_ty))) src: (ImmStr s: "(")))
+    do (ts_app lx accn acc (ImmStr s: (bare_name qn)))
+    do (ts_app lx accn acc (ImmStr s: " "))
+    let i = 0u64
+    while (< i (len sl.fields))
+        if (> i 0u64)
+            do (ts_app lx accn acc (ImmStr s: " "))
+        end
+        let fd = sl.fields[i]
+        do (ts_app lx accn acc (ImmStr s: (strings::concat fd.name ": ")))
+        let fv = (ir::fresh_temp lx.b (irt fd.ty))
+        do (ir::emit lx.b (ILoadField dst: fv base: iv field: fd.name ty: (irt fd.ty)))
+        let fs = (lower_to_str lx vs ts fv fd.ty)
+        do (ts_app lx accn acc fs)
+        set i = (+ i 1)
+    end
+    do (ts_app lx accn acc (ImmStr s: ")"))
+    return acc
 end
 
 # Lower the value for struct field `fname` (declared type `fty`) from the

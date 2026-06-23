@@ -43,6 +43,11 @@ int32_t  cl_convert__chr(uint32_t v);
 cl_str   cl_convert__int_to_str(int64_t v);
 int64_t  cl_convert__str_to_int(cl_str s);                        /* panics if not an integer */
 
+/* Scalar -> str for `to_str` (DESIGN §5.5). cl_convert__int_to_str is the i64 one. */
+cl_str   cl_u64_to_str(uint64_t v);
+cl_str   cl_f64_to_str(double v);                                 /* %g, matches cl_print_f64 */
+cl_str   cl_bool_to_str(int v);
+
 /* ---- Growable vector  {T}  (DESIGN.md §5.3) ------------------------------ *
  * Reference semantics: a vector value is a single GC handle to a header
  * object {len, cap, elemsz, buf}. Copying the value shares the header, so a
