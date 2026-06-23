@@ -2104,6 +2104,18 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                     let out = (emit_park_arg bx src 0i64)
                     set out = (strings::concat out (load_into bx "%rdi" ptr))
                     set out = (strings::concat out (line "    call cl_gc_deref"))
+                    let nw = (nwords ty bx.structs)
+                    if (> nw 1i64)
+                        # multi-word value (e.g. a >8B value struct boxed by capture):
+                        # copy every parked word into the box payload at %rax.
+                        let w = 0i64
+                        while (< w nw)
+                            set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ bx.scratch (* w 8i64))) ", %rcx"))))
+                            set out = (strings::concat out (line (cat3 "    movq %rcx, " (cat2 (i2s (* w 8i64)) "(%rax)") "")))
+                            set w = (+ w 1i64)
+                        end
+                        return out
+                    end
                     set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
                     set out = (strings::concat out (store_sized (type_size ty bx.structs) "c" "(%rax)"))
                     return out
@@ -2430,6 +2442,18 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
         case (ILoad dst ptr ty)
             let out = (load_into bx "%rdi" ptr)
             set out = (strings::concat out (line "    call cl_gc_deref"))
+            let nw = (nwords ty bx.structs)
+            if (> nw 1i64)
+                # multi-word value (e.g. a boxed value struct): copy every word from
+                # the box payload at %rax into dst's slot.
+                let w = 0i64
+                while (< w nw)
+                    set out = (strings::concat out (line (cat2 "    movq " (cat2 (cat2 (i2s (* w 8i64)) "(%rax)") ", %rcx"))))
+                    set out = (strings::concat out (line (cat3 "    movq %rcx, " (off_mem (+ (slot_off bx (iv_key dst)) (* w 8i64))) "")))
+                    set w = (+ w 1i64)
+                end
+                return out
+            end
             set out = (strings::concat out (load_sized (type_size ty bx.structs) (irt_signed ty) "(%rax)"))
             return (strings::concat out (store_rax bx dst))
         case (IEnvNew dst n)
