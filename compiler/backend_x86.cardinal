@@ -977,6 +977,14 @@ end
 
 func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> str
     let out = ""
+    # A result larger than 16 bytes is returned via a hidden pointer (SysV MEMORY):
+    # &dst is passed in %rdi and the real args shift up one register.
+    let hidden = false
+    if has_dst
+        if (> (nwords (iv_ty dst) bx.structs) 2i64)
+            set hidden = true
+        end
+    end
     # Park every arg's words into frame scratch slots (NOT pushes — a strlit/call
     # while args are pushed would misalign %rsp), then load the scratch words into
     # the SysV integer arg registers in order (a 16B cl_closure arg takes 2 regs),
@@ -988,18 +996,25 @@ func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> s
         set nw = (+ nw (nwords (iv_ty args[i]) bx.structs))
         set i = (+ i 1)
     end
-    if (> nw 6i64)
+    let base = 0i64
+    if hidden
+        set base = 1i64
+        set out = (strings::concat out (line (cat3 "    leaq " (off_mem (slot_off bx (iv_key dst))) ", %rdi")))
+    end
+    if (> (+ nw base) 6i64)
         do (panic "x86: >6 integer-class argument words (stack args later)")
     end
     let w = 0i64
     while (< w nw)
-        set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem (+ bx.scratch (* w 8i64))) ", ") (argreg w))))
+        set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem (+ bx.scratch (* w 8i64))) ", ") (argreg (+ w base)))))
         set w = (+ w 1i64)
     end
     set out = (strings::concat out (line (cat2 "    call " callee)))
     if has_dst
-        if (> (nwords (iv_ty dst) bx.structs) 1i64)
-            # multi-word result (cl_closure) returned in %rax:%rdx
+        if hidden
+            pass
+        elsif (> (nwords (iv_ty dst) bx.structs) 1i64)
+            # 9..16-byte result (e.g. cl_closure) returned in %rax:%rdx
             set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) "")))
             set out = (strings::concat out (line (cat3 "    movq %rdx, " (off_mem (+ (slot_off bx (iv_key dst)) 8i64)) "")))
         else
@@ -1111,6 +1126,23 @@ func irt_is_str (t IRType) -> bool
             return false
     end
     return false
+end
+
+# cl_array_at(cl_array a, u64 i) -> element ptr in %rax. cl_array is 24 bytes, a
+# SysV MEMORY-class arg: copy it onto the stack (reserve 32 to keep %rsp 16-aligned)
+# while the INTEGER arg `i` goes in %rdi.
+func emit_array_at (bx BX) (arr IVal) (idx IVal) -> str
+    let out = (line "    subq $32, %rsp")
+    let w = 0i64
+    while (< w 3i64)
+        set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key arr)) (* w 8i64))) ", %rax"))))
+        set out = (strings::concat out (line (cat2 "    movq %rax, " (cat2 (i2s (* w 8i64)) "(%rsp)"))))
+        set w = (+ w 1i64)
+    end
+    set out = (strings::concat out (load_into bx "%rdi" idx))
+    set out = (strings::concat out (line "    call cl_array_at"))
+    set out = (strings::concat out (line "    addq $32, %rsp"))
+    return out
 end
 
 # cl_vec_push(vc, &elem): park the element in a frame slot, pass its address.
@@ -1344,6 +1376,44 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             let out = (load_into bx "%rdi" mp)
             set out = (strings::concat out (line "    call cl_map_keys"))
             return (strings::concat out (store_rax bx dst))
+        case (IArrNew dst elem count)
+            # cl_array (24B) returned via hidden pointer (&dst in %rdi)
+            let out = (line (cat3 "    leaq " (off_mem (slot_off bx (iv_key dst))) ", %rdi"))
+            set out = (strings::concat out (line (cat2 "    movl $" (cat2 (i2s (type_size elem bx.structs)) ", %esi"))))
+            set out = (strings::concat out (load_into bx "%rdx" count))
+            set out = (strings::concat out (line "    call cl_array_new"))
+            return out
+        case (IArrLen dst arr)
+            let out = (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key arr)) 8i64)) ", %rax")))
+            return (strings::concat out (store_rax bx dst))
+        case (IArrGet dst arr idx ty)
+            let out = (emit_array_at bx arr idx)
+            set out = (strings::concat out (load_sized (type_size ty bx.structs) (irt_signed ty) "(%rax)"))
+            return (strings::concat out (store_rax bx dst))
+        case (IArrSet arr idx sval elem)
+            let esz = (type_size elem bx.structs)
+            let out = (load_to_rax bx sval)
+            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+            set out = (strings::concat out (emit_array_at bx arr idx))
+            set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
+            set out = (strings::concat out (store_sized esz "c" "(%rax)"))
+            return out
+        case (IArrLit dst elem elems)
+            let esz = (type_size elem bx.structs)
+            let out = (line (cat3 "    leaq " (off_mem (slot_off bx (iv_key dst))) ", %rdi"))
+            set out = (strings::concat out (line (cat2 "    movl $" (cat2 (i2s esz) ", %esi"))))
+            set out = (strings::concat out (line (cat2 "    movq $" (cat2 (i2s (as (len elems) i64)) ", %rdx"))))
+            set out = (strings::concat out (line "    call cl_array_new"))
+            let k = 0u64
+            while (< k (len elems))
+                set out = (strings::concat out (load_to_rax bx elems[k]))
+                set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+                set out = (strings::concat out (emit_array_at bx dst (ImmInt val: (as k i64) ty: (TyOf t: (TInt name: "u64")))))
+                set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
+                set out = (strings::concat out (store_sized esz "c" "(%rax)"))
+                set k = (+ k 1)
+            end
+            return out
         case (IAlloc dst ty)
             # a 1-slot heap box holding a value of `ty` (captured-var cell)
             let out = (line (cat2 "    movq $" (cat2 (i2s (type_size ty bx.structs)) ", %rdi")))
