@@ -606,6 +606,33 @@ func emit_un (dst IVal) (op str) (v IVal) (ty IRType) (chk bool) -> {str}
     return (line1 (strings::concat d (strings::concat " = (" (strings::concat cty (strings::concat ")(-(" (strings::concat x "));"))))))
 end
 
+# Render a GCC extended-asm operand list: "constraint"(c_lvalue), ...
+func c_asm_operands (ops {IAsmOp}) -> str
+    let s = ""
+    let i = 0u64
+    while (< i (len ops))
+        if (> i 0u64)
+            set s = (strings::concat s ", ")
+        end
+        set s = (strings::concat s (strings::concat "\"" (strings::concat ops[i].constraint (strings::concat "\"(" (strings::concat (val ops[i].val) ")")))))
+        set i = (+ i 1)
+    end
+    return s
+end
+
+func c_asm_clobbers (cl {str}) -> str
+    let s = ""
+    let i = 0u64
+    while (< i (len cl))
+        if (> i 0u64)
+            set s = (strings::concat s ", ")
+        end
+        set s = (strings::concat s (strings::concat "\"" (strings::concat cl[i] "\"")))
+        set i = (+ i 1)
+    end
+    return s
+end
+
 func emit_instr (ins Instr) (nroots i64) -> {str}
     match ins
         case (IConst dst v ty)
@@ -654,6 +681,14 @@ func emit_instr (ins Instr) (nroots i64) -> {str}
             return out
         case (IPanic msg)
             return (line1 (strings::concat "cl_panic(" (strings::concat (val msg) ");")))
+        case (IAsm template outs ins clobbers)
+            # GCC extended asm: __asm__ volatile("tmpl" : outs : ins : clobbers);
+            let s = (strings::concat "__asm__ volatile(\"" (strings::concat (cescape template) "\""))
+            set s = (strings::concat s (strings::concat " : " (c_asm_operands outs)))
+            set s = (strings::concat s (strings::concat " : " (c_asm_operands ins)))
+            set s = (strings::concat s (strings::concat " : " (c_asm_clobbers clobbers)))
+            set s = (strings::concat s ");")
+            return (line1 s)
         case (IStructNew dst struct_name fnames fvals)
             let inits = ""
             let i = 0u64

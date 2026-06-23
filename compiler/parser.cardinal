@@ -86,6 +86,13 @@ struct Arm
     body {Stmt}
 end
 
+# One operand of an inline-asm block: a Cardinal variable bound to a GCC-style
+# constraint (e.g. ("lo" "=a"), ("x" "r")). Outputs use "="/"+"; inputs read.
+struct AsmOp
+    var str
+    constraint str
+end
+
 type Stmt
     SLet     (name str) (ty Ty) (has_ty bool) (expr Expr) (mutable bool)
     SSet     (target Expr) (expr Expr)
@@ -101,6 +108,7 @@ type Stmt
     SReturn  (expr Expr) (has_expr bool)
     SChecked (body {Stmt})
     SMatch   (scrut Expr) (arms {Arm}) (orelse {Stmt}) (has_else bool)
+    SAsm     (template str) (outs {AsmOp}) (ins {AsmOp}) (clobbers {str})
 end
 
 # --------------------------------------------------------------------------- #
@@ -716,8 +724,72 @@ func parse_stmt (p P) -> Stmt
     if (at_kw p "match")
         return (parse_match p)
     end
+    if (at_kw p "asm")
+        return (parse_asm p)
+    end
     do (perr p "expected statement")
     return SPass
+end
+
+# Inline assembly (native-only escape hatch). GCC-style extended form:
+#   asm "template"
+#       out: (var "=constraint") ...
+#       in:  (var "constraint")  ...
+#       clobber: "reg" ...
+#   end
+# Clauses are optional and may appear in any order, one clause per line. The
+# template references operands by GCC index (%0, %1, ...), outputs first.
+func parse_asm (p P) -> Stmt
+    do (eat_kw p "asm")
+    if (not (at_kind p "str"))
+        do (perr p "expected asm template string")
+    end
+    let tmpl = (tk_text (adv p))
+    let outs {AsmOp} = (vec AsmOp)
+    let ins {AsmOp} = (vec AsmOp)
+    let clob {str} = (vec str)
+    do (eat_terminator p)
+    while (not (at_kw p "end"))
+        if (at_kind p "eof")
+            do (perr p "unterminated asm block (expected 'end')")
+        end
+        # clause label: 'in' is a keyword; 'out'/'clobber' are plain idents
+        if (at_kw p "in")
+            do (adv p)
+            do (eat_punct p ":")
+            do (parse_asm_ops p ins)
+        elsif (and (at_kind p "ident") (strings::eq (tk_text (peek p)) "out"))
+            do (adv p)
+            do (eat_punct p ":")
+            do (parse_asm_ops p outs)
+        elsif (and (at_kind p "ident") (strings::eq (tk_text (peek p)) "clobber"))
+            do (adv p)
+            do (eat_punct p ":")
+            while (at_kind p "str")
+                do (push clob (tk_text (adv p)))
+            end
+        else
+            do (perr p "expected asm clause (out:/in:/clobber:) or 'end'")
+        end
+        do (eat_terminator p)
+    end
+    do (eat_kw p "end")
+    do (eat_terminator p)
+    return (SAsm template: tmpl outs: outs ins: ins clobbers: clob)
+end
+
+# Parse a space-separated list of (var "constraint") operand pairs on one line.
+func parse_asm_ops (p P) (dst {AsmOp}) -> unit
+    while (at_punct p "(")
+        do (eat_punct p "(")
+        let v = (eat_ident p)
+        if (not (at_kind p "str"))
+            do (perr p "expected constraint string in asm operand")
+        end
+        let c = (tk_text (adv p))
+        do (eat_punct p ")")
+        do (push dst (AsmOp var: v constraint: c))
+    end
 end
 
 func parse_let (p P) (mutable bool) -> Stmt
@@ -1219,6 +1291,8 @@ func stmt_str (s Stmt) -> str
             return (strings::concat "(checked " (strings::concat (block_str body) ")"))
         case (SMatch scrut arms orelse has_else)
             return (strings::concat "(match " (strings::concat (expr_str scrut) (strings::concat " " (strings::concat (arms_str arms) (strings::concat (else_str orelse has_else) ")")))))
+        case (SAsm template outs ins clobbers)
+            return (strings::concat "(asm " (strings::concat template ")"))
     end
     return "?"
 end

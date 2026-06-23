@@ -54,7 +54,7 @@ KEYWORDS = {
     "let", "const", "set", "do", "if", "elsif", "else", "while", "for",
     "to", "step", "in", "loop", "break", "continue", "return", "checked", "pass",
     "and", "or", "not", "as", "true", "false", "null",
-    "band", "bor", "bxor", "bnot", "shl", "shr",
+    "band", "bor", "bxor", "bnot", "shl", "shr", "asm",
 }
 TYPE_NAMES = {
     "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64",
@@ -335,6 +335,8 @@ class Return:     expr: object
 class Checked:    body: list
 @dataclass
 class Match:      scrutinee: object; arms: list; orelse: object   # arms: [(vname, [binding], body)]
+@dataclass
+class Asm:        template: str; outs: list; ins: list; clobbers: list  # outs/ins: [(var, constraint)]
 
 # expressions
 @dataclass
@@ -763,6 +765,45 @@ class Parser:
         self.eat("kw", "end")
         self.eat_terminator()
         return Match(scrutinee, arms, orelse)
+
+    def stmt_asm(self):
+        self.eat("kw", "asm")
+        t = self.peek()
+        if t.kind != "str":
+            raise CardinalError("expected asm template string", t.line)
+        template = self.next().value
+        self.eat_terminator()
+        outs, ins, clobbers = [], [], []
+        while not self.at("kw", "end"):
+            if self.at("eof"):
+                raise CardinalError("unterminated asm block (expected 'end')", self.peek().line)
+            if self.at("kw", "in"):
+                self.next(); self.eat("punct", ":")
+                self._parse_asm_ops(ins)
+            elif self.at("ident", "out"):
+                self.next(); self.eat("punct", ":")
+                self._parse_asm_ops(outs)
+            elif self.at("ident", "clobber"):
+                self.next(); self.eat("punct", ":")
+                while self.peek().kind == "str":
+                    clobbers.append(self.next().value)
+            else:
+                raise CardinalError("expected asm clause (out:/in:/clobber:) or 'end'", self.peek().line)
+            self.eat_terminator()
+        self.eat("kw", "end")
+        self.eat_terminator()
+        return Asm(template, outs, ins, clobbers)
+
+    def _parse_asm_ops(self, dst):
+        while self.at("punct", "("):
+            self.next()
+            var = self.eat("ident").value
+            t = self.peek()
+            if t.kind != "str":
+                raise CardinalError("expected constraint string in asm operand", t.line)
+            c = self.next().value
+            self.eat("punct", ")")
+            dst.append((var, c))
 
     # -- expressions ------------------------------------------------------- #
     def parse_expr(self):
@@ -1241,6 +1282,8 @@ class Interp:
             self.exec_match(s, env, ms)
         elif k is Pass:
             pass
+        elif k is Asm:
+            raise Panic("inline asm is native-only (not available under the interpreter)")
         else:
             raise CardinalError(f"unknown statement {k.__name__}")
 

@@ -161,6 +161,7 @@ func build_keywords () -> {str bool}
     set m["bnot"] = true
     set m["shl"] = true
     set m["shr"] = true
+    set m["asm"] = true
     return m
 end
 

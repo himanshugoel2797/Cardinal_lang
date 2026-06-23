@@ -1292,6 +1292,47 @@ func check_stmt (ctx Ctx) (s Stmt) (scope {str Binding}) (ret Type) -> unit
             do (check_block ctx body scope ret)
         case (SMatch scrut arms orelse has_else)
             do (check_match ctx scrut arms orelse has_else scope ret)
+        case (SAsm template outs ins clobbers)
+            # inline asm operands must name register-sized scalar variables in
+            # scope; outputs must additionally be mutable (DESIGN: native escape
+            # hatch — no spec, defined here).
+            for op in outs
+                if (not (map_has scope op.var))
+                    do (err ctx (strings::concat "asm output references unknown variable: " op.var))
+                else
+                    let b = scope[op.var]
+                    if (not b.mutable)
+                        do (err ctx (strings::concat "cannot use immutable variable as asm output: " op.var))
+                    end
+                    do (check_asm_optype ctx b.ty op.var)
+                end
+            end
+            for op in ins
+                if (not (map_has scope op.var))
+                    do (err ctx (strings::concat "asm input references unknown variable: " op.var))
+                else
+                    do (check_asm_optype ctx scope[op.var].ty op.var)
+                end
+            end
+    end
+end
+
+# An inline-asm operand must live in a single general register: integers, enums
+# (i32-backed), or bool/char/handle. Floats, str, and aggregates are rejected.
+func check_asm_optype (ctx Ctx) (t Type) (var str) -> unit
+    match t
+        case (TInt n)
+            pass
+        case (TEnum n)
+            pass
+        case (TPrim n)
+            if (or (strings::eq n "bool") (or (strings::eq n "char") (strings::eq n "handle")))
+                pass
+            else
+                do (err ctx (strings::concat "asm operand must be a register-sized scalar (int/enum/bool/char/handle): " var))
+            end
+        else
+            do (err ctx (strings::concat "asm operand must be a register-sized scalar (int/enum/bool/char/handle): " var))
     end
 end
 

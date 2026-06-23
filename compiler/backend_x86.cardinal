@@ -1567,6 +1567,467 @@ func emit_vec_push (bx BX) (vc IVal) (sval IVal) (esz i64) -> str
     return out
 end
 
+# --------------------------------------------------------------------------- #
+# Inline assembly (GCC extended form). Operands are numbered outputs-first, then
+# inputs (matching the C backend / GCC %0,%1). Each operand is placed in a fixed
+# register (constraints a/b/c/d/S/D), an allocated general register (r), or its
+# frame memory slot (m); inputs are loaded before the template, register outputs
+# stored after.
+#
+# Semantic note vs. GCC: every operand here gets a DISTINCT register (outputs are
+# always effectively early-clobber — an output register never aliases an input).
+# GCC may reuse a non-'&' output register for an input, so asm that relies on such
+# aliasing is non-portable. Authors should treat outputs as early-clobber (use the
+# constraint '&' for documentation; it is accepted and stripped). Narrow-int slots
+# keep the backend invariant of holding a full sign/zero-extended 64-bit word.
+# --------------------------------------------------------------------------- #
+
+func asm_is_digit (c char) -> bool
+    return (and (>= c '0') (<= c '9'))
+end
+
+func asm_mov_sfx (bits i64) -> str
+    if (== bits 8i64)
+        return "b"
+    end
+    if (== bits 16i64)
+        return "w"
+    end
+    if (== bits 32i64)
+        return "l"
+    end
+    return "q"
+end
+
+# Width-specific name for a register family (a/b/c/d/si/di/r8..r11).
+func asm_xreg (fam str) (bits i64) -> str
+    if (or (strings::eq fam "r8") (or (strings::eq fam "r9") (or (strings::eq fam "r10") (strings::eq fam "r11"))))
+        if (== bits 8i64)
+            return (strings::concat "%" (strings::concat fam "b"))
+        end
+        if (== bits 16i64)
+            return (strings::concat "%" (strings::concat fam "w"))
+        end
+        if (== bits 32i64)
+            return (strings::concat "%" (strings::concat fam "d"))
+        end
+        return (strings::concat "%" fam)
+    end
+    if (strings::eq fam "a")
+        if (== bits 8i64)
+            return "%al"
+        end
+        if (== bits 16i64)
+            return "%ax"
+        end
+        if (== bits 32i64)
+            return "%eax"
+        end
+        return "%rax"
+    end
+    if (strings::eq fam "b")
+        if (== bits 8i64)
+            return "%bl"
+        end
+        if (== bits 16i64)
+            return "%bx"
+        end
+        if (== bits 32i64)
+            return "%ebx"
+        end
+        return "%rbx"
+    end
+    if (strings::eq fam "c")
+        if (== bits 8i64)
+            return "%cl"
+        end
+        if (== bits 16i64)
+            return "%cx"
+        end
+        if (== bits 32i64)
+            return "%ecx"
+        end
+        return "%rcx"
+    end
+    if (strings::eq fam "d")
+        if (== bits 8i64)
+            return "%dl"
+        end
+        if (== bits 16i64)
+            return "%dx"
+        end
+        if (== bits 32i64)
+            return "%edx"
+        end
+        return "%rdx"
+    end
+    if (strings::eq fam "si")
+        if (== bits 8i64)
+            return "%sil"
+        end
+        if (== bits 16i64)
+            return "%si"
+        end
+        if (== bits 32i64)
+            return "%esi"
+        end
+        return "%rsi"
+    end
+    if (strings::eq fam "di")
+        if (== bits 8i64)
+            return "%dil"
+        end
+        if (== bits 16i64)
+            return "%di"
+        end
+        if (== bits 32i64)
+            return "%edi"
+        end
+        return "%rdi"
+    end
+    do (panic (strings::concat "x86 asm: unknown register family " fam))
+    return "%rax"
+end
+
+# Constraint class after stripping =/+/& modifiers: a/b/c/d/si/di/r/m.
+func asm_class (c str) -> str
+    let cs = (strings::chars c)
+    let i = 0u64
+    while (< i (len cs))
+        let ch = cs[i]
+        if (or (== ch '=') (or (== ch '+') (== ch '&')))
+            set i = (+ i 1u64)
+        else
+            if (== ch 'a')
+                return "a"
+            end
+            if (== ch 'b')
+                return "b"
+            end
+            if (== ch 'c')
+                return "c"
+            end
+            if (== ch 'd')
+                return "d"
+            end
+            if (== ch 'S')
+                return "si"
+            end
+            if (== ch 'D')
+                return "di"
+            end
+            if (or (== ch 'r') (or (== ch 'q') (== ch 'Q')))
+                return "r"
+            end
+            if (== ch 'm')
+                return "m"
+            end
+            do (panic (strings::concat "x86 asm: unsupported constraint " c))
+        end
+    end
+    do (panic (strings::concat "x86 asm: empty constraint " c))
+    return "r"
+end
+
+func asm_is_inout (c str) -> bool
+    let cs = (strings::chars c)
+    let i = 0u64
+    while (< i (len cs))
+        if (== cs[i] '+')
+            return true
+        end
+        set i = (+ i 1u64)
+    end
+    return false
+end
+
+# First free register family from the scratch pool (rbx excluded: callee-saved).
+func asm_alloc_reg (used {str bool}) -> str
+    let pool {str} = (vec str)
+    do (push pool "r10")
+    do (push pool "r11")
+    do (push pool "r8")
+    do (push pool "r9")
+    do (push pool "a")
+    do (push pool "c")
+    do (push pool "d")
+    do (push pool "si")
+    do (push pool "di")
+    let i = 0u64
+    while (< i (len pool))
+        if (not (map_has used pool[i]))
+            return pool[i]
+        end
+        set i = (+ i 1u64)
+    end
+    do (panic "x86 asm: out of registers for 'r' operands")
+    return "a"
+end
+
+# Map a clobber name (e.g. "rax", "r10") to a register family, "" if not a reg.
+func asm_clobber_fam (n str) -> str
+    if (or (strings::eq n "rax") (or (strings::eq n "eax") (or (strings::eq n "ax") (strings::eq n "al"))))
+        return "a"
+    end
+    if (or (strings::eq n "rbx") (or (strings::eq n "ebx") (or (strings::eq n "bx") (strings::eq n "bl"))))
+        return "b"
+    end
+    if (or (strings::eq n "rcx") (or (strings::eq n "ecx") (or (strings::eq n "cx") (strings::eq n "cl"))))
+        return "c"
+    end
+    if (or (strings::eq n "rdx") (or (strings::eq n "edx") (or (strings::eq n "dx") (strings::eq n "dl"))))
+        return "d"
+    end
+    if (or (strings::eq n "rsi") (or (strings::eq n "esi") (strings::eq n "si")))
+        return "si"
+    end
+    if (or (strings::eq n "rdi") (or (strings::eq n "edi") (strings::eq n "di")))
+        return "di"
+    end
+    if (strings::eq n "r8")
+        return "r8"
+    end
+    if (strings::eq n "r9")
+        return "r9"
+    end
+    if (strings::eq n "r10")
+        return "r10"
+    end
+    if (strings::eq n "r11")
+        return "r11"
+    end
+    return ""
+end
+
+# The numeric value of a run of digit chars starting at j; returns (value, next).
+func asm_read_num (cs [char]) (j u64) (n u64) -> i64
+    let num = 0i64
+    let k = j
+    while (and (< k n) (asm_is_digit cs[k]))
+        set num = (+ (* num 10i64) (as (- (convert::ord cs[k]) (convert::ord '0')) i64))
+        set k = (+ k 1u64)
+    end
+    return num
+end
+
+func asm_skip_num (cs [char]) (j u64) (n u64) -> u64
+    let k = j
+    while (and (< k n) (asm_is_digit cs[k]))
+        set k = (+ k 1u64)
+    end
+    return k
+end
+
+# Substitute %N / %%/%b%w%k%qN operand references in the template.
+func asm_subst (template str) (opfam {str}) (opbits {i64}) (opmem {bool}) (opref {str}) -> str
+    let cs = (strings::chars template)
+    let n = (len cs)
+    let out = ""
+    let i = 0u64
+    while (< i n)
+        if (not (== cs[i] '%'))
+            set out = (strings::concat out (strings::from_char cs[i]))
+            set i = (+ i 1u64)
+        else
+            if (>= (+ i 1u64) n)
+                set out = (strings::concat out "%")
+                set i = (+ i 1u64)
+            else
+                let d = cs[(+ i 1u64)]
+                if (== d '%')
+                    set out = (strings::concat out "%")
+                    set i = (+ i 2u64)
+                elsif (asm_is_digit d)
+                    let num = (asm_read_num cs (+ i 1u64) n)
+                    set out = (strings::concat out opref[(as num u64)])
+                    set i = (asm_skip_num cs (+ i 1u64) n)
+                else
+                    let mb = 0i64
+                    if (== d 'b')
+                        set mb = 8i64
+                    end
+                    if (== d 'w')
+                        set mb = 16i64
+                    end
+                    if (== d 'k')
+                        set mb = 32i64
+                    end
+                    if (== d 'q')
+                        set mb = 64i64
+                    end
+                    if (and (> mb 0i64) (and (< (+ i 2u64) n) (asm_is_digit cs[(+ i 2u64)])))
+                        let num = (asm_read_num cs (+ i 2u64) n)
+                        let idx = (as num u64)
+                        if opmem[idx]
+                            set out = (strings::concat out opref[idx])
+                        else
+                            set out = (strings::concat out (asm_xreg opfam[idx] mb))
+                        end
+                        set i = (asm_skip_num cs (+ i 2u64) n)
+                    else
+                        set out = (strings::concat out "%")
+                        set i = (+ i 1u64)
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+# Sign/zero-extend a `bits`-wide result already in register family `fam` to the
+# full 64-bit register, preserving the backend invariant that narrow-int slots
+# hold a full extended word. No-op at 64 bits.
+func asm_extend_reg (fam str) (bits i64) (signed bool) -> str
+    if (== bits 64i64)
+        return ""
+    end
+    let narrow = (asm_xreg fam bits)
+    let full = (asm_xreg fam 64i64)
+    if signed
+        if (== bits 8i64)
+            return (line (cat3 "    movsbq " narrow (cat2 ", " full)))
+        end
+        if (== bits 16i64)
+            return (line (cat3 "    movswq " narrow (cat2 ", " full)))
+        end
+        return (line (cat3 "    movslq " narrow (cat2 ", " full)))
+    end
+    if (== bits 8i64)
+        return (line (cat3 "    movzbq " narrow (cat2 ", " full)))
+    end
+    if (== bits 16i64)
+        return (line (cat3 "    movzwq " narrow (cat2 ", " full)))
+    end
+    # 32-bit zero-extend: writing the 32-bit subreg clears the upper half
+    return (line (cat3 "    movl " (asm_xreg fam 32i64) (cat2 ", " (asm_xreg fam 32i64))))
+end
+
+# Load a `bits`-wide value from memory operand `slot`, sign/zero-extended, into
+# the full 64-bit register of family `fam`.
+func asm_load_ext_slot (slot str) (fam str) (bits i64) (signed bool) -> str
+    let full = (asm_xreg fam 64i64)
+    if signed
+        if (== bits 8i64)
+            return (line (cat3 "    movsbq " slot (cat2 ", " full)))
+        end
+        if (== bits 16i64)
+            return (line (cat3 "    movswq " slot (cat2 ", " full)))
+        end
+        return (line (cat3 "    movslq " slot (cat2 ", " full)))
+    end
+    if (== bits 8i64)
+        return (line (cat3 "    movzbq " slot (cat2 ", " full)))
+    end
+    if (== bits 16i64)
+        return (line (cat3 "    movzwq " slot (cat2 ", " full)))
+    end
+    return (line (cat3 "    movl " slot (cat2 ", " (asm_xreg fam 32i64))))
+end
+
+func emit_asm (bx BX) (template str) (outs {IAsmOp}) (ins {IAsmOp}) (clobbers {str}) -> str
+    # combined operand list: outputs first (GCC numbering)
+    let ops {IAsmOp} = (vec IAsmOp)
+    let i = 0u64
+    while (< i (len outs))
+        do (push ops outs[i])
+        set i = (+ i 1u64)
+    end
+    set i = 0u64
+    while (< i (len ins))
+        do (push ops ins[i])
+        set i = (+ i 1u64)
+    end
+    let nout = (len outs)
+    # mark clobbered registers as used so 'r' allocation avoids them
+    let used {str bool} = (map str bool)
+    for cb in clobbers
+        let f = (asm_clobber_fam cb)
+        if (not (strings::eq f ""))
+            set used[f] = true
+        end
+    end
+    # pass 1: classify; reserve fixed-register and memory operands
+    let opfam {str} = (vec str)
+    let opbits {i64} = (vec i64)
+    let opmem {bool} = (vec bool)
+    set i = 0u64
+    while (< i (len ops))
+        let cls = (asm_class ops[i].constraint)
+        let bits = (* (type_size (iv_ty ops[i].val) bx.structs) 8i64)
+        if (> bits 64i64)
+            set bits = 64i64
+        end
+        do (push opbits bits)
+        if (strings::eq cls "m")
+            do (push opfam "")
+            do (push opmem true)
+        elsif (strings::eq cls "r")
+            do (push opfam "")
+            do (push opmem false)
+        else
+            set used[cls] = true
+            do (push opfam cls)
+            do (push opmem false)
+        end
+        set i = (+ i 1u64)
+    end
+    # pass 2: allocate 'r' operands (opmem false, opfam "")
+    set i = 0u64
+    while (< i (len ops))
+        if (and (not opmem[i]) (strings::eq opfam[i] ""))
+            let f = (asm_alloc_reg used)
+            set opfam[i] = f
+            set used[f] = true
+        end
+        set i = (+ i 1u64)
+    end
+    # build %N reference strings (register name or memory slot operand)
+    let opref {str} = (vec str)
+    set i = 0u64
+    while (< i (len ops))
+        if opmem[i]
+            do (push opref (off_mem (slot_off bx (iv_key ops[i].val))))
+        else
+            do (push opref (asm_xreg opfam[i] opbits[i]))
+        end
+        set i = (+ i 1u64)
+    end
+    let out = ""
+    # load inputs (and '+' inout outputs) into their registers. The slot holds a
+    # full 64-bit extended word, so a movq gives the correctly-extended value (the
+    # narrow %N view is just its low subreg; %q0 sees the full extended value).
+    set i = 0u64
+    while (< i (len ops))
+        let isout = (< i nout)
+        let load = (or (not isout) (asm_is_inout ops[i].constraint))
+        if (and load (not opmem[i]))
+            set out = (strings::concat out (line (cat3 "    movq " (off_mem (slot_off bx (iv_key ops[i].val))) (cat2 ", " (asm_xreg opfam[i] 64i64)))))
+        end
+        set i = (+ i 1u64)
+    end
+    # the verbatim template (operands substituted)
+    set out = (strings::concat out (line (strings::concat "    " (asm_subst template opfam opbits opmem opref))))
+    # store outputs back, re-establishing the full-word sign/zero-extended slot
+    # invariant for narrow integers (the template wrote only the narrow subreg/slot).
+    set i = 0u64
+    while (< i nout)
+        let oty = (iv_ty ops[i].val)
+        let osg = (irt_signed oty)
+        let oslot = (off_mem (slot_off bx (iv_key ops[i].val)))
+        if (not opmem[i])
+            set out = (strings::concat out (asm_extend_reg opfam[i] opbits[i] osg))
+            set out = (strings::concat out (line (cat3 "    movq " (asm_xreg opfam[i] 64i64) (cat2 ", " oslot))))
+        elsif (< opbits[i] 64i64)
+            let scr = (asm_alloc_reg used)
+            set out = (strings::concat out (asm_load_ext_slot oslot scr opbits[i] osg))
+            set out = (strings::concat out (line (cat3 "    movq " (asm_xreg scr 64i64) (cat2 ", " oslot))))
+        end
+        set i = (+ i 1u64)
+    end
+    return out
+end
+
 func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
     match ins
         case (IConst dst v ty)
@@ -1732,6 +2193,8 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             set out = (strings::concat out (line "    movq %rax, %rdi"))
             set out = (strings::concat out (line "    call cl_panic"))
             return out
+        case (IAsm template outs ins clobbers)
+            return (emit_asm bx template outs ins clobbers)
         case (ISumNew dst variant_qual tag fnames fvals)
             # allocate the variant heap object {int32 cl_tag; payload...}, then
             # write the tag + each payload field through cl_gc_deref.

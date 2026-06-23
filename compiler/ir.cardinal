@@ -61,6 +61,13 @@ type IPlace
     PVecElem (vec IVal) (idx IVal) (ty IRType)   # lvalue vec[idx] (for nested set)
 end
 
+# One inline-asm operand: a value bound to a GCC-style constraint. For outputs
+# `val` is a Local (the destination variable); for inputs it is any value.
+struct IAsmOp
+    val IVal
+    constraint str
+end
+
 # --------------------------------------------------------------------------- #
 # Instructions (terminators included; sorted into one sum)
 # --------------------------------------------------------------------------- #
@@ -113,6 +120,7 @@ type Instr
     ICondBr    (cond IVal) (then_l str) (else_l str)
     IRet       (has_val bool) (val IVal)
     IPanic     (msg IVal)
+    IAsm       (template str) (outs {IAsmOp}) (ins {IAsmOp}) (clobbers {str})
 end
 
 func is_terminator (ins Instr) -> bool

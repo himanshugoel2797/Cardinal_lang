@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from interpreter import (
     lex, Parser, CardinalError,
     Module, Import, FuncDecl, StructDecl, EnumDecl, SumDecl, ConstDecl,
-    Let, Set, Do, If, While, ForNum, ForIn, Loop, Break, Continue, Return, Checked, Match, Pass,
+    Let, Set, Do, If, While, ForNum, ForIn, Loop, Break, Continue, Return, Checked, Match, Pass, Asm,
     IntLit, FloatLit, BoolLit, CharLit, StrLit, NullLit, Name, Path,
     FieldAccess, Index, Call, OpCall, StructLit, ArrayLit, ArrayNew,
     VecLit, VecNew, MapNew, Cast, Ref, FuncLit,
@@ -468,8 +468,29 @@ class Checker:
             self.check_block(s.body, scope, sig, ret)
         elif k is Match:
             self.check_match(s, scope, sig, ret)
+        elif k is Asm:
+            # inline asm operands must name register-sized scalar variables in
+            # scope; outputs must additionally be mutable (native escape hatch).
+            for var, _c in s.outs:
+                if var not in scope:
+                    self.err(f"asm output references unknown variable: {var}", s)
+                else:
+                    ty, mutable = scope[var]
+                    if not mutable:
+                        self.err(f"cannot use immutable variable as asm output: {var}", s)
+                    self._check_asm_optype(ty, var, s)
+            for var, _c in s.ins:
+                if var not in scope:
+                    self.err(f"asm input references unknown variable: {var}", s)
+                else:
+                    self._check_asm_optype(scope[var][0], var, s)
         else:
             self.err(f"unknown statement {k.__name__}")
+
+    def _check_asm_optype(self, ty, var, node):
+        ok = isinstance(ty, (IntT, EnumT)) or (isinstance(ty, PrimT) and ty.name in ("bool", "char", "handle"))
+        if not ok:
+            self.err(f"asm operand must be a register-sized scalar (int/enum/bool/char/handle): {var}", node)
 
     def check_set(self, s, scope, sig):
         target = s.target

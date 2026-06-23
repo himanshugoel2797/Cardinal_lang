@@ -520,6 +520,17 @@ func fv_stmt (s Stmt) (bound {str bool}) (out {str bool}) -> unit
             end
         case (SChecked body)
             do (fv_stmts body bound out)
+        case (SAsm template outs ins clobbers)
+            for op in outs
+                if (not (map_has bound op.var))
+                    set out[op.var] = true
+                end
+            end
+            for op in ins
+                if (not (map_has bound op.var))
+                    set out[op.var] = true
+                end
+            end
         case (SMatch scrut arms orelse has_else)
             do (fv_expr scrut bound out)
             let i = 0u64
@@ -2163,6 +2174,26 @@ func lower_stmt (lx LX) (vs {str IVal}) (ts {str Binding}) (s Stmt) -> unit
             set lx.chk[0] = old
         case (SMatch scrut arms orelse has_else)
             do (lower_match lx vs ts scrut arms orelse has_else)
+        case (SAsm template outs ins clobbers)
+            # Bind each operand variable to its (non-boxed) Local IVal. Captured
+            # variables (boxed cells) are not supported as asm operands.
+            let oouts {IAsmOp} = (vec IAsmOp)
+            for op in outs
+                let loc = vs[op.var]
+                if (iv_is_boxed loc)
+                    do (panic "lower: asm operand on a captured variable is unsupported")
+                end
+                do (push oouts (IAsmOp val: loc constraint: op.constraint))
+            end
+            let oins {IAsmOp} = (vec IAsmOp)
+            for op in ins
+                let loc2 = vs[op.var]
+                if (iv_is_boxed loc2)
+                    do (panic "lower: asm operand on a captured variable is unsupported")
+                end
+                do (push oins (IAsmOp val: loc2 constraint: op.constraint))
+            end
+            do (ir::emit lx.b (IAsm template: template outs: oouts ins: oins clobbers: clobbers))
     end
 end
 
