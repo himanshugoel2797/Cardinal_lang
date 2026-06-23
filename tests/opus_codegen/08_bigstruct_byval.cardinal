@@ -1,0 +1,34 @@
+module main
+import io
+
+# >16-byte struct passed BY VALUE (SysV MEMORY class -> stack) and also returned
+# by value (>16B -> hidden pointer). Combine with other stack args to stress the
+# memoff accounting in both emit_call and the prologue.
+
+struct Big
+    a i64
+    b i64
+    c i64
+    d i64
+end
+
+func mkbig (x i64) -> Big
+    return (Big a: x b: (* x 2i64) c: (* x 3i64) d: (* x 4i64))
+end
+
+func sumbig (g Big) -> i64
+    return (+ (+ g.a g.b) (+ g.c g.d))
+end
+
+func bigwith (lead i64) (g Big) (trail i64) -> i64
+    return (+ lead (+ (sumbig g) trail))
+end
+
+func main () -> i32
+    let g = (mkbig 5i64)
+    do (io::println (to_str (sumbig g)))
+    do (io::println (to_str (sumbig (mkbig 10i64))))
+    do (io::println (to_str (bigwith 1000i64 g 1i64)))
+    do (io::println (to_str (bigwith 1000i64 (mkbig 7i64) 1i64)))
+    return 0i32
+end

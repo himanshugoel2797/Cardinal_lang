@@ -1,0 +1,15 @@
+module main
+import io
+
+# Characterize the f64->u64 boundary: just below 2^63 (works), at/above 2^63 (x86
+# bug). Confirms the bug is exactly the signed-truncation cvttsd2siq path for u64.
+
+func main () -> i32
+    let below f64 = 9.0e18
+    do (io::println (to_str (as below u64)))
+    let at f64 = 9.3e18
+    do (io::println (to_str (as at u64)))
+    let above f64 = 1.8e19
+    do (io::println (to_str (as above u64)))
+    return 0i32
+end

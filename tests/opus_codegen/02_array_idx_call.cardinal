@@ -1,0 +1,29 @@
+module main
+import io
+
+# arr[f(x)] where the index is a CALL, and set arr[g(y)] = h(z) where everything
+# is a call. emit_array_at copies the 24B array base onto the stack then loads idx;
+# does evaluating idx (already a temp) interact with the stack-spilled base?
+# Also nest: arr[ arr[k] ] reads using one element as the next index.
+
+func ix (x i64) -> i64
+    return (% (+ (* x 13i64) 1i64) 5i64)
+end
+
+func main () -> i32
+    let a = [10i64 20i64 30i64 40i64 50i64]
+    # index is a call result
+    do (io::println (to_str a[(ix 1i64)]))
+    do (io::println (to_str a[(ix 2i64)]))
+    # set with call index and call value
+    set a[(ix 3i64)] = (+ a[(ix 0i64)] a[(ix 4i64)])
+    let i = 0i64
+    while (< i 5i64)
+        do (io::println (to_str a[i]))
+        set i = (+ i 1i64)
+    end
+    # arr[arr[k]] indirect index
+    let b = [2i64 4i64 1i64 3i64 0i64]
+    do (io::println (to_str b[b[b[0i64]]]))
+    return 0i32
+end

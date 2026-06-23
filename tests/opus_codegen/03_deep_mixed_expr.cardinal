@@ -1,0 +1,35 @@
+module main
+import io
+
+func b2i (c bool) -> i64
+    if c
+        return 1i64
+    end
+    return 0i64
+end
+
+func main () -> i32
+    let a = 3i64
+    let b = 5i64
+    let c = 7i64
+    let d = 11i64
+    let e = 13i64
+    let f = 17i64
+    let g = 19i64
+    let h = 23i64
+    let r = (+ (* (+ a b) (- c d)) (- (* e f) (+ (* g h) (- (* a c) (* b d)))))
+    do (io::println (to_str r))
+    # comparison results feeding arithmetic
+    let cmp = (+ (b2i (< a b)) (+ (b2i (> c d)) (+ (b2i (== e f)) (b2i (!= g h)))))
+    do (io::println (to_str cmp))
+    # float tree
+    let x f64 = 1.5
+    let y f64 = 2.5
+    let z f64 = 3.5
+    let fr = (/ (+ (* x y) z) (- (* z z) (* x x)))
+    do (io::println (to_str fr))
+    # mix: int compared, used in float
+    let m = (+ (* (as (b2i (< a b)) f64) x) (* (as (b2i (>= c d)) f64) y))
+    do (io::println (to_str m))
+    return 0i32
+end

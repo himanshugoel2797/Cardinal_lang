@@ -569,6 +569,35 @@ func sorted_thunk_names (m {str Type}) -> {str}
     return ks
 end
 
+# The integer type name of an IRType ("" if not an int), and its bit width.
+func c_int_name (t IRType) -> str
+    match t
+        case (TyOf st)
+            match st
+                case (TInt n)
+                    return n
+                else
+                    return ""
+            end
+        else
+            return ""
+    end
+    return ""
+end
+
+func c_int_bits (n str) -> i64
+    if (or (strings::eq n "i8") (strings::eq n "u8"))
+        return 8i64
+    end
+    if (or (strings::eq n "i16") (strings::eq n "u16"))
+        return 16i64
+    end
+    if (or (strings::eq n "i32") (strings::eq n "u32"))
+        return 32i64
+    end
+    return 64i64
+end
+
 func emit_bin (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk bool) -> {str}
     let d = (val dst)
     let a = (val lhs)
@@ -604,6 +633,22 @@ func emit_bin (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk bool) -
         do (push p op)
         do (push p ")\");")
         return (line1 (cat p))
+    end
+    if (or (strings::eq op "shl") (strings::eq op "shr"))
+        # C/hardware mask the shift count to the operand width, so a count >= width
+        # would wrap (e.g. << 64 becomes identity). interp + x86 yield 0 (shl /
+        # logical shr) or sign-fill (arithmetic shr). Guard the count (compared as
+        # u64) to match. For an in-range constant count the optimizer folds this away.
+        let nm = (c_int_name ty)
+        let bits = (c_int_bits nm)
+        let signed = (and (> (len nm) 0u64) (== (strings::chars nm)[0] 'i'))
+        let guardpre = (strings::concat "((uint64_t)(" (strings::concat b (strings::concat ") >= " (strings::concat (convert::int_to_str bits) ")"))))
+        let normal = (strings::concat "((" (strings::concat a (strings::concat ") " (strings::concat (cop op) (strings::concat " (" (strings::concat b "))"))))))
+        let big = "0"
+        if (and (strings::eq op "shr") signed)
+            set big = (strings::concat "((" (strings::concat a (strings::concat ") >> " (strings::concat (convert::int_to_str (- bits 1i64)) ")"))))
+        end
+        return (line1 (strings::concat d (strings::concat " = (" (strings::concat cty (strings::concat ")(" (strings::concat guardpre (strings::concat " ? " (strings::concat big (strings::concat " : " (strings::concat normal ");"))))))))))
     end
     return (line1 (strings::concat d (strings::concat " = (" (strings::concat cty (strings::concat ")((" (strings::concat a (strings::concat ") " (strings::concat (cop op) (strings::concat " (" (strings::concat b "));"))))))))))
 end

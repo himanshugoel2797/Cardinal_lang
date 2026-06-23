@@ -1,0 +1,41 @@
+module main
+import io
+
+# A closure invocation as one argument among several to another call. The closure
+# call uses %r11 + the full reg-arg machinery; do sibling args (parked first) or
+# the outer call survive? Also a closure that itself takes/returns a float.
+
+func outer (a i64) (b i64) (c i64) -> i64
+    return (+ a (+ (* b 10i64) (* c 100i64)))
+end
+
+func fouter (a f64) (b f64) (c f64) -> f64
+    return (+ a (+ (* b 10.0) (* c 100.0)))
+end
+
+func make_adder (n i64) -> func(i64 -> i64)
+    let f = func (x i64) -> i64
+        return (+ x n)
+    end
+    return f
+end
+
+func make_scaler (k f64) -> func(f64 -> f64)
+    let f = func (x f64) -> f64
+        return (* x k)
+    end
+    return f
+end
+
+func main () -> i32
+    let add5 = (make_adder 5i64)
+    let add100 = (make_adder 100i64)
+    # closure calls as arguments to outer
+    do (io::println (to_str (outer (add5 1i64) (add100 2i64) (add5 3i64))))
+    let scale2 = (make_scaler 2.0)
+    let scale10 = (make_scaler 10.0)
+    do (io::println (to_str (fouter (scale2 1.5) (scale10 2.5) (scale2 3.5))))
+    # nested closure call as an argument to a closure call
+    do (io::println (to_str (add5 (add100 (add5 0i64)))))
+    return 0i32
+end

@@ -1,0 +1,43 @@
+module main
+import io
+
+# Structs containing floats passed/returned by value. The x86 backend classifies
+# struct eightbytes as INTEGER (GP regs / rax:rdx return); true SysV (the C backend)
+# puts float eightbytes in XMM. Caller+callee are both x86 so should be internally
+# consistent, but verify the VALUES survive a round trip (and match interp/C).
+
+struct FF
+    x f64
+    y f64
+end
+
+struct FI
+    f f64
+    i i64
+end
+
+func mkff (a f64) (b f64) -> FF
+    return (FF x: a y: b)
+end
+
+func sumff (p FF) -> f64
+    return (+ p.x p.y)
+end
+
+func mkfi (a f64) (b i64) -> FI
+    return (FI f: a i: b)
+end
+
+func usefi (p FI) -> f64
+    return (+ p.f (as p.i f64))
+end
+
+func main () -> i32
+    let p = (mkff 1.25 2.75)
+    do (io::println (to_str (sumff p)))
+    do (io::println (to_str (sumff (mkff 10.5 20.5))))
+    let q = (mkfi 3.5 7i64)
+    do (io::println (to_str (usefi q)))
+    do (io::println (to_str (usefi (mkfi 100.25 200i64))))
+    return 0i32
+end

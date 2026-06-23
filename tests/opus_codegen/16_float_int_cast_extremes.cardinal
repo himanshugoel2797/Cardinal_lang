@@ -1,0 +1,28 @@
+module main
+import io
+
+# float->int casts at and beyond the integer range, plus f32/f64 round trips and
+# negative values. x86 uses cvttsd2siq (truncate toward zero). Compare to interp/C.
+
+func main () -> i32
+    let a f64 = 3.9
+    let b f64 = 3.9
+    let c f64 = 2.5
+    let d f64 = 2.5
+    let e f64 = 200.7
+    let g f64 = 1000.9
+    do (io::println (to_str (as a i64)))
+    do (io::println (to_str (as (- b) i64)))
+    do (io::println (to_str (as c i32)))
+    do (io::println (to_str (as (- d) i32)))
+    do (io::println (to_str (as e u8)))
+    do (io::println (to_str (as g i16)))
+    let f f32 = 3.14
+    do (io::println (to_str (as f i64)))
+    do (io::println (to_str (as f f64)))
+    let big f64 = 1.0e18
+    do (io::println (to_str (as big i64)))
+    let huge f64 = 1.5e19
+    do (io::println (to_str (as huge u64)))
+    return 0i32
+end

@@ -1,0 +1,28 @@
+module main
+import io
+
+# A 16-byte (2-eightbyte) struct passed by value, positioned so its two eightbytes
+# would straddle the 6th GP register boundary. SysV: if the whole aggregate doesn't
+# fit in remaining regs it ALL goes to the stack. Test multiple positions.
+
+struct Pair
+    a i64
+    b i64
+end
+
+func use5_then_pair (p1 i64) (p2 i64) (p3 i64) (p4 i64) (p5 i64) (pr Pair) -> i64
+    return (+ (+ (+ p1 p2) (+ p3 p4)) (+ p5 (+ pr.a pr.b)))
+end
+
+func use4_then_pair (p1 i64) (p2 i64) (p3 i64) (p4 i64) (pr Pair) (p6 i64) -> i64
+    return (+ (+ (+ p1 p2) (+ p3 p4)) (+ (+ pr.a pr.b) p6))
+end
+
+func main () -> i32
+    let pr = (Pair a: 100i64 b: 200i64)
+    # 5 ints then a Pair: gpw=5, pair needs 2 -> 5+2=7>6 -> Pair on stack
+    do (io::println (to_str (use5_then_pair 1i64 2i64 3i64 4i64 5i64 pr)))
+    # 4 ints, Pair (fits 5,6 regs), then 1 int (spills to stack)
+    do (io::println (to_str (use4_then_pair 1i64 2i64 3i64 4i64 pr 6i64)))
+    return 0i32
+end

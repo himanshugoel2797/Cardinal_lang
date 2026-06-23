@@ -1,0 +1,46 @@
+module main
+import io
+
+# Sum type with float and multi-field payloads. ISumNew parks each field through
+# scratch + cl_gc_deref; ISumField loads back. Mix float payload (stored via xmm),
+# struct payload (multi-word copy), and recursive structure.
+
+struct Pt
+    x f64
+    y f64
+end
+
+type Shape
+    Circle (r f64)
+    Rect (w f64) (h f64)
+    Dot (p Pt)
+    Empty
+end
+
+func area (s Shape) -> f64
+    match s
+        case (Circle r)
+            return (* (* r r) 3.14159)
+        case (Rect w h)
+            return (* w h)
+        case (Dot p)
+            return (+ p.x p.y)
+        case Empty
+            return 0.0
+    end
+    return 0.0
+end
+
+func main () -> i32
+    let shapes {Shape} = (vec Shape)
+    do (push shapes (Circle r: 2.0))
+    do (push shapes (Rect w: 3.0 h: 4.0))
+    do (push shapes (Dot p: (Pt x: 1.5 y: 2.5)))
+    do (push shapes Empty)
+    let i = 0i64
+    while (< i (as (len shapes) i64))
+        do (io::println (to_str (area shapes[(as i u64)])))
+        set i = (+ i 1i64)
+    end
+    return 0i32
+end

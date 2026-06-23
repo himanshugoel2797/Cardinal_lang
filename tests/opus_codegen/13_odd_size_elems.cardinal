@@ -1,0 +1,72 @@
+module main
+import io
+
+# Structs whose size is NOT a clean 1/2/4/8 (3,5,6,7,12 bytes) used as container
+# elements. store_elem_at_rax / load_elem_from_rax must copy byte-accurately so a
+# packed element neither overruns its neighbor nor drops high fields.
+
+struct S3
+    a u8
+    b u8
+    c u8
+end
+
+struct S5
+    x i32
+    y u8
+end
+
+struct S6
+    a i16
+    b i16
+    c i16
+end
+
+struct S7
+    p i32
+    q u16
+    r u8
+end
+
+struct S12
+    a i32
+    b i32
+    c i32
+end
+
+func main () -> i32
+    let a3 = (array S3 3i64)
+    let a5 = (array S5 3i64)
+    let a6 = (array S6 3i64)
+    let a7 = (array S7 3i64)
+    let a12 = (array S12 3i64)
+    let i = 0i64
+    while (< i 3i64)
+        let ii = (as i i32)
+        set a3[i] = (S3 a: (as (+ i 1i64) u8) b: (as (+ i 2i64) u8) c: (as (+ i 3i64) u8))
+        set a5[i] = (S5 x: (* ii 1000i32) y: (as (+ i 9i64) u8))
+        set a6[i] = (S6 a: (as (* i 11i64) i16) b: (as (* i 22i64) i16) c: (as (* i 33i64) i16))
+        set a7[i] = (S7 p: (* ii 70000i32) q: (as (* i 300i64) u16) r: (as (+ i 5i64) u8))
+        set a12[i] = (S12 a: (* ii 1i32) b: (* ii 2i32) c: (* ii 3i32))
+        set i = (+ i 1i64)
+    end
+    set i = 0i64
+    while (< i 3i64)
+        do (io::println (to_str a3[i].a))
+        do (io::println (to_str a3[i].b))
+        do (io::println (to_str a3[i].c))
+        do (io::println (to_str a5[i].x))
+        do (io::println (to_str a5[i].y))
+        do (io::println (to_str a6[i].a))
+        do (io::println (to_str a6[i].b))
+        do (io::println (to_str a6[i].c))
+        do (io::println (to_str a7[i].p))
+        do (io::println (to_str a7[i].q))
+        do (io::println (to_str a7[i].r))
+        do (io::println (to_str a12[i].a))
+        do (io::println (to_str a12[i].b))
+        do (io::println (to_str a12[i].c))
+        set i = (+ i 1i64)
+    end
+    return 0i32
+end

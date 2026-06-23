@@ -1,0 +1,36 @@
+module main
+import io
+
+# Misc float edge cases: float comparisons feeding control flow, min/max via
+# branches, f32 arithmetic precision, and the float divide-by-zero panic parity.
+
+func main () -> i32
+    let a f64 = 0.1
+    let b f64 = 0.2
+    let s f64 = (+ a b)
+    # 0.1+0.2 != 0.3 in IEEE; print to confirm identical rounding across backends
+    do (io::println (to_str s))
+    do (io::println (to_str (== s 0.3)))
+    # f32 arithmetic
+    let x f32 = 0.1
+    let y f32 = 0.2
+    let z f32 = (+ x y)
+    do (io::println (to_str z))
+    # chained float compares in conditionals
+    let p f64 = 3.0
+    let q f64 = 3.0
+    if (and (<= p q) (>= p q))
+        do (io::println "eq")
+    else
+        do (io::println "ne")
+    end
+    # float used as loop accumulator
+    let acc f64 = 0.0
+    let i = 0i64
+    while (< i 10i64)
+        set acc = (+ acc 0.5)
+        set i = (+ i 1i64)
+    end
+    do (io::println (to_str acc))
+    return 0i32
+end

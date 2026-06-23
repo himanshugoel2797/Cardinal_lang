@@ -1,0 +1,14 @@
+module main
+import io
+
+# MINIMAL REPRO: f64 -> u64 for a value above i64::MAX (but within u64 range).
+# x86 uses cvttsd2siq (SIGNED truncate) regardless of target signedness, so a
+# value >= 2^63 yields 0x8000000000000000 instead of the true unsigned value.
+
+func main () -> i32
+    let huge f64 = 1.5e19
+    do (io::println (to_str (as huge u64)))
+    let big2 f64 = 1.0e19
+    do (io::println (to_str (as big2 u64)))
+    return 0i32
+end

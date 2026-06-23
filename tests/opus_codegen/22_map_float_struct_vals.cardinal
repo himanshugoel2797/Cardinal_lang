@@ -1,0 +1,34 @@
+module main
+import io
+import strings
+
+# Maps with float values and with struct values, string keys (IMapSet parks key at
+# scratch[0], value words at scratch[1..]; cl_map_set copies keysz/valsz). Stress
+# the &scratch / &scratch+8 pointer split for multi-word values.
+
+struct V
+    a i64
+    b i64
+end
+
+func main () -> i32
+    let fm {str f64} = (map str f64)
+    set fm["pi"] = 3.14159
+    set fm["e"] = 2.71828
+    set fm["phi"] = 1.61803
+    for k in (map_keys fm)
+        do (io::println (strings::concat k (strings::concat "=" (to_str fm[k]))))
+    end
+    let sm {str V} = (map str V)
+    set sm["one"] = (V a: 1i64 b: 10i64)
+    set sm["two"] = (V a: 2i64 b: 20i64)
+    for k in (map_keys sm)
+        do (io::println (to_str (+ sm[k].a sm[k].b)))
+    end
+    # int-keyed map with float value
+    let im {i64 f64} = (map i64 f64)
+    set im[100i64] = 1.5
+    set im[200i64] = 2.5
+    do (io::println (to_str (+ im[100i64] im[200i64])))
+    return 0i32
+end

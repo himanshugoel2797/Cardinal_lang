@@ -1,0 +1,28 @@
+module main
+import io
+
+# Calls whose arguments are themselves calls. The inner calls clobber caller-saved
+# regs (rax/rcx/rdx/rsi/rdi); does an inner call corrupt an outer call's already-
+# parked argument? Mix int + float returns so GP and xmm parking interleave.
+
+func gi (x i64) -> i64
+    return (+ (* x 7i64) 3i64)
+end
+
+func gf (x f64) -> f64
+    return (+ (* x 2.0) 1.0)
+end
+
+func combine (a i64) (b f64) (c i64) (d f64) (e i64) -> f64
+    return (+ (+ (as a f64) b) (+ (as c f64) (+ d (as e f64))))
+end
+
+func main () -> i32
+    # every argument is a nested call; some return i64, some f64
+    let r = (combine (gi 1i64) (gf 2.0) (gi 3i64) (gf 4.0) (gi 5i64))
+    do (io::println (to_str r))
+    # also a deeper chain
+    let r2 = (combine (gi (gi 1i64)) (gf (gf 1.0)) (gi (gi 2i64)) (gf (gf 2.0)) (gi (gi 3i64)))
+    do (io::println (to_str r2))
+    return 0i32
+end

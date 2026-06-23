@@ -1,0 +1,39 @@
+module main
+import io
+import strings
+
+# Arguments that are calls returning structs / floats / strings, passed to an outer
+# call. Each inner call returns an aggregate (parked multi-word) or float (xmm) or
+# managed str (rooted). Verify nothing is dropped/corrupted across the nesting.
+
+struct Vec3
+    x f64
+    y f64
+    z f64
+end
+
+func mkv (s f64) -> Vec3
+    return (Vec3 x: s y: (* s 2.0) z: (* s 3.0))
+end
+
+func dot (a Vec3) (b Vec3) -> f64
+    return (+ (* a.x b.x) (+ (* a.y b.y) (* a.z b.z)))
+end
+
+func label (n i64) -> str
+    return (strings::concat "n" (to_str n))
+end
+
+func combine (s str) (d f64) (n i64) -> str
+    return (strings::concat s (strings::concat ":" (strings::concat (to_str d) (strings::concat ":" (to_str n)))))
+end
+
+func main () -> i32
+    # outer call whose args are: a call returning str, a call returning f64 that
+    # itself takes two calls returning structs, and a plain int call.
+    do (io::println (combine (label 7i64) (dot (mkv 1.0) (mkv 2.0)) (* 3i64 4i64)))
+    # deeper: dot of two freshly-built Vec3 from computed scalars
+    let r f64 = (dot (mkv (+ 0.5 0.5)) (mkv (* 1.5 2.0)))
+    do (io::println (to_str r))
+    return 0i32
+end

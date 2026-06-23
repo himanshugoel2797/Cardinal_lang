@@ -1,0 +1,40 @@
+module main
+import io
+
+# set vec[i].field = (call ...) : emit_place_addr -> PVecElem -> call cl_vec_at,
+# with the value being a call result and a string field too. Then nested:
+# vec-of-struct where struct holds a vec, set v[i].inner[j] = ...
+
+struct Node
+    id i64
+    label str
+    weight f64
+end
+
+func wcalc (x i64) -> f64
+    return (* (as x f64) 1.5)
+end
+
+func main () -> i32
+    let v {Node} = (vec Node)
+    let i = 0i64
+    while (< i 4i64)
+        do (push v (Node id: 0i64 label: "init" weight: 0.0))
+        set i = (+ i 1i64)
+    end
+    set i = 0i64
+    while (< i 4i64)
+        set v[(as i u64)].id = (* i 11i64)
+        set v[(as i u64)].label = (to_str (* i 100i64))
+        set v[(as i u64)].weight = (wcalc i)
+        set i = (+ i 1i64)
+    end
+    set i = 0i64
+    while (< i 4i64)
+        do (io::println (to_str v[(as i u64)].id))
+        do (io::println v[(as i u64)].label)
+        do (io::println (to_str v[(as i u64)].weight))
+        set i = (+ i 1i64)
+    end
+    return 0i32
+end

@@ -1,0 +1,50 @@
+module main
+import io
+
+# Build nested aggregates (vec of vecs, struct holding vec/str) inside a loop so
+# the GC runs mid-expression; check rooting keeps every live handle. Also pass
+# managed values (str, vec) as call args (parked through scratch) while other
+# managed temps are live.
+
+struct Rec
+    name str
+    nums {i64}
+end
+
+func mkrec (id i64) -> Rec
+    let v {i64} = (vec i64)
+    let j = 0i64
+    while (< j 5i64)
+        do (push v (* id (+ j 1i64)))
+        set j = (+ j 1i64)
+    end
+    return (Rec name: (to_str id) nums: v)
+end
+
+func total (r Rec) -> i64
+    let s = 0i64
+    for x in r.nums
+        set s = (+ s x)
+    end
+    return s
+end
+
+func main () -> i32
+    let all {Rec} = (vec Rec)
+    let i = 0i64
+    while (< i 50i64)
+        do (push all (mkrec i))
+        set i = (+ i 1i64)
+    end
+    let grand = 0i64
+    set i = 0i64
+    while (< i (as (len all) i64))
+        let r = all[(as i u64)]
+        # nested: pass managed r to total, concat managed strings
+        set grand = (+ grand (total r))
+        set i = (+ i 1i64)
+    end
+    do (io::println (to_str grand))
+    do (io::println all[(as 49u64 u64)].name)
+    return 0i32
+end

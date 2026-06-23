@@ -1,0 +1,29 @@
+module main
+import io
+
+# More than 6 integer args + more than 8 float args, forcing both GP and xmm
+# overflow onto the stack. Stresses emit_store_arg_to_stack ordering and the
+# memtotal/round16 rsp adjustment. Args are expressions so order matters.
+
+func sink (a i64) (b i64) (c i64) (d i64) (e i64) (f i64) (g i64) (h i64) (i i64) (j i64) -> i64
+    return (+ a (+ b (+ c (+ d (+ e (+ f (+ g (+ h (+ i j)))))))))
+end
+
+func fsink (a f64) (b f64) (c f64) (d f64) (e f64) (f f64) (g f64) (h f64) (i f64) (j f64) -> f64
+    return (+ a (+ b (+ c (+ d (+ e (+ f (+ g (+ h (+ i j)))))))))
+end
+
+# interleaved int/float, 12 args
+func mix (a i64) (x f64) (b i64) (y f64) (c i64) (z f64) (d i64) (w f64) (e i64) (v f64) (f i64) (u f64) -> f64
+    return (+ (as (+ a (+ b (+ c (+ d (+ e f))))) f64) (+ x (+ y (+ z (+ w (+ v u))))))
+end
+
+func main () -> i32
+    let r = (sink 1i64 2i64 3i64 4i64 5i64 6i64 7i64 8i64 9i64 10i64)
+    do (io::println (to_str r))
+    let fr = (fsink 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0)
+    do (io::println (to_str fr))
+    let m = (mix 1i64 1.5 2i64 2.5 3i64 3.5 4i64 4.5 5i64 5.5 6i64 6.5)
+    do (io::println (to_str m))
+    return 0i32
+end

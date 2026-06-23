@@ -1,0 +1,17 @@
+module main
+import io
+
+# Float divide-by-zero must PANIC (oracle parity), but dividing by NaN must NOT
+# (x / NaN = NaN). The x86 path uses ucomi + jp/jne to distinguish. Test the
+# non-panicking cases here (the panicking case is separate to keep status clean).
+
+func main () -> i32
+    let a f64 = 6.0
+    let b f64 = 2.0
+    do (io::println (to_str (/ a b)))
+    # divide by a computed nonzero
+    let c f64 = 3.0
+    let d f64 = (- 2.0)
+    do (io::println (to_str (/ a (+ c d))))
+    return 0i32
+end

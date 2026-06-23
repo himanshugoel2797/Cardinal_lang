@@ -1,0 +1,14 @@
+module main
+import io
+
+# Float division by an ordered zero must panic in all three backends (status 1),
+# with identical stdout up to the panic.
+
+func main () -> i32
+    do (io::println "start")
+    let a f64 = 5.0
+    let z f64 = 0.0
+    do (io::println (to_str (/ a z)))
+    do (io::println "unreached")
+    return 0i32
+end

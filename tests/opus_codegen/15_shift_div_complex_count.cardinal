@@ -1,0 +1,41 @@
+module main
+import io
+
+# shift count / divisor coming from a call, array element, or complex expr. In x86
+# shift uses %cl (rcx) and div uses %rdx:%rax + the divisor in %rcx. emit_bin loads
+# lhs->rax, rhs->rcx; the count/divisor is just a slot, but let's stress the guards
+# (count >= width, INT_MIN / -1, divide-by-zero adjacency) with computed operands.
+
+func getcount (x i64) -> i64
+    return (% (+ x 60i64) 70i64)
+end
+
+func main () -> i32
+    let counts = [0i64 1i64 7i64 31i64 63i64 64i64 65i64 100i64]
+    let base = 1u64
+    let i = 0i64
+    while (< i (as (len counts) i64))
+        let c = (as counts[i] u64)
+        # shl/shr by a computed count, including >= width (must yield 0)
+        do (io::println (to_str (shl base c)))
+        do (io::println (to_str (shr (as 9223372036854775807i64 u64) c)))
+        set i = (+ i 1i64)
+    end
+    # signed shr fill, count from call
+    let neg = (- 1000i64)
+    do (io::println (to_str (shr neg (getcount 5i64))))
+    # division with computed divisor (array element)
+    let divs = [3i64 7i64 13i64 1i64]
+    set i = 0i64
+    while (< i (as (len divs) i64))
+        do (io::println (to_str (/ 1000000i64 divs[i])))
+        do (io::println (to_str (% 1000000i64 divs[i])))
+        set i = (+ i 1i64)
+    end
+    # INT_MIN / -1 wrap special-case with computed -1
+    let mn = (- (shl 1i64 63i64))
+    let d = (- 1i64)
+    do (io::println (to_str (/ mn d)))
+    do (io::println (to_str (% mn d)))
+    return 0i32
+end

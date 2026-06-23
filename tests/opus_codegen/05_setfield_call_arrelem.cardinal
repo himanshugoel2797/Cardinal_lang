@@ -1,0 +1,46 @@
+module main
+import io
+
+# set arr[i].field = expr where expr is a CALL, and the array element is a struct.
+# Path: emit_park_arg(call result) then emit_place_addr -> emit_array_at (subq rsp,
+# copy 24B base, call cl_array_at). Does the parked value survive cl_array_at?
+# Also field is sub-word (i16/u8) to exercise store_sized.
+
+struct Cell
+    tag u8
+    big i64
+    small i16
+end
+
+func compute (x i64) -> i64
+    return (+ (* x x) 100i64)
+end
+
+func mk16 (x i64) -> i16
+    return (as (% x 30000i64) i16)
+end
+
+func main () -> i32
+    let arr = (array Cell 3i64)
+    let i = 0i64
+    while (< i 3i64)
+        set arr[i] = (Cell tag: (as i u8) big: 0i64 small: 0i16)
+        set i = (+ i 1i64)
+    end
+    # set the field to a CALL result, index also computed
+    set i = 0i64
+    while (< i 3i64)
+        set arr[i].big = (compute (+ i 2i64))
+        set arr[i].small = (mk16 (* i 1000i64))
+        set arr[i].tag = (as (+ i 7i64) u8)
+        set i = (+ i 1i64)
+    end
+    set i = 0i64
+    while (< i 3i64)
+        do (io::println (to_str arr[i].tag))
+        do (io::println (to_str arr[i].big))
+        do (io::println (to_str arr[i].small))
+        set i = (+ i 1i64)
+    end
+    return 0i32
+end

@@ -1,0 +1,33 @@
+module main
+import io
+
+# `checked` blocks turn overflow into a panic. The x86 chk path uses %rdx to hold
+# the raw result and compares to the normalized form. Test widths + the negate /
+# bnot checked unary path. All three backends must AGREE on panic vs value.
+
+func main () -> i32
+    # in-range checked arithmetic at narrow widths (no panic)
+    checked
+        let a = (as 100i32 i8)
+        let b = (as 27i32 i8)
+        do (io::println (to_str (+ a b)))
+    end
+    checked
+        let x = (as 10000i32 i16)
+        let y = (as 20000i32 i16)
+        do (io::println (to_str (+ x y)))
+    end
+    # checked unary negate in-range
+    checked
+        let z = (as 100i32 i8)
+        do (io::println (to_str (- z)))
+    end
+    # u8 checked add in range
+    checked
+        let p = (as 200i32 u8)
+        let q = (as 55i32 u8)
+        do (io::println (to_str (+ p q)))
+    end
+    do (io::println "done")
+    return 0i32
+end

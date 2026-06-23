@@ -2235,7 +2235,29 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             if fromf
                 # float -> int: truncate toward zero (matches C / the interpreter)
                 let out = (load_xmm bx "%xmm0" v)
-                set out = (strings::concat out (line (cat3 "    cvtt" (sse_sfx (iv_ty v)) "2siq %xmm0, %rax")))
+                let csfx = (sse_sfx (iv_ty v))
+                # float -> u64: cvtt..2siq is a SIGNED truncation, so a value >= 2^63
+                # overflows i64 and yields the integer-indefinite (0x8000…). Do the
+                # unsigned conversion: below 2^63 convert directly; at/above, subtract
+                # 2^63, convert, then set bit 63. (Mirror of the u64 -> float case.)
+                if (and (== (irt_bits toty) 64i64) (not (irt_signed toty)))
+                    let p63 = (float_pool_add bx.floats "9223372036854775808.0" (irt_f32 (iv_ty v)))
+                    let big = (lbl bx (strings::concat "f2u_big_" (iv_key dst)))
+                    let done = (lbl bx (strings::concat "f2u_done_" (iv_key dst)))
+                    set out = (strings::concat out (line (cat3 (cat2 "    mov" csfx) (cat2 " " p63) "(%rip), %xmm1")))
+                    set out = (strings::concat out (line (cat3 "    comi" csfx " %xmm1, %xmm0")))
+                    set out = (strings::concat out (line (cat2 "    jae " big)))
+                    set out = (strings::concat out (line (cat3 "    cvtt" csfx "2siq %xmm0, %rax")))
+                    set out = (strings::concat out (line (cat2 "    jmp " done)))
+                    set out = (strings::concat out (line (cat2 big ":")))
+                    set out = (strings::concat out (line (cat3 "    sub" csfx " %xmm1, %xmm0")))
+                    set out = (strings::concat out (line (cat3 "    cvtt" csfx "2siq %xmm0, %rax")))
+                    set out = (strings::concat out (line "    movabsq $0x8000000000000000, %rdx"))
+                    set out = (strings::concat out (line "    xorq %rdx, %rax"))
+                    set out = (strings::concat out (line (cat2 done ":")))
+                    return (strings::concat out (store_rax bx dst))
+                end
+                set out = (strings::concat out (line (cat3 "    cvtt" csfx "2siq %xmm0, %rax")))
                 set out = (strings::concat out (extend_rax (irt_bits toty) (irt_signed toty)))
                 return (strings::concat out (store_rax bx dst))
             end

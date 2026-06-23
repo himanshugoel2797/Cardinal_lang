@@ -1,0 +1,17 @@
+module main
+import io
+
+# A checked block that DOES overflow -> all three must panic (status class 1) and
+# produce identical stdout BEFORE the panic.
+
+func main () -> i32
+    do (io::println "before")
+    checked
+        let a = (as 100i8 i8)
+        let b = (as 100i8 i8)
+        # 200 doesn't fit in i8 -> overflow panic
+        do (io::println (to_str (+ a b)))
+    end
+    do (io::println "after")
+    return 0i32
+end
