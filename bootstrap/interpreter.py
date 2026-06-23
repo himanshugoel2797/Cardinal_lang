@@ -988,6 +988,7 @@ class CChar:
 class StructV:
     typename: str
     fields: dict        # name -> value  (value semantics: copied on move)
+    defmod: object = None   # defining module name, for to_str-override dispatch (§5.5)
 
 @dataclass
 class ArrayV:
@@ -1010,6 +1011,7 @@ class EnumV:
     enum: str
     variant: str
     intval: int
+    defmod: object = None   # defining module name, for to_str-override dispatch (§5.5)
 
 @dataclass
 class SumV:
@@ -1437,7 +1439,7 @@ class Interp:
             ed = ms.enums[parts[0]]
             if parts[1] not in ed.variants:
                 raise CardinalError(f"no variant {parts[1]} in enum {parts[0]}")
-            return EnumV(parts[0], parts[1], ed.variants.index(parts[1]))
+            return EnumV(parts[0], parts[1], ed.variants.index(parts[1]), ms.name)
         # module member  mod::name
         mod = ms.imported_modules.get(parts[0])
         if mod is None:
@@ -1505,7 +1507,7 @@ class Interp:
             if fname not in vals:
                 raise CardinalError(f"missing field '{fname}' in {tyname}")
             given[fname] = vals[fname]
-        return StructV(tyname, given)
+        return StructV(tyname, given, self.find_struct_ms(tyname, ms))
 
     def eval_array_lit(self, e, env, ms, expected):
         elem_ty = None
@@ -1841,7 +1843,8 @@ class Interp:
         Arrays/closures/handles keep reference semantics."""
         if isinstance(v, StructV):
             return StructV(v.typename,
-                           {k: self.copy_value(x) for k, x in v.fields.items()})
+                           {k: self.copy_value(x) for k, x in v.fields.items()},
+                           v.defmod)
         return v
 
     def zero_value(self, ty, ms):
@@ -1854,9 +1857,19 @@ class Interp:
             if n == "str": return ""
             sd = self.find_struct(n, ms)
             if sd is not None:
-                return StructV(n, {fn: self.zero_value(ft, ms) for fn, ft in sd.fields})
+                return StructV(n, {fn: self.zero_value(ft, ms) for fn, ft in sd.fields},
+                               self.find_struct_ms(n, ms))
             return NULL          # enums/handles/refs default to null
         return NULL              # arrays/functions default to null
+
+    def find_struct_ms(self, name, ms):
+        # name of the module that DEFINES struct `name` (for to_str-override dispatch)
+        if name in ms.structs:
+            return ms.name
+        for mod in ms.imported_modules.values():
+            if name in mod.structs:
+                return mod.name
+        return None
 
     def find_struct(self, name, ms):
         if name in ms.structs:
@@ -1927,7 +1940,26 @@ class ModuleScope:
 # Builtins
 # --------------------------------------------------------------------------- #
 
-def _display(v):
+def _to_str_override(interp, defmod, typename):
+    # The user-provided `<typename>_to_str (T) -> str` in the type's defining
+    # module, if present (DESIGN §5.5). The checker has validated its signature.
+    if defmod is None:
+        return None
+    msc = interp.modules.get(defmod)
+    if msc is None:
+        return None
+    cell = msc.env.cell(typename + "_to_str")
+    if cell is None:
+        return None
+    fn = cell.value
+    if isinstance(fn, Closure) and len(fn.params) == 1:
+        return fn
+    return None
+
+def _display(interp, v):
+    # The value's string form (DESIGN §5.5): a user type dispatches to its
+    # (overridable) per-type hook; otherwise the canonical form, recursing here
+    # so nested overrides apply. io::print is print(to_str(x)).
     if isinstance(v, CInt): return str(v.val)
     if isinstance(v, CFloat): return "%g" % v.val   # DESIGN §5.5: %g, matches the C backend
     if isinstance(v, bool): return "true" if v else "false"
@@ -1935,19 +1967,26 @@ def _display(v):
     if isinstance(v, str): return v
     if v is NULL: return "null"
     if v is UNIT: return "unit"
-    if isinstance(v, EnumV): return f"{v.enum}::{v.variant}"
+    if isinstance(v, EnumV):
+        fn = _to_str_override(interp, v.defmod, v.enum)
+        if fn is not None:
+            return interp.call(fn, [v], interp.modules[v.defmod])
+        return f"{v.enum}::{v.variant}"
     if isinstance(v, SumV):
-        inner = " ".join(f"{k}: {_display(x)}" for k, x in v.fields.items())
+        inner = " ".join(f"{k}: {_display(interp, x)}" for k, x in v.fields.items())
         return f"({v.variant}{(' ' + inner) if inner else ''})"
     if isinstance(v, StructV):
-        inner = " ".join(f"{k}: {_display(x)}" for k, x in v.fields.items())
+        fn = _to_str_override(interp, v.defmod, v.typename)
+        if fn is not None:
+            return interp.call(fn, [v], interp.modules[v.defmod])
+        inner = " ".join(f"{k}: {_display(interp, x)}" for k, x in v.fields.items())
         return f"({v.typename} {inner})"
     if isinstance(v, ArrayV):
-        return "[" + " ".join(_display(x) for x in v.items) + "]"
+        return "[" + " ".join(_display(interp, x) for x in v.items) + "]"
     if isinstance(v, VecV):
-        return "{" + " ".join(_display(x) for x in v.items) + "}"
+        return "{" + " ".join(_display(interp, x) for x in v.items) + "}"
     if isinstance(v, MapV):
-        return "{" + " ".join(f"{_display(k)}: {_display(val)}"
+        return "{" + " ".join(f"{_display(interp, k)}: {_display(interp, val)}"
                               for k, val in v.data.values()) + "}"
     return str(v)
 
@@ -1955,10 +1994,10 @@ def _display(v):
 def builtin_io():
     ms = ModuleScope("io")
     def _println(interp, args):
-        print("".join(_display(a) for a in args))
+        print("".join(_display(interp, a) for a in args))
         return UNIT
     def _print(interp, args):
-        sys.stdout.write("".join(_display(a) for a in args))
+        sys.stdout.write("".join(_display(interp, a) for a in args))
         return UNIT
     ms.env.define("println", Builtin("io::println", _println), mutable=False)
     ms.env.define("print", Builtin("io::print", _print), mutable=False)
@@ -2021,7 +2060,7 @@ def builtin_convert():
 
 
 def _panic(interp, args):
-    msg = _display(args[0]) if args else "panic"
+    msg = _display(interp, args[0]) if args else "panic"
     raise Panic(msg)
 
 def _norm_key(k):
@@ -2075,7 +2114,7 @@ def _pop(interp, args):
 
 def _to_str(interp, args):
     # The string form of a value (DESIGN §5.5). io::print is print(to_str(x)).
-    return _display(args[0])
+    return _display(interp, args[0])
 
 GLOBAL_BUILTINS = {
     "panic": Builtin("panic", _panic),
