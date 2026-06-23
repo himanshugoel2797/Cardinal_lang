@@ -1,0 +1,12 @@
+module test_substr_overflow
+
+import io
+import strings
+
+func main () -> i32
+    let s = "hello"
+    # Very large count should clamp to end
+    let sub = (strings::substr s 1i64 9999999999i64)
+    do (io::println sub)
+    return 0i32
+end

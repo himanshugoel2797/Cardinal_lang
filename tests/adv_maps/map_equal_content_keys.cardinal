@@ -1,0 +1,28 @@
+module map_equal_content_keys
+
+import io
+import strings
+
+func main () -> i32
+    # Test: str keys that are equal by content but potentially different objects
+    let m {str i32} = (map str i32)
+
+    # Insert with literal
+    set m["hello"] = 1i32
+
+    # Build the same string differently
+    let s1 = (strings::concat "hel" "lo")
+    set m[s1] = 100i32   # Should overwrite, not add new key
+
+    do (io::println (len m))        # 1, not 2
+    do (io::println m["hello"])     # 100
+
+    # Iterate and print keys
+    for k in (map_keys m)
+        do (io::print k)
+        do (io::print " = ")
+        do (io::println m[k])
+    end
+
+    return 0i32
+end

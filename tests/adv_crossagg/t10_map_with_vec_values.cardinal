@@ -1,0 +1,33 @@
+module t10_map_with_vec_values
+
+import io
+
+# Map with vec values: test vec deep-copy semantics through map
+func main () -> i32
+    let m {str {i32}} = (map str {i32})
+
+    let v1 {i32} = (vec i32)
+    do (push v1 10)
+    do (push v1 20)
+    do (push v1 30)
+
+    let v2 {i32} = (vec i32)
+    do (push v2 100)
+    do (push v2 200)
+
+    set m["x"] = v1
+    set m["y"] = v2
+
+    # Read via key
+    do (io::println (len m["x"]))     # 3
+    do (io::println m["x"][0])        # 10
+    do (io::println m["y"][1])        # 200
+
+    # Mutating the copy doesn't affect the map (deep copy)
+    let copy_x = m["x"]
+    do (push copy_x 9999)
+    do (io::println (len m["x"]))     # 3 (unchanged in map)
+    do (io::println (len copy_x))     # 4 (copy extended)
+
+    return 0i32
+end

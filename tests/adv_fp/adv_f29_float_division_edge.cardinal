@@ -1,0 +1,29 @@
+module adv_f29_float_division_edge
+import io
+
+func div_by_denom (num f64) (denom f64) -> f64
+    return (/ num denom)
+end
+
+func main () -> i32
+    # Division producing special values
+    do (io::println (div_by_denom 1.0 0.0))   # inf
+
+    do (io::println (div_by_denom (- 1.0) 0.0))   # -inf
+
+    do (io::println (div_by_denom 0.0 0.0))   # nan
+
+    # Division of infinity
+    do (io::println (div_by_denom (/ 1.0 0.0) 2.0))   # inf
+
+    # Division by very small number (approaches inf)
+    do (io::println (div_by_denom 1.0 1e-300))
+
+    # Division by very large number (approaches 0)
+    do (io::println (div_by_denom 1.0 1e300))
+
+    # Zero divided by small number
+    do (io::println (div_by_denom 0.0 1e-300))
+
+    return 0i32
+end

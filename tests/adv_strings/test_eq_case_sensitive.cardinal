@@ -1,0 +1,12 @@
+module test_eq_case_sensitive
+
+import io
+import strings
+
+func main () -> i32
+    let s1 = "Hello"
+    let s2 = "hello"
+    let result = (strings::eq s1 s2)
+    do (io::println result)
+    return 0i32
+end

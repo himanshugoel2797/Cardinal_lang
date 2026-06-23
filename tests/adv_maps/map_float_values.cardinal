@@ -1,0 +1,26 @@
+module map_float_values
+
+import io
+
+func main () -> i32
+    # Test: map with float values (precision, retrieval)
+    let m {str f64} = (map str f64)
+    set m["pi"] = 3.14159
+    set m["e"] = 2.71828
+    set m["sqrt2"] = 1.41421
+
+    do (io::println m["pi"])
+    do (io::println m["e"])
+    do (io::println m["sqrt2"])
+
+    # Overwrite with different float
+    set m["pi"] = 3.0
+
+    do (io::println m["pi"])
+
+    # Delete and check
+    do (map_del m "pi")
+    do (io::println (map_has m "pi"))
+
+    return 0i32
+end

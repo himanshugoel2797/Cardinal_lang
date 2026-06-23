@@ -1,0 +1,16 @@
+module test_string_comparison
+
+import io
+
+func main () -> i32
+    let s1 = "apple"
+    let s2 = "banana"
+    let s3 = "apple"
+    if (== s1 s3)
+        do (io::println "s1 == s3")
+    end
+    if (!= s1 s2)
+        do (io::println "s1 != s2")
+    end
+    return 0i32
+end

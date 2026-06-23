@@ -1,0 +1,41 @@
+module adv_gc15_vec_pop_after_gc
+
+import io
+
+# Test: allocate a large vec, then repeatedly pop while allocating heavily.
+# Tests that vec capacity is properly tracked across GC.
+
+func main () -> i32
+    let v {i32} = (vec i32)
+
+    # Build a large vec
+    for i = 0 to 10000
+        do (push v i)
+    end
+
+    let total = 0i32
+
+    # Pop items and allocate heavily
+    for iteration = 0 to 1000
+        # Pop 10 items
+        for _ = 0 to 10
+            let popped = (pop v)
+            set total = (+ total popped)
+        end
+
+        # Allocate heavily
+        let m {str i32} = (map str i32)
+        for i = 0 to 100
+            let key = (strings::concat "k" (to_str i))
+            let m[key] = i
+        end
+    end
+
+    # Expected: sum of 9999 + 9998 + ... + 9000 (10000 - 1000*10)
+    # = sum of (9999 - i) for i in 0..9999 = sum of popped items
+    # From 9999 down by 10 each time, 1000 times:
+    # = (9999 + 9989 + ... + 9009) [arithmetic series, 1000 terms]
+    # = 1000 * (9999 + 9009) / 2 = 1000 * 19008 / 2 = 9504000
+    do (io::println total)
+    return 0i32
+end

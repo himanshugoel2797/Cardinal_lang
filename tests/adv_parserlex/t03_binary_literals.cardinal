@@ -1,0 +1,18 @@
+module t03_binary_literals
+
+import io
+
+func main () -> i32
+    # Test binary literals
+    let a = 0b0i32
+    let b = 0b1i32
+    let c = 0b11i32
+    let d = 0b1111i32
+    let e = 0b11111111u8
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    do (io::println e)
+    return 0i32
+end

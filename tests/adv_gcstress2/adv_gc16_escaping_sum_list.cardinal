@@ -1,0 +1,57 @@
+module adv_gc16_escaping_sum_list
+
+import io
+
+# Test: build a linked list (as a sum type) from a loop, then process it
+# after many intervening allocations. Tests that entire list structure survives GC.
+
+type LinkedList
+    Empty
+    Node (val i32) (next LinkedList)
+end
+
+func build_list (n i32) -> LinkedList
+    let list LinkedList = Empty
+    for i = 0 to n
+        set list = (Node val: i next: list)
+    end
+    return list
+end
+
+func fold_list (l LinkedList) -> i64
+    let sum = 0i64
+    let cur LinkedList = l
+    let running = true
+    while running
+        match cur
+            case Empty
+                set running = false
+            case (Node v tail)
+                set sum = (+ sum (as v i64))
+                set cur = tail
+        end
+    end
+    return sum
+end
+
+func main () -> i32
+    let lst = (build_list 10000i32)
+
+    # Allocate heavily (might trigger GC)
+    for iteration = 0 to 1000
+        let m {str {i32}} = (map str {i32})
+        for i = 0 to 10
+            let key = (strings::concat "k" (to_str i))
+            let v {i32} = (vec i32)
+            for j = 0 to 50
+                do (push v j)
+            end
+            let m[key] = v
+        end
+    end
+
+    # Now process the list
+    let result = (fold_list lst)
+    do (io::println result)
+    return 0i32
+end

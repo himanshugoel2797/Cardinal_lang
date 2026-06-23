@@ -1,0 +1,30 @@
+module rec_nested_calls_stress
+
+import io
+
+# Nested function calls through deep recursion
+# Target: call-stack frame management with multiple callee frames
+
+func inner_calc (a i64) (b i64) -> i64
+    return (+ a b)
+end
+
+func middle_calc (n i64) (x i64) -> i64
+    let v1 = (inner_calc x 1)
+    let v2 = (inner_calc v1 2)
+    return (+ v2 n)
+end
+
+func outer_recurse (depth i64) (acc i64) -> i64
+    if (<= depth 0)
+        return acc
+    end
+    let result = (middle_calc depth acc)
+    return (outer_recurse (- depth 1) result)
+end
+
+func main () -> i32
+    let result = (outer_recurse 400i64 0i64)
+    do (io::println result)
+    return 0i32
+end

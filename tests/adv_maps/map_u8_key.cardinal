@@ -1,0 +1,25 @@
+module map_u8_key
+
+import io
+
+func main () -> i32
+    # Test: u8 keys (0-255 range)
+    let m {u8 i32} = (map u8 i32)
+    set m[0u8] = 0i32
+    set m[127u8] = 1i32
+    set m[255u8] = 2i32
+
+    do (io::println m[0u8])
+    do (io::println m[127u8])
+    do (io::println m[255u8])
+
+    # Verify length and operations
+    do (io::println (len m))
+    do (io::println (map_has m 127u8))
+
+    # Delete and verify
+    do (map_del m 127u8)
+    do (io::println (len m))
+
+    return 0i32
+end

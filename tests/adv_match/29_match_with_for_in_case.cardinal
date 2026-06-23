@@ -1,0 +1,32 @@
+module test29
+
+import io
+
+type Instruction
+    Loop (iterations i32)
+    Total (values [i32])
+end
+
+func execute (instr Instruction) -> i32
+    match instr
+        case (Loop iterations)
+            let sum = 0i32
+            for i = 0i32 to iterations
+                set sum = (+ sum i)
+            end
+            return sum
+        case (Total values)
+            let total = 0i32
+            for v in values
+                set total = (+ total v)
+            end
+            return total
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (execute (Loop iterations: 5)))
+    do (io::println (execute (Total values: [1 2 3 4 5])))
+    return 0i32
+end

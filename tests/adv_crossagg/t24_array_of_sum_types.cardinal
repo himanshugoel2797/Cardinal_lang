@@ -1,0 +1,58 @@
+module t24_array_of_sum_types
+
+import io
+
+# Array of sum types: test direct storage layout
+type Value
+    Int (x i32)
+    Long (x i64)
+    Pair (a i32) (b i32)
+end
+
+func main () -> i32
+    let arr [Value] = [
+        (Int x: 1)
+        (Long x: 100)
+        (Pair a: 2 b: 3)
+        (Int x: 4)
+    ]
+
+    match arr[0]
+        case (Int x)
+            do (io::println x)        # 1
+        case (Long x)
+            do (io::println 999)
+        case (Pair a b)
+            do (io::println 888)
+    end
+
+    match arr[1]
+        case (Int x)
+            do (io::println 999)
+        case (Long x)
+            do (io::println x)        # 100
+        case (Pair a b)
+            do (io::println 777)
+    end
+
+    match arr[2]
+        case (Int x)
+            do (io::println 999)
+        case (Long x)
+            do (io::println 888)
+        case (Pair a b)
+            do (io::println a)        # 2
+            do (io::println b)        # 3
+    end
+
+    match arr[3]
+        case (Int x)
+            do (io::println x)        # 4
+        case (Long x)
+            do (io::println 999)
+        case (Pair a b)
+            do (io::println 888)
+    end
+
+    return 0i32
+end

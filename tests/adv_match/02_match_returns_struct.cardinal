@@ -1,0 +1,38 @@
+module test02
+
+import io
+
+struct Point
+    x i32
+    y i32
+end
+
+type Movement
+    Up (dist i32)
+    Down (dist i32)
+    Left (dist i32)
+    Right (dist i32)
+end
+
+func apply_move (p Point) (m Movement) -> Point
+    match m
+        case (Up d)
+            return (Point x: p.x y: (+ p.y d))
+        case (Down d)
+            return (Point x: p.x y: (- p.y d))
+        case (Left d)
+            return (Point x: (- p.x d) y: p.y)
+        case (Right d)
+            return (Point x: (+ p.x d) y: p.y)
+    end
+    return p
+end
+
+func main () -> i32
+    let p = (Point x: 0 y: 0)
+    let p2 = (apply_move p (Up dist: 5))
+    let p3 = (apply_move p2 (Right dist: 3))
+    do (io::println p3.x)
+    do (io::println p3.y)
+    return 0i32
+end

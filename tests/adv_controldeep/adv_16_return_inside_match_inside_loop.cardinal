@@ -1,0 +1,26 @@
+module adv_16_return_inside_match_inside_loop
+
+import io
+
+type Opt
+	Some (v i32)
+	None
+end
+
+func main () -> i32
+	for i = 0i32 to 5i32
+		let opt = if (== i 2i32)
+			(Some v: 99i32)
+		else
+			None
+		end
+		match opt
+		case Some(v)
+			do (io::println v)
+			return v
+		case None
+		end
+	end
+	do (io::println 0i32)
+	return 0
+end

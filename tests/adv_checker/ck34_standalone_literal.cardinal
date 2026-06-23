@@ -1,0 +1,6 @@
+module ck34_standalone_literal
+# ILLEGAL: bare unsuffixed literal as statement (no type context)
+func f () -> i32
+    let x = 5
+    return 0i32
+end

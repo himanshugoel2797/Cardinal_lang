@@ -1,0 +1,20 @@
+module t01_hex_literals
+
+import io
+
+func main () -> i32
+    # Test hex literals with various lengths
+    let a = 0x0i32
+    let b = 0x1i32
+    let c = 0xFFi32
+    let d = 0xFFFi32
+    let e = 0xFFFFi32
+    let f = 0xFFFFFFFFu32
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    do (io::println e)
+    do (io::println f)
+    return 0i32
+end

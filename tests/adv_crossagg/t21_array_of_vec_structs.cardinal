@@ -1,0 +1,36 @@
+module t21_array_of_vec_structs
+
+import io
+
+# Array of structs containing vec fields
+struct VecBox
+    tag i32
+    items {i32}
+end
+
+func main () -> i32
+    let v1 {i32} = (vec i32)
+    do (push v1 10)
+    do (push v1 20)
+
+    let v2 {i32} = (vec i32)
+    do (push v2 100)
+    do (push v2 200)
+    do (push v2 300)
+
+    let arr [VecBox] = [
+        (VecBox tag: 1 items: v1)
+        (VecBox tag: 2 items: v2)
+    ]
+
+    do (io::println arr[0].tag)       # 1
+    do (io::println (len arr[0].items)) # 2
+    do (io::println arr[0].items[0])  # 10
+    do (io::println arr[0].items[1])  # 20
+
+    do (io::println arr[1].tag)       # 2
+    do (io::println (len arr[1].items)) # 3
+    do (io::println arr[1].items[2])  # 300
+
+    return 0i32
+end

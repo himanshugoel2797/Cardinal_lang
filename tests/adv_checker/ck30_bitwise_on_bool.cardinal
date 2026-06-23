@@ -1,0 +1,8 @@
+module ck30_bitwise_on_bool
+# ILLEGAL: bitwise op on bool
+func f () -> i32
+    let x = true
+    let y = false
+    let z = (band x y)
+    return 0i32
+end

@@ -1,0 +1,19 @@
+module c15_char_to_int_casts
+
+import io
+
+func main () -> i32
+    # char to i32 (char code point)
+    do (io::println (as 'a' i32))
+
+    do (io::println (as 'A' i32))
+
+    do (io::println (as '0' i32))
+
+    do (io::println (as ' ' i32))
+
+    # Non-ASCII characters (if supported)
+    # For now, just basic ASCII range
+
+    return 0i32
+end

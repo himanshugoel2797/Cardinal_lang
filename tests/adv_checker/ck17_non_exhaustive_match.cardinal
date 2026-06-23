@@ -1,0 +1,17 @@
+module ck17_non_exhaustive_match
+# ILLEGAL: match not exhaustive (missing Red)
+enum Color
+    Red
+    Green
+    Blue
+end
+
+func f (c Color) -> i32
+    match c
+        case Green
+            return 1i32
+        case Blue
+            return 2i32
+    end
+    return 0i32
+end

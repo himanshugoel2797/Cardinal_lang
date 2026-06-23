@@ -1,0 +1,21 @@
+module test23
+
+import io
+
+type Answer
+    Yes (explanation str)
+end
+
+func interpret (a Answer) -> i32
+    match a
+        case (Yes explanation)
+            return 1
+    end
+    return 0
+end
+
+func main () -> i32
+    let a = (Yes explanation: "because")
+    do (io::println (interpret a))
+    return 0i32
+end

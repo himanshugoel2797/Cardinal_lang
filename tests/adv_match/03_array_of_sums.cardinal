@@ -1,0 +1,27 @@
+module test03
+
+import io
+
+type Result
+    Ok (value i32)
+    Err (code i32)
+end
+
+func process_results (results [Result]) -> i32
+    let sum = 0
+    for r in results
+        match r
+            case (Ok v)
+                set sum = (+ sum v)
+            case (Err c)
+                set sum = (- sum c)
+        end
+    end
+    return sum
+end
+
+func main () -> i32
+    let results = [(Ok value: 10) (Err code: 2) (Ok value: 20) (Err code: 3)]
+    do (io::println (process_results results))
+    return 0i32
+end

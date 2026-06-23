@@ -1,0 +1,17 @@
+module test_i16_u16_widths
+
+import io
+
+func main () -> i32
+    do (io::println (to_str 0i16))
+    do (io::println (to_str 1i16))
+    do (io::println (to_str -1i16))
+    do (io::println (to_str 32767i16))
+    do (io::println (to_str -32768i16))
+
+    do (io::println (to_str 0u16))
+    do (io::println (to_str 1u16))
+    do (io::println (to_str 65535u16))
+
+    return 0i32
+end

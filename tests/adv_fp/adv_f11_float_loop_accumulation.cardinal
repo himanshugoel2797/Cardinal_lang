@@ -1,0 +1,28 @@
+module adv_f11_float_loop_accumulation
+import io
+
+func main () -> i32
+    # Accumulate 0.1 in a loop (10 iterations)
+    let sum = 0.0
+
+    let i = 0i32
+    while (< i 10i32)
+        let sum = (+ sum 0.1)
+        let i = (+ i 1i32)
+    end
+
+    # Compare to direct 1.0
+    do (io::println sum)
+    do (io::println 1.0)
+    do (io::println (== sum 1.0))
+
+    # Accumulate 0.3 three times vs 0.1 nine times
+    let sum2 = (+ (+ 0.1 0.1) 0.1)
+    let sum3 = (+ (+ 0.3 0.3) 0.3)
+
+    do (io::println sum2)
+    do (io::println sum3)
+    do (io::println (== sum2 sum3))
+
+    return 0i32
+end

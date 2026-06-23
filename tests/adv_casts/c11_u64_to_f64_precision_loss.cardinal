@@ -1,0 +1,24 @@
+module c11_u64_to_f64_precision_loss
+
+import io
+
+func main () -> i32
+    # u64 to f64: large unsigned values
+    do (io::println (as 0u64 f64))
+
+    do (io::println (as 1u64 f64))
+
+    # 2^53 = exact f64 integer limit
+    do (io::println (as 9007199254740992u64 f64))
+
+    # Beyond exact range
+    do (io::println (as 9007199254740993u64 f64))
+
+    # u64 max = 18446744073709551615
+    do (io::println (as 18446744073709551615u64 f64))
+
+    # Large values
+    do (io::println (as 10000000000000000000u64 f64))
+
+    return 0i32
+end

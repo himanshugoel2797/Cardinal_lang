@@ -1,0 +1,11 @@
+module test_substr_from_start
+
+import io
+import strings
+
+func main () -> i32
+    let s = "hello"
+    let sub = (strings::substr s 0i64 3i64)
+    do (io::println sub)
+    return 0i32
+end

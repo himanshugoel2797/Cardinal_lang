@@ -1,0 +1,36 @@
+module adv_f25_closure_float_capture
+import io
+
+func make_scaler (factor f64) -> func(f64 -> f64)
+    let fn = func (x f64) -> f64
+        return (* x factor)
+    end
+    return fn
+end
+
+func main () -> i32
+    # Create a closure that multiplies by 2.5
+    let scale25 = (make_scaler 2.5)
+
+    # Call it with different values
+    do (io::println (scale25 4.0))   # 10.0
+
+    do (io::println (scale25 (- 3.0)))   # -7.5
+
+    do (io::println (scale25 0.0))   # 0.0
+
+    # Another closure with NaN
+    let nan = (/ 0.0 0.0)
+    let scale_nan = (make_scaler nan)
+
+    do (io::println (scale_nan 5.0))   # nan
+
+    # Closure with infinity
+    let inf = (/ 1.0 0.0)
+    let scale_inf = (make_scaler inf)
+
+    do (io::println (scale_inf 2.0))   # inf
+    do (io::println (scale_inf 0.0))   # nan (inf * 0)
+
+    return 0i32
+end

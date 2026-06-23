@@ -1,0 +1,28 @@
+module test07
+
+import io
+
+type Bool3
+    True
+    False
+    Unknown
+end
+
+func to_int (b Bool3) -> i32
+    match b
+        case True
+            return 1
+        case False
+            return 0
+        case Unknown
+            return (- 1)
+    end
+    return 2
+end
+
+func main () -> i32
+    do (io::println (to_int True))
+    do (io::println (to_int False))
+    do (io::println (to_int Unknown))
+    return 0i32
+end

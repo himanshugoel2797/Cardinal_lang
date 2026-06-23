@@ -1,0 +1,21 @@
+module c20_closure_escaping_frame
+import io
+
+func make_counter () -> func(-> i32)
+    let count = 0i32
+    let inc = func () -> i32
+        set count = (+ count 1)
+        return count
+    end
+    return inc
+end
+
+func main () -> i32
+    let c1 = (make_counter)
+    let c2 = (make_counter)
+    do (io::println (c1))
+    do (io::println (c1))
+    do (io::println (c2))
+    do (io::println (c1))
+    return 0i32
+end

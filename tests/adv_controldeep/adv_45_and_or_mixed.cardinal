@@ -1,0 +1,9 @@
+module adv_45_and_or_mixed
+
+import io
+
+func main () -> i32
+	let result = (and (or false true) (and true true))
+	do (io::println result)
+	return 0
+end

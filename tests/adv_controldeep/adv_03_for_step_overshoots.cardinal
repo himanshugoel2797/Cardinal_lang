@@ -1,0 +1,12 @@
+module adv_03_for_step_overshoots
+
+import io
+
+func main () -> i32
+	let sum = 0i32
+	for i = 0i32 to 10i32 step 3i32
+		set sum = (+ sum i)
+	end
+	do (io::println sum)
+	return 0
+end

@@ -1,0 +1,15 @@
+module c23_closure_float_params_and_return
+import io
+
+func apply_func (f func(f64 f64 -> f64)) (x f64) (y f64) -> f64
+    return (f x y)
+end
+
+func main () -> i32
+    let add = func (a f64) (b f64) -> f64
+        return (+ a b)
+    end
+    let result = (apply_func add 3.5 2.1)
+    do (io::println result)
+    return 0i32
+end

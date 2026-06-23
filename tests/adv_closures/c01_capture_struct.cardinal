@@ -1,0 +1,20 @@
+module c01_capture_struct
+import io
+
+struct Point
+    x i32
+    y i32
+end
+
+func main () -> i32
+    let p = (Point x: 10 y: 20)
+    let get_x = func () -> i32
+        return p.x
+    end
+    let get_y = func () -> i32
+        return p.y
+    end
+    do (io::println (get_x))
+    do (io::println (get_y))
+    return 0i32
+end

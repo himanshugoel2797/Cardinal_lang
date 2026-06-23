@@ -1,0 +1,36 @@
+module adv_gc11_massive_map_churn
+
+import io
+
+# Test: create and destroy large maps repeatedly in a loop.
+# Each map is discarded immediately; tests that dead maps are collected promptly.
+
+func main () -> i32
+    let total = 0i32
+
+    for iteration = 0 to 2000
+        let m {i32 i32} = (map i32 i32)
+
+        # Fill map
+        for i = 0 to 100
+            let m[i] = (+ i iteration)
+        end
+
+        # Compute something with it
+        let keys {i32} = (map_keys m)
+        for k in keys
+            set total = (+ total m[k])
+        end
+
+        # Map is now dead and should be collected
+    end
+
+    # Expected: for each iteration k in 0..1999:
+    # sum of (i+k) for i in 0..99 = 100*k + sum(i) = 100*k + 4950
+    # Total = sum of (100*k + 4950) for k in 0..1999
+    # = 100 * 1999*2000/2 + 2000*4950
+    # = 100 * 1999000 + 9900000
+    # = 199900000 + 9900000 = 209800000
+    do (io::println total)
+    return 0i32
+end

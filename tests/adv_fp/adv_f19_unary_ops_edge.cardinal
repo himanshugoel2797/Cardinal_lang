@@ -1,0 +1,26 @@
+module adv_f19_unary_ops_edge
+import io
+
+func main () -> i32
+    # Triple negate
+    let x = 5.5
+    do (io::println (- (- (- x))))   # expect -5.5
+
+    # Negate nan multiple times
+    let nan = (/ 0.0 0.0)
+    do (io::println (- nan))
+    do (io::println (- (- nan)))
+    do (io::println (- (- (- nan))))
+
+    # Negate inf
+    let inf = (/ 1.0 0.0)
+    do (io::println (- inf))   # expect -inf
+
+    # Negate -0.0
+    let nzero = (- 0.0)
+    let pzero = (- nzero)
+    do (io::println pzero)
+    do (io::println (/ 1.0 pzero))   # expect inf (positive zero reciprocal)
+
+    return 0i32
+end

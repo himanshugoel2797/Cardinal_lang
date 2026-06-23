@@ -1,0 +1,27 @@
+module adv_f09_subnormals
+import io
+
+func main () -> i32
+    # Smallest positive f64 (normal): 2.2250738585072014e-308
+    let tiny = 2.2250738585072014e-308
+
+    # Subnormal (denormal): smaller than smallest normal
+    let subnormal = 1e-320
+
+    # Test arithmetic with subnormals
+    do (io::println tiny)
+    do (io::println subnormal)
+
+    # Subnormal * 2
+    do (io::println (* subnormal 2.0))
+
+    # Subnormal + itself
+    do (io::println (+ subnormal subnormal))
+
+    # Very small f32 subnormal
+    let f32_subnormal = (as 1e-40 f32)
+
+    do (io::println (as f32_subnormal f64))
+
+    return 0i32
+end

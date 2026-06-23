@@ -1,0 +1,21 @@
+module map_u64_key
+
+import io
+
+func main () -> i32
+    # Test: u64 keys (large unsigned values)
+    let m {u64 str} = (map u64 str)
+    set m[18446744073709551615u64] = "max-u64"
+    set m[9223372036854775808u64] = "half-max"
+    set m[0u64] = "zero"
+
+    do (io::println m[0u64])
+    do (io::println m[9223372036854775808u64])
+    do (io::println m[18446744073709551615u64])
+
+    # Verify operations
+    do (io::println (len m))
+    do (io::println (map_has m 18446744073709551615u64))
+
+    return 0i32
+end

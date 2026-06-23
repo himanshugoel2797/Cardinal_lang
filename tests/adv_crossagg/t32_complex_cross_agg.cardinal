@@ -1,0 +1,71 @@
+module t32_complex_cross_agg
+
+import io
+
+# Complex cross-aggregate: struct with array, vec, and sum field combined
+type Status
+    Ready
+    Running (progress i32)
+    Done (result i32)
+end
+
+struct Task
+    id i32
+    statuses [Status]
+    logs {str}
+    priority u8
+end
+
+func main () -> i32
+    let logs {str} = (vec str)
+    do (push logs "start")
+    do (push logs "done")
+
+    let statuses [Status] = [
+        Status::Ready
+        (Running progress: 50)
+        (Done result: 100)
+    ]
+
+    let task = (Task
+        id: 1
+        statuses: statuses
+        logs: logs
+        priority: 5
+    )
+
+    do (io::println task.id)          # 1
+    do (io::println (as task.priority i32)) # 5
+    do (io::println (len task.statuses))    # 3
+    do (io::println (len task.logs))       # 2
+
+    # Access array of sums
+    match task.statuses[0]
+        case Ready
+            do (io::println 77)       # 77
+        case (Running p)
+            do (io::println 888)
+        case (Done r)
+            do (io::println 999)
+    end
+
+    match task.statuses[1]
+        case Ready
+            do (io::println 888)
+        case (Running p)
+            do (io::println p)        # 50
+        case (Done r)
+            do (io::println 999)
+    end
+
+    match task.statuses[2]
+        case Ready
+            do (io::println 888)
+        case (Running p)
+            do (io::println 999)
+        case (Done r)
+            do (io::println r)        # 100
+    end
+
+    return 0i32
+end

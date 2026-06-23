@@ -1,0 +1,25 @@
+module ib01_overflow_i8_all
+
+import io
+
+func main () -> i32
+    # i8 add: max+1, max+2, min-1, min-2
+    let i8max = 127i8
+    do (io::println (+ i8max 1i8))       # should be -128
+    do (io::println (+ i8max 2i8))       # should be -127
+
+    let i8min = (- 128i8)
+    do (io::println (- i8min 1i8))       # should be 127
+    do (io::println (- i8min 2i8))       # should be 126
+
+    # i8 sub: boundary cases
+    do (io::println (- 0i8 (- 128i8)))   # should be -128 (0 - INT_MIN wraps)
+
+    # i8 mul: max*2, min*2, max*max, min*min
+    do (io::println (* i8max 2i8))       # 127*2 = 254, wrapped to -2
+    do (io::println (* i8min 2i8))       # -128*2 = -256, wrapped to 0
+    do (io::println (* i8max i8max))     # 127*127 = 16129, wraps
+    do (io::println (* i8min i8min))     # (-128)*(-128) = 16384, wraps
+
+    return 0i32
+end

@@ -1,0 +1,40 @@
+module ib05_shift_edge_all_widths
+
+import io
+
+func main () -> i32
+    # Test shifts by critical values across all widths
+    # For i8 (width=8): shift by 0, 7, 8, 9, 16
+
+    # Unsigned shifts (logical right)
+    do (io::println (shl 1u8 0u8))       # 1
+    do (io::println (shl 1u8 7u8))       # 128 (0x80)
+    do (io::println (shl 1u8 8u8))       # 0 (shifted out)
+    do (io::println (shl 1u8 9u8))       # 0 (beyond width)
+
+    do (io::println (shr 128u8 0u8))     # 128
+    do (io::println (shr 128u8 7u8))     # 1
+    do (io::println (shr 128u8 8u8))     # 0
+    do (io::println (shr 128u8 9u8))     # 0
+
+    # i16 shifts
+    do (io::println (shl 1i16 15i16))    # -32768 (0x8000)
+    do (io::println (shl 1i16 16i16))    # 0
+    do (io::println (shr (- 1i16) 0i16)) # -1 (sign fill)
+    do (io::println (shr (- 1i16) 15i16)) # -1 (sign fill)
+
+    # i32 shifts
+    do (io::println (shl 1i32 31i32))    # -2147483648 (INT_MIN)
+    do (io::println (shl 1i32 32i32))    # 0
+    do (io::println (shr (- 1i32) 31i32)) # -1
+
+    # u32 shifts by 32 (should be 0, but x86 may mask to 0)
+    do (io::println (shl 1u32 32u32))
+    do (io::println (shr 2147483648u32 32u32))
+
+    # u64 shifts by 64 (known x86 bug: gives 1 instead of 0)
+    do (io::println (shl 1u64 64u64))    # should be 0, x86 gives 1
+    do (io::println (shr 9223372036854775808u64 64u64)) # should be 0
+
+    return 0i32
+end

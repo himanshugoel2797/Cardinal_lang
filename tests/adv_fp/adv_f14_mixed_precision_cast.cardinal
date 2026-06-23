@@ -1,0 +1,32 @@
+module adv_f14_mixed_precision_cast
+import io
+
+func main () -> i32
+    # Precision loss in f32 then expand to f64
+    let x_f32 = (as 0.1 f32)
+    let x_f64 = (as x_f32 f64)
+
+    do (io::println x_f64)
+
+    # Direct f64 0.1
+    let y_f64 = 0.1
+
+    do (io::println y_f64)
+
+    # They should differ (f32 precision loss)
+    do (io::println (== x_f64 y_f64))   # expect 0 (false)
+
+    # Operations in f32 vs f64
+    let a = (as 3.0 f32)
+    let b = (as 7.0 f32)
+    let div_f32 = (/ a b)
+    let div_f32_as_f64 = (as div_f32 f64)
+
+    let div_f64 = (/ 3.0 7.0)
+
+    do (io::println div_f32_as_f64)
+    do (io::println div_f64)
+    do (io::println (== div_f32_as_f64 div_f64))
+
+    return 0i32
+end

@@ -1,0 +1,24 @@
+module test05
+
+import io
+
+type Value
+    Num (n i32)
+    Str (s str)
+end
+
+func get_first_type (vals [Value]) -> i32
+    match vals[0]
+        case (Num n)
+            return n
+        case (Str s)
+            return 999
+    end
+    return 0
+end
+
+func main () -> i32
+    let vals = [(Num n: 42) (Str s: "hello")]
+    do (io::println (get_first_type vals))
+    return 0i32
+end

@@ -1,0 +1,23 @@
+module test_struct_with_sum
+
+import io
+
+type Option
+    Some (value i32)
+    None
+end
+
+struct Container
+    id i32
+    opt Option
+end
+
+func main () -> i32
+    let c1 = (Container id: 1i32 opt: (Some value: 42i32))
+    do (io::println (to_str c1))
+
+    let c2 = (Container id: 2i32 opt: None)
+    do (io::println (to_str c2))
+
+    return 0i32
+end

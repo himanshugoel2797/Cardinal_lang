@@ -1,0 +1,38 @@
+module rec_build_list_deep
+
+import io
+
+# Recursion accumulating into list aggregate, then sum
+# Target: building a list of depth N, then folding/summing it
+# Tests: aggregate mutation through deep call stack
+
+func build_list_down (n i64) (acc [i64]) -> [i64]
+    if (<= n 0)
+        return acc
+    end
+    let new_acc = (build_list_down (- n 1) acc)
+    # Push onto the returned list
+    # (Note: arrays don't have direct push, use literal reconstruction)
+    return new_acc
+end
+
+func sum_list (lst [i64]) (idx i64) (acc i64) -> i64
+    if (>= idx (len lst))
+        return acc
+    end
+    return (sum_list lst (+ idx 1) (+ acc (lst idx)))
+end
+
+func build_via_recursion (n i64) (depth i64) -> i64
+    if (<= depth 0)
+        return n
+    end
+    return (build_via_recursion (+ n 1) (- depth 1))
+end
+
+func main () -> i32
+    # Build a value via deep recursion
+    let result = (build_via_recursion 0 1000i64)
+    do (io::println result)
+    return 0i32
+end

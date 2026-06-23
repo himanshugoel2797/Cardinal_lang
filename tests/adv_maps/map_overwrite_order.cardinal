@@ -1,0 +1,35 @@
+module map_overwrite_order
+
+import io
+
+func main () -> i32
+    # Test: overwriting an existing key's value (order unchanged?)
+    let m {str i32} = (map str i32)
+    set m["x"] = 10i32
+    set m["y"] = 20i32
+    set m["z"] = 30i32
+
+    # Keys: [x, y, z]
+    do (io::println "initial:")
+    for k in (map_keys m)
+        do (io::print k)
+        do (io::print " ")
+    end
+    do (io::println "")
+
+    # Overwrite middle
+    set m["y"] = 200i32
+    do (io::println "after overwrite y:")
+    for k in (map_keys m)
+        do (io::print k)
+        do (io::print " ")
+    end
+    do (io::println "")
+
+    # Verify value changed but order unchanged
+    do (io::println m["x"])
+    do (io::println m["y"])
+    do (io::println m["z"])
+
+    return 0i32
+end

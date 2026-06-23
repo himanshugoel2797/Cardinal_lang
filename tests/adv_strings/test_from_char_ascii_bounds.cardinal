@@ -1,0 +1,14 @@
+module test_from_char_ascii_bounds
+
+import io
+import strings
+
+func main () -> i32
+    # Test ASCII boundary values
+    let c0 = (strings::from_char 0i32)
+    let c32 = (strings::from_char 32i32)
+    let c127 = (strings::from_char 127i32)
+    do (io::println (len c32))
+    do (io::println (len c127))
+    return 0i32
+end

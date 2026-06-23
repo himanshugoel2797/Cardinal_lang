@@ -1,0 +1,6 @@
+module ck35_add_mixed_no_context
+# LEGAL (I think): both literals but one has explicit type, should infer for other
+func f () -> i32
+    let x = (+ 5i32 10)
+    return x
+end

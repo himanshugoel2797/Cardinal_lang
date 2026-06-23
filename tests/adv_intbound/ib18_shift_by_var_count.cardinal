@@ -1,0 +1,35 @@
+module ib18_shift_by_var_count
+
+import io
+
+func main () -> i32
+    # Shifts with variable shift counts (not constants)
+    # to avoid compiler folding optimizations
+
+    let val = 1u64
+    let shift_64 = 64u64
+    let shift_100 = 100u64
+
+    # These test whether the x86 shlq/shrq masking bug affects variable counts
+    do (io::println (shl val shift_64))  # x86 may give 1, should be 0
+    do (io::println (shr val shift_64))
+
+    # Shifts by very large counts
+    let big_shift = 1000u64
+    do (io::println (shl 255u64 big_shift))
+    do (io::println (shr 18446744073709551615u64 big_shift))
+
+    # u32 shifted by 32 with variable
+    let val32 = 1u32
+    let shift_32 = 32u32
+    do (io::println (shl val32 shift_32))
+
+    # i8 shifted by 8+ with variable
+    let vali8 = 1i8
+    let shift_8 = 8i8
+    let shift_16 = 16i8
+    do (io::println (shl vali8 shift_8))
+    do (io::println (shl vali8 shift_16))
+
+    return 0i32
+end

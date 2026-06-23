@@ -1,0 +1,8 @@
+module ck05_i32_plus_i64
+# ILLEGAL: mixing i32 and i64 in arithmetic
+func f () -> i32
+    let x = 1i32
+    let y = 2i64
+    let z = (+ x y)
+    return 0i32
+end

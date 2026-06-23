@@ -1,0 +1,32 @@
+module ib14_shift_large_counts
+
+import io
+
+func main () -> i32
+    # Shift by large counts: >width, much larger than width
+
+    # u8 shifted by counts > 8
+    do (io::println (shl 1u8 10u8))      # Should be 0
+    do (io::println (shl 1u8 16u8))      # Should be 0
+    do (io::println (shl 255u8 100u8))   # Should be 0
+    do (io::println (shr 255u8 10u8))    # Should be 0
+
+    # i8 shifted by large counts
+    do (io::println (shl (- 1i8) 20i8))  # Should be 0
+    do (io::println (shr (- 1i8) 20i8))  # -1 (sign fill, even with large count)
+
+    # u32 shifted by > 32
+    do (io::println (shl 1u32 33u32))    # Should be 0
+    do (io::println (shl 1u32 64u32))    # Should be 0
+    do (io::println (shr 4294967295u32 33u32)) # Should be 0
+
+    # u64 shifted by > 64
+    do (io::println (shl 1u64 65u64))    # Should be 0
+    do (io::println (shl 1u64 100u64))   # Should be 0
+    do (io::println (shr 18446744073709551615u64 65u64)) # Should be 0
+
+    # i64 arithmetic shift by large count
+    do (io::println (shr (- 1i64) 100i64)) # Should be -1 (sign fill)
+
+    return 0i32
+end

@@ -1,0 +1,24 @@
+module test44
+
+import io
+
+type Result
+    Ok (msg str) (code i32)
+    Err (msg str) (code i32)
+end
+
+func extract_code (r Result) -> i32
+    match r
+        case (Ok msg code)
+            return code
+        case (Err msg code)
+            return (- code)
+    end
+    return 0i32
+end
+
+func main () -> i32
+    do (io::println (extract_code (Ok msg: "success" code: 200)))
+    do (io::println (extract_code (Err msg: "failed" code: 500)))
+    return 0i32
+end

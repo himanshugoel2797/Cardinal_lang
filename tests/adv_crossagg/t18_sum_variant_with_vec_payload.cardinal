@@ -1,0 +1,37 @@
+module t18_sum_variant_with_vec_payload
+
+import io
+
+# Sum type variant carrying a vec payload
+type Store
+    Values (items {i32})
+    None
+end
+
+func main () -> i32
+    let v {i32} = (vec i32)
+    do (push v 100)
+    do (push v 200)
+    do (push v 300)
+
+    let s = (Store Values: v)
+
+    match s
+        case (Values items)
+            do (io::println (len items))  # 3
+            do (io::println items[0])     # 100
+            do (io::println items[2])     # 300
+        case None
+            do (io::println 999)
+    end
+
+    let s2 = Store::None
+    match s2
+        case (Values items)
+            do (io::println 888)
+        case None
+            do (io::println 55)       # 55
+    end
+
+    return 0i32
+end

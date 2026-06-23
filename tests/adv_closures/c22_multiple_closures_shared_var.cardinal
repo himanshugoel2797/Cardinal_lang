@@ -1,0 +1,21 @@
+module c22_multiple_closures_shared_var
+import io
+
+func main () -> i32
+    let shared = 0i32
+    let inc1 = func () -> i32
+        set shared = (+ shared 1)
+        return shared
+    end
+    let inc2 = func () -> i32
+        set shared = (+ shared 10)
+        return shared
+    end
+    let get = func () -> i32
+        return shared
+    end
+    do (io::println (inc1))
+    do (io::println (inc2))
+    do (io::println (get))
+    return 0i32
+end

@@ -1,0 +1,19 @@
+module c17_u16_to_i64_zero_extension
+
+import io
+
+func main () -> i32
+    # u16 to i64: zero extension
+    do (io::println (as 0u16 i64))
+
+    # u16 max = 65535
+    do (io::println (as 65535u16 i64))
+
+    # High bit set = 32768u16 should become 32768i64, not negative
+    do (io::println (as 32768u16 i64))
+
+    # 40000u16
+    do (io::println (as 40000u16 i64))
+
+    return 0i32
+end

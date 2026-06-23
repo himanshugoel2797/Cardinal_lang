@@ -1,0 +1,29 @@
+module test_string_equality_ops
+
+import io
+
+func main () -> i32
+    let s1 = "test"
+    let s2 = "test"
+    let s3 = "other"
+
+    if (== s1 s2)
+        do (io::println 1i32)
+    else
+        do (io::println 0i32)
+    end
+
+    if (!= s1 s3)
+        do (io::println 1i32)
+    else
+        do (io::println 0i32)
+    end
+
+    if (== s1 s3)
+        do (io::println 1i32)
+    else
+        do (io::println 0i32)
+    end
+
+    return 0i32
+end

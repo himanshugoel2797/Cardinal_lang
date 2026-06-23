@@ -1,0 +1,7 @@
+module ck02_unsuffixed_map_value
+# ILLEGAL: unsuffixed literal as map value with no context
+func f () -> i32
+    let m = (map str i32)
+    set m["x"] = 42
+    return 0i32
+end

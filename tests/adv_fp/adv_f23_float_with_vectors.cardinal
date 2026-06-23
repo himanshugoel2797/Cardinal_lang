@@ -1,0 +1,31 @@
+module adv_f23_float_with_vectors
+import io
+
+func main () -> i32
+    let v = (vec f64)
+
+    # Push floats
+    do (push v 0.1)
+    do (push v 0.2)
+    do (push v 0.3)
+    do (push v (/ 0.0 0.0))   # NaN
+    do (push v (/ 1.0 0.0))   # inf
+
+    # Print length
+    do (io::println (len v))   # expect 5
+
+    # Access and print
+    do (io::println v[0])
+    do (io::println v[1])
+    do (io::println v[2])
+    do (io::println v[3])   # nan
+    do (io::println v[4])   # inf
+
+    # Pop and check
+    let inf = (pop v)
+    do (io::println inf)
+
+    do (io::println (len v))   # expect 4
+
+    return 0i32
+end

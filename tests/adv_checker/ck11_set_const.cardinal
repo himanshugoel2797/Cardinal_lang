@@ -1,0 +1,7 @@
+module ck11_set_const
+# ILLEGAL: cannot set a const binding
+func f () -> i32
+    const x = 5i32
+    set x = 10i32
+    return x
+end

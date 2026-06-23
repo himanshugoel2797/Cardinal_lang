@@ -1,0 +1,29 @@
+module test12
+
+import io
+
+type MaybeList
+    List (items {i32})
+    Empty
+end
+
+func get_list (m MaybeList) -> {i32}
+    match m
+        case (List items)
+            return items
+        case Empty
+            return (vec i32)
+    end
+end
+
+func main () -> i32
+    let v1 = (vec i32)
+    do (push v1 1)
+    do (push v1 2)
+    do (push v1 3)
+
+    let m1 = (List items: v1)
+    let result = (get_list m1)
+    do (io::println (len result))
+    return 0i32
+end

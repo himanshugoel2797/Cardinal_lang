@@ -1,0 +1,16 @@
+module c21_closure_with_float_and_int
+import io
+
+func main () -> i32
+    let x = 10i32
+    let y = 5.5
+    let f = func () -> i32
+        return (as y i32)
+    end
+    let g = func () -> f64
+        return (+ (as x f64) y)
+    end
+    do (io::println (f))
+    do (io::println (g))
+    return 0i32
+end

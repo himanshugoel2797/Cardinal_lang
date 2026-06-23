@@ -1,0 +1,15 @@
+module test_eq_empty
+
+import io
+import strings
+
+func main () -> i32
+    let s1 = ""
+    let s2 = ""
+    let s3 = "a"
+    let result1 = (strings::eq s1 s2)
+    do (io::println result1)
+    let result2 = (strings::eq s1 s3)
+    do (io::println result2)
+    return 0i32
+end

@@ -1,0 +1,11 @@
+module c35_closure_array_param_return
+import io
+
+func main () -> i32
+    let process_array = func (arr [i32]) -> i32
+        return arr[0]
+    end
+    let data [i32] = [50 60 70]
+    do (io::println (process_array data))
+    return 0i32
+end

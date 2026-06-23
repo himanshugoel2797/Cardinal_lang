@@ -1,0 +1,56 @@
+module t33_recursive_sum_type
+
+import io
+
+# Recursive sum type in array: test proper layout of recursive payload
+type LinkedList
+    Cons (value i32) (next LinkedList)
+    Nil
+end
+
+func main () -> i32
+    let list1 = (Cons value: 1 next: (Cons value: 2 next: Nil))
+    let list2 = (Cons value: 10 next: (Cons value: 20 next: Nil))
+
+    let arr [LinkedList] = [list1 list2]
+
+    match arr[0]
+        case (Cons v n)
+            do (io::println v)        # 1
+            match n
+                case (Cons v2 n2)
+                    do (io::println v2) # 2
+                    match n2
+                        case (Cons v3 n3)
+                            do (io::println 999)
+                        case Nil
+                            do (io::println 88) # 88
+                    end
+                case Nil
+                    do (io::println 999)
+            end
+        case Nil
+            do (io::println 999)
+    end
+
+    match arr[1]
+        case (Cons v n)
+            do (io::println v)        # 10
+            match n
+                case (Cons v2 n2)
+                    do (io::println v2) # 20
+                    match n2
+                        case (Cons v3 n3)
+                            do (io::println 999)
+                        case Nil
+                            do (io::println 77) # 77
+                    end
+                case Nil
+                    do (io::println 999)
+            end
+        case Nil
+            do (io::println 999)
+    end
+
+    return 0i32
+end

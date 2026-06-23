@@ -1,0 +1,34 @@
+module t29_struct_24byte_in_array
+
+import io
+
+# Struct with 24-byte total size (3 i64 fields) in array: test boundaries
+struct BigBlock
+    a i64
+    b i64
+    c i64
+end
+
+func main () -> i32
+    let arr [BigBlock] = [
+        (BigBlock a: 1 b: 2 c: 3)
+        (BigBlock a: 10 b: 20 c: 30)
+        (BigBlock a: 100 b: 200 c: 300)
+    ]
+
+    do (io::println arr[0].a)         # 1
+    do (io::println arr[0].b)         # 2
+    do (io::println arr[0].c)         # 3
+
+    do (io::println arr[1].a)         # 10
+    do (io::println arr[1].c)         # 30
+
+    do (io::println arr[2].b)         # 200
+
+    # Mutate and verify isolation
+    set arr[0].c = 999
+    do (io::println arr[0].c)         # 999
+    do (io::println arr[1].a)         # 10 (next struct untouched)
+
+    return 0i32
+end

@@ -1,0 +1,7 @@
+module ck45_len_non_sizeable
+# ILLEGAL: cannot get len of i32
+func f () -> i32
+    let x = 42i32
+    let size = (len x)
+    return 0i32
+end

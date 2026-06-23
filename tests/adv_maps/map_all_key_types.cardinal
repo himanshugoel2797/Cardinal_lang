@@ -1,0 +1,54 @@
+module map_all_key_types
+
+import io
+
+enum Status
+    Active
+    Inactive
+end
+
+func main () -> i32
+    # Test all supported key types in a single program (sanity check)
+
+    # str keys
+    let m1 {str i32} = (map str i32)
+    set m1["a"] = 1i32
+    do (io::println m1["a"])
+
+    # i32 keys
+    let m2 {i32 i32} = (map i32 i32)
+    set m2[42i32] = 100i32
+    do (io::println m2[42i32])
+
+    # i64 keys
+    let m3 {i64 i32} = (map i64 i32)
+    set m3[1000i64] = 200i32
+    do (io::println m3[1000i64])
+
+    # u8 keys
+    let m4 {u8 i32} = (map u8 i32)
+    set m4[255u8] = 300i32
+    do (io::println m4[255u8])
+
+    # u64 keys
+    let m5 {u64 i32} = (map u64 i32)
+    set m5[999u64] = 400i32
+    do (io::println m5[999u64])
+
+    # char keys
+    let m6 {char i32} = (map char i32)
+    set m6['x'] = 500i32
+    do (io::println m6['x'])
+
+    # bool keys
+    let m7 {bool i32} = (map bool i32)
+    set m7[true] = 600i32
+    do (io::println m7[true])
+
+    # enum keys
+    let m8 {Status i32} = (map Status i32)
+    set m8[Status::Active] = 700i32
+    do (io::println m8[Status::Active])
+
+    return 0i32
+end

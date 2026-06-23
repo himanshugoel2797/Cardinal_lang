@@ -1,0 +1,27 @@
+module ib27_narrow_mul_patterns
+
+import io
+
+func main () -> i32
+    # Multiplication patterns on narrow types with subtle overflow
+
+    # i8: products that barely overflow
+    do (io::println (* 16i8 16i8))       # 256 = 0
+    do (io::println (* 15i8 15i8))       # 225
+    do (io::println (* 17i8 16i8))       # 272 = 16
+
+    # i16: products
+    do (io::println (* 256i16 256i16))   # 65536 = 0
+    do (io::println (* 255i16 255i16))   # 65025
+
+    # u8: products
+    do (io::println (* 16u8 16u8))       # 256 % 256 = 0
+    do (io::println (* 17u8 16u8))       # 272 % 256 = 16
+
+    # Multiply by -1 patterns
+    do (io::println (* (- 50i8) (- 1i8))) # 50
+    do (io::println (* 50i8 (- 1i8)))     # -50
+    do (io::println (* (- 128i8) (- 1i8))) # INT_MIN * -1 = INT_MIN
+
+    return 0i32
+end

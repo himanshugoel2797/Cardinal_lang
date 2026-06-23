@@ -1,0 +1,36 @@
+module adv_f18_comparison_transitivity
+import io
+
+func main () -> i32
+    let a = 1.0
+    let b = 2.0
+    let c = 3.0
+
+    # Transitivity: if a < b and b < c then a < c
+    let cond1 = (< a b)   # true
+    let cond2 = (< b c)   # true
+    let cond3 = (< a c)   # true
+
+    do (io::println cond1)
+    do (io::println cond2)
+    do (io::println cond3)
+
+    # All three should be 1
+    do (io::println (and cond1 (and cond2 cond3)))
+
+    # Reflexivity: a == a
+    do (io::println (== a a))
+
+    # Symmetry: a == b => b == a
+    let x = 5.0
+    let y = 5.0
+
+    let eq1 = (== x y)
+    let eq2 = (== y x)
+
+    do (io::println eq1)
+    do (io::println eq2)
+    do (io::println (== eq1 eq2))
+
+    return 0i32
+end

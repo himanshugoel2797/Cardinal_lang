@@ -1,0 +1,11 @@
+module test_escape_hex
+
+import io
+
+func main () -> i32
+    let s = "\x41\x42\x43"
+    let len_s = (len s)
+    do (io::println len_s)
+    do (io::println s)
+    return 0i32
+end

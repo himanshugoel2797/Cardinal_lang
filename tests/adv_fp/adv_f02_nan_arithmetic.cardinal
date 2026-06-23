@@ -1,0 +1,35 @@
+module adv_f02_nan_arithmetic
+import io
+
+func make_nan () -> f64
+    return (/ 0.0 0.0)
+end
+
+func main () -> i32
+    let nan = (make_nan)
+    let inf = (/ 1.0 0.0)
+    let ninf = (/ (- 1.0) 0.0)
+
+    # NaN + x = NaN
+    do (io::println (+ nan 5.0))
+
+    # NaN - x = NaN
+    do (io::println (- nan 3.0))
+
+    # NaN * x = NaN
+    do (io::println (* nan 2.0))
+
+    # NaN / x = NaN
+    do (io::println (/ nan 4.0))
+
+    # inf - inf = NaN
+    do (io::println (- inf inf))
+
+    # inf / inf = NaN
+    do (io::println (/ inf inf))
+
+    # 0 * inf = NaN
+    do (io::println (* 0.0 inf))
+
+    return 0i32
+end

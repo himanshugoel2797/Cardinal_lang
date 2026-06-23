@@ -1,0 +1,17 @@
+module test_i8_u8_widths
+
+import io
+
+func main () -> i32
+    do (io::println (to_str 0i8))
+    do (io::println (to_str 1i8))
+    do (io::println (to_str -1i8))
+    do (io::println (to_str 127i8))
+    do (io::println (to_str -128i8))
+
+    do (io::println (to_str 0u8))
+    do (io::println (to_str 1u8))
+    do (io::println (to_str 255u8))
+
+    return 0i32
+end

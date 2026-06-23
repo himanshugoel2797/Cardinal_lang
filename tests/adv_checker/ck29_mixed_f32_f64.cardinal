@@ -1,0 +1,8 @@
+module ck29_mixed_f32_f64
+# ILLEGAL: mixing f32 and f64 in arithmetic
+func f () -> i32
+    let x = 1.0f32
+    let y = 2.0f64
+    let z = (+ x y)
+    return 0i32
+end

@@ -1,0 +1,43 @@
+module t34_struct_field_offset_chain
+
+import io
+
+# Struct with many fields of varying sizes: test offset chain calculation
+struct OffsetChain
+    a i8
+    b i16
+    c i32
+    d i64
+    e i8
+    f i32
+    g i64
+end
+
+func main () -> i32
+    let o = (OffsetChain a: 1 b: 2 c: 3 d: 4 e: 5 f: 6 g: 7)
+
+    do (io::println (as o.a i32))     # 1
+    do (io::println (as o.b i32))     # 2
+    do (io::println o.c)              # 3
+    do (io::println o.d)              # 4
+    do (io::println (as o.e i32))     # 5
+    do (io::println o.f)              # 6
+    do (io::println o.g)              # 7
+
+    # In array: offsets must be correct per-element
+    let arr [OffsetChain] = [
+        (OffsetChain a: 10 b: 20 c: 30 d: 40 e: 50 f: 60 g: 70)
+        (OffsetChain a: 11 b: 21 c: 31 d: 41 e: 51 f: 61 g: 71)
+    ]
+
+    do (io::println (as arr[0].a i32))    # 10
+    do (io::println arr[0].d)             # 40
+    do (io::println (as arr[0].e i32))    # 50
+    do (io::println arr[0].g)             # 70
+
+    do (io::println (as arr[1].a i32))    # 11
+    do (io::println arr[1].c)             # 31
+    do (io::println arr[1].f)             # 61
+
+    return 0i32
+end

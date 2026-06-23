@@ -1,0 +1,25 @@
+module adv_f12_f32_precision
+import io
+
+func main () -> i32
+    # F32 precision test: 16777217 (2^24 + 1) loses precision
+    let n1 = (as 16777217.0 f32)
+    let n2 = (as 16777216.0 f32)
+
+    # Round-trip to f64 reveals precision loss
+    do (io::println (as n1 f64))
+    do (io::println (as n2 f64))
+
+    # In f32, addition can lose precision
+    let a_f32 = (as 1.0 f32)
+    let b_f32 = (as 1e-10 f32)
+
+    let sum_f32 = (+ a_f32 b_f32)
+    do (io::println (as sum_f32 f64))
+
+    # Compare to f64 direct
+    let sum_f64 = (+ 1.0 1e-10)
+    do (io::println sum_f64)
+
+    return 0i32
+end

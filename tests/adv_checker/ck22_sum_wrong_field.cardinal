@@ -1,0 +1,11 @@
+module ck22_sum_wrong_field
+# ILLEGAL: sum variant wrong field name (has z but expects y)
+type Tree
+    Leaf
+    Node (x i32) (y i32)
+end
+
+func f () -> i32
+    let t = (Node x: 1i32 z: 2i32)
+    return 0i32
+end

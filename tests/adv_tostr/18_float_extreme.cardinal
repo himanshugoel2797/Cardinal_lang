@@ -1,0 +1,15 @@
+module test_bool_with_types
+
+import io
+
+func main () -> i32
+    let t = true
+    let f = false
+    do (io::println (to_str t))
+    do (io::println (to_str f))
+    let c = 'x'
+    do (io::println (to_str c))
+    let s = "test"
+    do (io::println (to_str s))
+    return 0i32
+end

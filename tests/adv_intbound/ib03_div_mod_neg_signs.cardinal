@@ -1,0 +1,30 @@
+module ib03_div_mod_neg_signs
+
+import io
+
+func main () -> i32
+    # Signed division/modulo: test sign of remainder
+    # C semantics: remainder has sign of dividend
+
+    # (-7) / 2 = -3, (-7) % 2 = -1 (sign of -7)
+    do (io::println (/ (- 7i32) 2i32))
+    do (io::println (% (- 7i32) 2i32))
+
+    # 7 / (-2) = -3, 7 % (-2) = 1 (sign of 7)
+    do (io::println (/ 7i32 (- 2i32)))
+    do (io::println (% 7i32 (- 2i32)))
+
+    # (-7) / (-2) = 3, (-7) % (-2) = -1 (sign of -7)
+    do (io::println (/ (- 7i32) (- 2i32)))
+    do (io::println (% (- 7i32) (- 2i32)))
+
+    # Same tests for i64
+    do (io::println (/ (- 17i64) 5i64))
+    do (io::println (% (- 17i64) 5i64))
+
+    # Test with i16
+    do (io::println (/ (- 11i16) 3i16))
+    do (io::println (% (- 11i16) 3i16))
+
+    return 0i32
+end

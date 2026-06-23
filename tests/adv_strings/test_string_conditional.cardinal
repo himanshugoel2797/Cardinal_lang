@@ -1,0 +1,14 @@
+module test_string_conditional
+
+import io
+
+func main () -> i32
+    let s1 = "a"
+    let s2 = "a"
+    if (== s1 s2)
+        do (io::println "match")
+    else
+        do (io::println "no match")
+    end
+    return 0i32
+end

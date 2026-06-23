@@ -1,0 +1,27 @@
+module adv_38_match_exhaustive
+
+import io
+
+type Opt
+	Some (v i32)
+	None
+end
+
+func main () -> i32
+	let result = 0i32
+	for i = 0i32 to 3i32
+		let opt = if (== i 0i32)
+			(Some v: 10i32)
+		else
+			None
+		end
+		match opt
+		case Some(v)
+			set result = v
+		case None
+			set result = 99i32
+		end
+	end
+	do (io::println result)
+	return 0
+end

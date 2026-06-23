@@ -1,0 +1,29 @@
+module test42
+
+import io
+import strings
+
+type Message
+    Text (content str)
+    Number (value i32)
+    Empty
+end
+
+func message_info (msg Message) -> i32
+    match msg
+        case (Text content)
+            return (as (len content) i32)
+        case (Number value)
+            return value
+        case Empty
+            return 0i32
+    end
+    return (- 1)
+end
+
+func main () -> i32
+    do (io::println (message_info (Text content: "hello world")))
+    do (io::println (message_info (Number value: 42)))
+    do (io::println (message_info Empty))
+    return 0i32
+end

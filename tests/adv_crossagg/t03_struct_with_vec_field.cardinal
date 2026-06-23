@@ -1,0 +1,31 @@
+module t03_struct_with_vec_field
+
+import io
+
+# Struct containing a vec field
+struct Container
+    tag i32
+    items {i32}
+end
+
+func main () -> i32
+    let v {i32} = (vec i32)
+    do (push v 10)
+    do (push v 20)
+    do (push v 30)
+
+    let c = (Container tag: 5 items: v)
+    do (io::println c.tag)            # 5
+    do (io::println (len c.items))    # 3
+
+    # Read from vec field
+    do (io::println c.items[0])       # 10
+    do (io::println c.items[1])       # 20
+    do (io::println c.items[2])       # 30
+
+    # Mutate vec field
+    set c.items[0] = 99
+    do (io::println c.items[0])       # 99
+
+    return 0i32
+end

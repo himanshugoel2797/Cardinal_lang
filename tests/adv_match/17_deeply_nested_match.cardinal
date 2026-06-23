@@ -1,0 +1,48 @@
+module test17
+
+import io
+
+type L3
+    A (v i32)
+    B
+end
+
+type L2
+    C (inner L3)
+    D
+end
+
+type L1
+    E (inner L2)
+    F
+end
+
+func extract_value (l1 L1) -> i32
+    match l1
+        case (E inner)
+            match inner
+                case (C inner2)
+                    match inner2
+                        case (A v)
+                            return v
+                        case B
+                            return 0
+                    end
+                    return 0
+                case D
+                    return 0
+            end
+            return 0
+        case F
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    let l3 = (A v: 42)
+    let l2 = (C inner: l3)
+    let l1 = (E inner: l2)
+    do (io::println (extract_value l1))
+    return 0i32
+end

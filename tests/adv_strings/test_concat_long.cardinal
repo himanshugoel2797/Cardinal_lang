@@ -1,0 +1,13 @@
+module test_concat_long
+
+import io
+import strings
+
+func main () -> i32
+    let s = "hello"
+    let result = (strings::concat s "world")
+    let len_result = (len result)
+    do (io::println len_result)
+    do (io::println result)
+    return 0i32
+end

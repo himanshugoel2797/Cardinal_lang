@@ -1,0 +1,26 @@
+module test40
+
+import io
+
+type Priority
+    High
+    Normal
+    Low
+end
+
+func get_priority_level (p Priority) -> i32
+    match p
+        case High
+            return 10
+        else
+            return 0
+    end
+    return (- 1)
+end
+
+func main () -> i32
+    do (io::println (get_priority_level High))
+    do (io::println (get_priority_level Normal))
+    do (io::println (get_priority_level Low))
+    return 0i32
+end

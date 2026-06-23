@@ -1,0 +1,17 @@
+module map_missing_read
+
+import io
+
+func main () -> i32
+    # Test: reading a missing key (should panic consistently across all paths)
+    let m {str i32} = (map str i32)
+    set m["exists"] = 42i32
+
+    # Try to read existing (safe)
+    do (io::println m["exists"])
+
+    # Try to read missing (should panic)
+    do (io::println m["missing"])
+
+    return 0i32
+end

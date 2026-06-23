@@ -1,0 +1,12 @@
+module ck48_wrong_enum_variant
+# ILLEGAL: Color doesn't have Yellow
+enum Color
+    Red
+    Green
+    Blue
+end
+
+func f () -> i32
+    let c = Color::Yellow
+    return 0i32
+end

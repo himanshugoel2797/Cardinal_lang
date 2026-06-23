@@ -1,0 +1,43 @@
+module adv_gc13_multiple_reassign_churn
+
+import io
+
+# Test: variable is reassigned multiple times; old values become collectible.
+# Tests that reassignment properly releases old heap objects.
+
+func main () -> i32
+    let v {i32} = (vec i32)
+    for j = 0 to 10
+        do (push v j)
+    end
+    let total = 0i32
+
+    for i = 0 to 10000
+        # Reassign v to a new vec (old vec should be collectable)
+        set v = (vec i32)
+        for j = 0 to 20
+            do (push v (+ i j))
+        end
+
+        # Accumulate
+        for x in v
+            set total = (+ total x)
+        end
+
+        # Allocate heavily
+        if (== (% i 100) 0i32)
+            let m {str i32} = (map str i32)
+            for j = 0 to 50
+                let key = (strings::concat "k" (to_str j))
+                let m[key] = j
+            end
+        end
+    end
+
+    # Expected: for each i in 0..9999:
+    # sum of (i+j) for j in 0..19 = i*20 + (0+1+...+19) = i*20 + 190
+    # Total = sum of (i*20 + 190) = 20 * sum(i) + 10000*190
+    # = 20 * 49995000 + 1900000 = 999900000 + 1900000 = 1001800000
+    do (io::println total)
+    return 0i32
+end

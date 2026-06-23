@@ -1,0 +1,17 @@
+module t18_identifier_underscores
+
+import io
+
+func main () -> i32
+    let _var = 1i32
+    let var_ = 2i32
+    let var_1 = 3i32
+    let _var_1_ = 4i32
+    let __double = 5i32
+    do (io::println _var)
+    do (io::println var_)
+    do (io::println var_1)
+    do (io::println _var_1_)
+    do (io::println __double)
+    return 0i32
+end

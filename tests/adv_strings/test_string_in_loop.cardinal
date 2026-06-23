@@ -1,0 +1,13 @@
+module test_string_in_loop
+
+import io
+import strings
+
+func main () -> i32
+    let result = ""
+    for i = 0 to 3
+        set result = (strings::concat result "x")
+    end
+    do (io::println result)
+    return 0i32
+end

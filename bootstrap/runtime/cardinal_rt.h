@@ -29,6 +29,9 @@ cl_str   cl_str_from_utf8(const char *bytes, uint64_t nbytes);
  * handle (same pointer -> same handle). This is what emitted code uses for string
  * literals, so an inlined literal is never an un-rooted fresh allocation. */
 cl_str   cl_strlit(const char *utf8_cstr);
+/* As cl_strlit, but with an explicit byte length so a literal may contain embedded
+ * NUL bytes (strlen would truncate). Interns/roots by the bytes pointer. */
+cl_str   cl_strlit_n(const char *bytes, uint64_t nbytes);
 uint64_t cl_str_len(cl_str s);                  /* codepoint count */
 
 /* strings:: / convert:: builtins (names match the backend's cl_<mod>__<fn>). All

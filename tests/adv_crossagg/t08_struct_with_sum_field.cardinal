@@ -1,0 +1,37 @@
+module t08_struct_with_sum_field
+
+import io
+
+# Struct containing a sum type field
+type Shape
+    Circle (r i32)
+    Square (side i32)
+end
+
+struct Drawing
+    name_tag i32
+    shape Shape
+end
+
+func main () -> i32
+    let d1 = (Drawing name_tag: 1 shape: (Circle r: 5))
+    let d2 = (Drawing name_tag: 2 shape: (Square side: 10))
+
+    do (io::println d1.name_tag)      # 1
+    match d1.shape
+        case (Circle r)
+            do (io::println r)        # 5
+        case (Square s)
+            do (io::println 999)
+    end
+
+    do (io::println d2.name_tag)      # 2
+    match d2.shape
+        case (Circle r)
+            do (io::println 888)
+        case (Square s)
+            do (io::println s)        # 10
+    end
+
+    return 0i32
+end

@@ -1,0 +1,43 @@
+module t22_struct_multiple_odd_fields
+
+import io
+
+# Struct with multiple odd-sized fields: test offset calculation
+struct Mixed
+    a i8
+    b i32
+    c i8
+    d i64
+end
+
+func main () -> i32
+    let m = (Mixed a: 1 b: 2 c: 3 d: 4)
+
+    do (io::println m.a)             # 1
+    do (io::println m.b)             # 2
+    do (io::println m.c)             # 3
+    do (io::println m.d)             # 4
+
+    set m.a = 10
+    set m.b = 20
+    set m.c = 30
+    set m.d = 40
+
+    do (io::println m.a)             # 10
+    do (io::println m.b)             # 20
+    do (io::println m.c)             # 30
+    do (io::println m.d)             # 40
+
+    # Array of mixed
+    let arr [Mixed] = [
+        (Mixed a: 5 b: 6 c: 7 d: 8)
+        (Mixed a: 50 b: 60 c: 70 d: 80)
+    ]
+
+    do (io::println arr[0].a)        # 5
+    do (io::println arr[0].d)        # 8
+    do (io::println arr[1].b)        # 60
+    do (io::println arr[1].c)        # 70
+
+    return 0i32
+end

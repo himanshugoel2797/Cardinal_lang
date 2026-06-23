@@ -1,0 +1,40 @@
+module rec_deeply_nested_calls
+
+import io
+
+# Deeply nested function calls (not tail recursion)
+# Target: call-stack frame chain with multiple live frames
+
+func level5 (n i64) -> i64
+    return (+ n 5)
+end
+
+func level4 (n i64) -> i64
+    return (+ (level5 n) 4)
+end
+
+func level3 (n i64) -> i64
+    return (+ (level4 n) 3)
+end
+
+func level2 (n i64) -> i64
+    return (+ (level3 n) 2)
+end
+
+func level1 (n i64) -> i64
+    return (+ (level2 n) 1)
+end
+
+func recurse_levels (depth i64) -> i64
+    if (<= depth 0)
+        return 0i64
+    end
+    let inner = (level1 depth)
+    return (+ inner (recurse_levels (- depth 1)))
+end
+
+func main () -> i32
+    let result = (recurse_levels 800i64)
+    do (io::println result)
+    return 0i32
+end

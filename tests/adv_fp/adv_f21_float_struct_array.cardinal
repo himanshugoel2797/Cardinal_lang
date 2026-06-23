@@ -1,0 +1,36 @@
+module adv_f21_float_struct_array
+import io
+
+struct Point
+    x f64
+    y f64
+    z f64
+end
+
+func main () -> i32
+    let pts = [
+        (Point x: 1.5 y: 2.5 z: 3.5)
+        (Point x: (- 1.5) y: (- 2.5) z: (- 3.5))
+        (Point x: 0.0 y: 0.0 z: 0.0)
+    ]
+
+    # Access and print
+    let p0 = pts[0]
+    do (io::println p0.x)
+    do (io::println p0.y)
+    do (io::println p0.z)
+
+    let p1 = pts[1]
+    do (io::println p1.x)
+    do (io::println p1.y)
+    do (io::println p1.z)
+
+    # Arithmetic on fields
+    let sum_x = (+ p0.x p1.x)
+    do (io::println sum_x)   # expect 0.0
+
+    # Comparison of fields
+    do (io::println (== p0.x (- p1.x)))   # expect 1 (true)
+
+    return 0i32
+end

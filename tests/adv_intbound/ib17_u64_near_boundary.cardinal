@@ -1,0 +1,35 @@
+module ib17_u64_near_boundary
+
+import io
+
+func main () -> i32
+    # u64 values near 2^63 boundary and their division
+
+    # 2^63 - 1 (largest i64 can represent)
+    let i64max_as_u64 = 9223372036854775807u64
+    do (io::println (/ i64max_as_u64 2u64))
+    do (io::println (% i64max_as_u64 2u64))
+
+    # 2^63 exactly
+    let two63 = 9223372036854775808u64
+    do (io::println (/ two63 2u64))
+    do (io::println (% two63 2u64))
+
+    # 2^63 + 1
+    let two63_plus1 = 9223372036854775809u64
+    do (io::println (/ two63_plus1 2u64))
+    do (io::println (% two63_plus1 2u64))
+
+    # Values just below u64_max
+    let u64max_minus1 = 18446744073709551614u64
+    do (io::println (/ u64max_minus1 7u64))
+    do (io::println (% u64max_minus1 7u64))
+
+    # Division that produces high quotient bits
+    let high_val = 18446744073709551615u64
+    do (io::println (/ high_val 2u64))
+    do (io::println (/ high_val 3u64))
+    do (io::println (/ high_val 7u64))
+
+    return 0i32
+end

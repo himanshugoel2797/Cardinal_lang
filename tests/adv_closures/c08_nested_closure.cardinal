@@ -1,0 +1,17 @@
+module c08_nested_closure
+import io
+
+func main () -> i32
+    let a = 10i32
+    let outer = func (b i32) -> func(-> i32)
+        let inner = func () -> i32
+            return (+ a b)
+        end
+        return inner
+    end
+    let f1 = (outer 5)
+    let f2 = (outer 20)
+    do (io::println (f1))
+    do (io::println (f2))
+    return 0i32
+end

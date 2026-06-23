@@ -1,0 +1,9 @@
+module adv_35_or_all_false
+
+import io
+
+func main () -> i32
+	let result = (or false false false false)
+	do (io::println result)
+	return 0
+end

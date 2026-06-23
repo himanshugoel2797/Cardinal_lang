@@ -1,0 +1,22 @@
+module t25_struct_to_str_nested
+
+import io
+
+# to_str on nested structs: test proper printing of nested aggregates
+struct Inner
+    val i32
+end
+
+struct Outer
+    inner Inner
+    tag i32
+end
+
+func main () -> i32
+    let o = (Outer inner: (Inner val: 42) tag: 5)
+
+    do (io::println (to_str o))
+    do (io::println (to_str o.inner))
+
+    return 0i32
+end

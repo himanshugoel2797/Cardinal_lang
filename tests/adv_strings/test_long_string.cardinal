@@ -1,0 +1,10 @@
+module test_long_string
+
+import io
+
+func main () -> i32
+    let long_str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    let len_val = (len long_str)
+    do (io::println len_val)
+    return 0i32
+end

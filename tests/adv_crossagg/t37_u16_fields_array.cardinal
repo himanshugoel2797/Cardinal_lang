@@ -1,0 +1,28 @@
+module t37_u16_fields_array
+
+import io
+
+# Test accessing u16 field positions in array
+struct TightU16s
+    a u16
+    b u16
+    c u16
+end
+
+func main () -> i32
+    let arr [TightU16s] = [
+        (TightU16s a: 100 b: 101 c: 102)
+        (TightU16s a: 200 b: 201 c: 202)
+    ]
+
+    # Test u16 fields
+    do (io::println (as arr[0].a i32))    # 100
+    do (io::println (as arr[0].b i32))    # 101
+    do (io::println (as arr[0].c i32))    # 102
+
+    do (io::println (as arr[1].a i32))    # 200
+    do (io::println (as arr[1].b i32))    # 201
+    do (io::println (as arr[1].c i32))    # 202
+
+    return 0i32
+end

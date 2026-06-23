@@ -1,0 +1,26 @@
+module map_del_return_value
+
+import io
+
+func main () -> i32
+    # Test: map_del return value (does it return the deleted value or unit?)
+    let m {str i32} = (map str i32)
+    set m["x"] = 42i32
+    set m["y"] = 99i32
+
+    # Delete existing key
+    do (map_del m "x")
+    do (io::println (map_has m "x"))    # false
+    do (io::println (len m))            # 1
+
+    # Delete non-existent key (should be no-op)
+    do (map_del m "x")
+    do (io::println (len m))            # still 1
+
+    # Delete from empty map
+    let empty {str i32} = (map str i32)
+    do (map_del empty "nonexistent")
+    do (io::println (len empty))        # 0
+
+    return 0i32
+end

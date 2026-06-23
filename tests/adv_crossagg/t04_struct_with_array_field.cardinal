@@ -1,0 +1,25 @@
+module t04_struct_with_array_field
+
+import io
+
+# Struct containing an array field
+struct ArrayBox
+    tag i32
+    data [i64]
+end
+
+func main () -> i32
+    let arr [i64] = [10 20 30 40]
+    let ab = (ArrayBox tag: 7 data: arr)
+
+    do (io::println ab.tag)           # 7
+    do (io::println ab.data[0])       # 10
+    do (io::println ab.data[2])       # 30
+
+    # Mutate array field
+    set ab.data[1] = 222
+    do (io::println ab.data[1])       # 222
+    do (io::println ab.data[0])       # 10 (unchanged)
+
+    return 0i32
+end

@@ -1,0 +1,32 @@
+module test41
+
+import io
+
+type Mixed
+    Null
+    One (x i32)
+    Two
+    Three (a i32) (b i32) (c i32)
+end
+
+func process_mixed (m Mixed) -> i32
+    match m
+        case Null
+            return 0i32
+        case (One x)
+            return x
+        case Two
+            return 2i32
+        case (Three a b c)
+            return (+ a (+ b c))
+    end
+    return (- 1)
+end
+
+func main () -> i32
+    do (io::println (process_mixed Null))
+    do (io::println (process_mixed (One x: 5)))
+    do (io::println (process_mixed Two))
+    do (io::println (process_mixed (Three a: 1 b: 2 c: 3)))
+    return 0i32
+end

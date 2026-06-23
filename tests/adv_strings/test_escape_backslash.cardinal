@@ -1,0 +1,11 @@
+module test_escape_backslash
+
+import io
+
+func main () -> i32
+    let s1 = "back\\slash"
+    do (io::println s1)
+    let s2 = "\\"
+    do (io::println s2)
+    return 0i32
+end

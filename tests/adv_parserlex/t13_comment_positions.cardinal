@@ -1,0 +1,16 @@
+module t13_comment_positions
+
+import io
+
+# Comment at start
+func main () -> i32 # comment after func decl
+    let a = 1i32 # comment at end of binding
+    # Comment on own line
+    let b = 2i32
+    # Multiple
+    # Comments
+    # In a row
+    do (io::println a) # comment after statement
+    return 0i32 # comment before end
+end
+# Comment at file end

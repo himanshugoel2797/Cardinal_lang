@@ -1,0 +1,13 @@
+module test_unit
+
+import io
+
+func ret_unit () -> unit
+    return
+end
+
+func main () -> i32
+    let u = (ret_unit)
+    do (io::println (to_str u))
+    return 0i32
+end

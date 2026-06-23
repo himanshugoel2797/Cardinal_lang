@@ -1,0 +1,32 @@
+module c23_float_to_int_special_values
+
+import io
+
+func main () -> i32
+    # Float to int at exact boundaries
+    # 127.0 -> i8 = 127
+    let f127 = 127.0
+    do (io::println (as f127 i8))
+
+    # 127.5 -> i8 = truncate to 127
+    let f127_5 = 127.5
+    do (io::println (as f127_5 i8))
+
+    # 128.0 -> i8 = overflow, wraps
+    let f128 = 128.0
+    do (io::println (as f128 i8))
+
+    # -128.0 -> i8 = -128
+    let fminus128 = (- 128.0)
+    do (io::println (as fminus128 i8))
+
+    # -128.5 -> i8 = truncate to -128
+    let fminus128_5 = (- 128.5)
+    do (io::println (as fminus128_5 i8))
+
+    # -129.0 -> i8 = underflow, wraps
+    let fminus129 = (- 129.0)
+    do (io::println (as fminus129 i8))
+
+    return 0i32
+end

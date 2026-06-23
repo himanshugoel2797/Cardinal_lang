@@ -1,0 +1,29 @@
+module c10_i64_to_f64_precision_loss
+
+import io
+
+func main () -> i32
+    # i64 to f64: precision loss for large values
+    # Small values preserve exactly
+    do (io::println (as 0i64 f64))
+
+    do (io::println (as 1i64 f64))
+
+    do (io::println (as (- 1i64) f64))
+
+    # Values within f64 exact range
+    do (io::println (as 1000i64 f64))
+
+    # Large i64 values near 2^53 (f64 exact integer boundary)
+    # 2^53 = 9007199254740992
+    do (io::println (as 9007199254740992i64 f64))
+
+    # Beyond f64 exact integer range (precision loss)
+    # 2^53 + 1: f64 can't represent odd numbers > 2^53 exactly
+    do (io::println (as 9007199254740993i64 f64))
+
+    # i64 max value
+    do (io::println (as 9223372036854775807i64 f64))
+
+    return 0i32
+end

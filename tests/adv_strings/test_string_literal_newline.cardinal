@@ -1,0 +1,8 @@
+module test_string_literal_newline
+
+import io
+
+func main () -> i32
+    do (io::println "line1\nline2")
+    return 0i32
+end

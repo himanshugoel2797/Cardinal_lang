@@ -1,0 +1,9 @@
+module t14_comment_eof_no_newline
+
+import io
+
+func main () -> i32
+    do (io::println 1i32)
+    return 0i32
+end
+# comment at EOF with no trailing newline

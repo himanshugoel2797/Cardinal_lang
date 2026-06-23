@@ -1,0 +1,12 @@
+module adv_27_for_negative_bounds
+
+import io
+
+func main () -> i32
+	let sum = 0i32
+	for i = (- 5i32) to (- 1i32) step 1i32
+		set sum = (+ sum i)
+	end
+	do (io::println sum)
+	return 0
+end

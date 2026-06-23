@@ -1,0 +1,23 @@
+module c03_i8_to_i64_sign_extension
+
+import io
+
+func main () -> i32
+    # i8 to i64: sign extension tests
+    # -1 should become -1
+    do (io::println (as (- 1i8) i64))
+
+    # -128 should stay -128
+    do (io::println (as (- 128i8) i64))
+
+    # 127 should stay 127
+    do (io::println (as 127i8 i64))
+
+    # 0 should stay 0
+    do (io::println (as 0i8 i64))
+
+    # -100
+    do (io::println (as (- 100i8) i64))
+
+    return 0i32
+end

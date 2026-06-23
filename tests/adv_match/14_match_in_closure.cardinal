@@ -1,0 +1,28 @@
+module test14
+
+import io
+
+type Operator
+    Positive (x i32)
+    Negative (x i32)
+end
+
+func make_applier () -> func(Operator -> i32)
+    let f = func (op Operator) -> i32
+        match op
+            case (Positive x)
+                return x
+            case (Negative x)
+                return (- x)
+        end
+        return 0
+    end
+    return f
+end
+
+func main () -> i32
+    let applier = (make_applier)
+    do (io::println (applier (Positive x: 5)))
+    do (io::println (applier (Negative x: 7)))
+    return 0i32
+end

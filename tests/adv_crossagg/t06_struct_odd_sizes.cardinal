@@ -1,0 +1,53 @@
+module t06_struct_odd_sizes
+
+import io
+
+# Struct with odd total size (non-8-multiple): test proper packing in arrays/vecs
+struct ThreeInts
+    a i32
+    b i32
+    c i32
+end
+
+struct TwelveBytes
+    x i32
+    y i32
+    z i32
+end
+
+func main () -> i32
+    # Array of odd-sized structs
+    let arr [ThreeInts] = [
+        (ThreeInts a: 1 b: 2 c: 3)
+        (ThreeInts a: 10 b: 20 c: 30)
+        (ThreeInts a: 100 b: 200 c: 300)
+    ]
+
+    # Verify correct layout
+    do (io::println arr[0].a)         # 1
+    do (io::println arr[0].b)         # 2
+    do (io::println arr[0].c)         # 3
+    do (io::println arr[1].a)         # 10
+    do (io::println arr[1].c)         # 30
+    do (io::println arr[2].b)         # 200
+
+    # Mutate
+    set arr[0].c = 333
+    do (io::println arr[0].c)         # 333
+    do (io::println arr[1].a)         # 10 (next struct untouched)
+
+    # Vec of odd-sized structs
+    let v {TwelveBytes} = (vec TwelveBytes)
+    do (push v (TwelveBytes x: 5 y: 6 z: 7))
+    do (push v (TwelveBytes x: 50 y: 60 z: 70))
+
+    do (io::println v[0].x)           # 5
+    do (io::println v[0].z)           # 7
+    do (io::println v[1].y)           # 60
+
+    set v[0].z = 777
+    do (io::println v[0].z)           # 777
+    do (io::println v[1].x)           # 50 (next struct untouched)
+
+    return 0i32
+end

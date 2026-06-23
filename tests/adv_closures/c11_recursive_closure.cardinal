@@ -1,0 +1,14 @@
+module c11_recursive_closure
+import io
+
+func main () -> i32
+    let fact = func (n i32) -> i32
+        if (<= n 1i32)
+            return 1i32
+        else
+            return (* n ((fact (- n 1))))
+        end
+    end
+    do (io::println (fact 5))
+    return 0i32
+end

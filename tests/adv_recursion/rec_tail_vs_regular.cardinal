@@ -1,0 +1,31 @@
+module rec_tail_vs_regular
+
+import io
+
+# Compare tail-recursive-shaped loop vs actual recursion
+# Target: both should produce same numeric result
+
+func tail_recursive (n i64) (acc i64) -> i64
+    if (<= n 0)
+        return acc
+    end
+    return (tail_recursive (- n 1) (+ acc n))
+end
+
+func sum_via_loop (n i64) -> i64
+    let acc = 0i64
+    let i = n
+    while (> i 0)
+        set acc = (+ acc i)
+        set i = (- i 1)
+    end
+    return acc
+end
+
+func main () -> i32
+    let rec_result = (tail_recursive 1000i64 0i64)
+    let loop_result = (sum_via_loop 1000i64)
+    do (io::println rec_result)
+    do (io::println loop_result)
+    return 0i32
+end

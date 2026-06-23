@@ -1,0 +1,43 @@
+module adv_gc01_map_realloc_with_refs
+
+import io
+
+# Test: allocate 500 entries in a map, then reallocate the map many times
+# while holding references to values through a separate vec.
+# A weak GC might collect old map buckets prematurely.
+
+func main () -> i32
+    let m {str i32} = (map str i32)
+    let refs {i32} = (vec i32)
+
+    # Fill map
+    for i = 0 to 500
+        let key = (strings::concat "k" (to_str i))
+        let m[key] = i
+    end
+
+    # Store refs to all values
+    let keys {str} = (map_keys m)
+    for k in keys
+        do (push refs m[k])
+    end
+
+    # Now reallocate map many times (causes realloc/rehash)
+    for iteration = 0 to 100
+        let m {str i32} = (map str i32)
+        for i = 0 to 500
+            let key = (strings::concat "k" (to_str i))
+            let m[key] = (+ i iteration)
+        end
+    end
+
+    # Sum the original refs (should still be valid)
+    let total = 0i32
+    for r in refs
+        set total = (+ total r)
+    end
+
+    # Expected: 0+1+2+...+499 = 124750
+    do (io::println total)
+    return 0i32
+end

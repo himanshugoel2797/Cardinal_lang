@@ -1,0 +1,12 @@
+module adv_30_for_single_iteration
+
+import io
+
+func main () -> i32
+	let sum = 0i32
+	for i = 5i32 to 6i32
+		set sum = (+ sum i)
+	end
+	do (io::println sum)
+	return 0
+end

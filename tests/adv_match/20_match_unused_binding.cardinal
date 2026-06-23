@@ -1,0 +1,34 @@
+module test20
+
+import io
+
+type Box
+    Full (item i32)
+    Empty
+end
+
+func is_empty (b Box) -> bool
+    match b
+        case (Full item)
+            return false
+        case Empty
+            return true
+    end
+    return false
+end
+
+func main () -> i32
+    let b1 = (Full item: 99)
+    let b2 = Empty
+    if (is_empty b1)
+        do (io::println 1)
+    else
+        do (io::println 0)
+    end
+    if (is_empty b2)
+        do (io::println 1)
+    else
+        do (io::println 0)
+    end
+    return 0i32
+end

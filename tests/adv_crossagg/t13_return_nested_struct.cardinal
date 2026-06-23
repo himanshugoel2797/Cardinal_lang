@@ -1,0 +1,36 @@
+module t13_return_nested_struct
+
+import io
+
+# Return large nested struct from function: test proper calling convention
+struct Inner
+    x i32
+    y i32
+end
+
+struct Outer
+    a i32
+    inner Inner
+    b i64
+end
+
+func make_outer () -> Outer
+    return (Outer a: 1 inner: (Inner x: 10 y: 20) b: 100)
+end
+
+func get_inner (o Outer) -> Inner
+    return o.inner
+end
+
+func main () -> i32
+    let o = (make_outer)
+    do (io::println o.a)             # 1
+    do (io::println o.inner.x)       # 10
+    do (io::println o.b)             # 100
+
+    let inner = (get_inner o)
+    do (io::println inner.x)         # 10
+    do (io::println inner.y)         # 20
+
+    return 0i32
+end

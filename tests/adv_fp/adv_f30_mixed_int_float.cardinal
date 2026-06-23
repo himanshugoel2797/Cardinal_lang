@@ -1,0 +1,35 @@
+module adv_f30_mixed_int_float
+import io
+
+func main () -> i32
+    # Int to float conversions
+    let i1 = 42i32
+    let f1 = (as i1 f64)
+    do (io::println f1)   # 42.0
+
+    # Large int that loses precision in f32
+    let large = 16777217i32   # 2^24 + 1
+    let as_f32 = (as large f32)
+    let back = (as as_f32 i32)
+    do (io::println (as as_f32 f64))
+    do (io::println back)
+    do (io::println (== large back))   # false (precision loss)
+
+    # Negative int to float
+    let neg = (- 123i32)
+    let neg_f = (as neg f64)
+    do (io::println neg_f)   # -123.0
+
+    # Float to int edge cases
+    let f_large = 2147483647.0   # i32::max as float
+    let i_back = (as f_large i32)
+    do (io::println i_back)
+
+    # Negate int and convert to float
+    let x = 5i32
+    let neg_x = (- x)
+    let neg_x_f = (as neg_x f64)
+    do (io::println neg_x_f)   # -5.0
+
+    return 0i32
+end

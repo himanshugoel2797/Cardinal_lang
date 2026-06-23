@@ -1,0 +1,28 @@
+module ib15_mul_neg_patterns
+
+import io
+
+func main () -> i32
+    # Multiplication patterns with negatives and overflow
+
+    # i8: various negative products
+    do (io::println (* (- 127i8) 1i8))   # -127
+    do (io::println (* (- 127i8) 2i8))   # -254, wraps to 2
+    do (io::println (* (- 64i8) 2i8))    # -128
+    do (io::println (* (- 65i8) 2i8))    # -130, wraps to 126
+
+    # i32: negative overflow patterns
+    do (io::println (* (- 2147483647i32) 2i32)) # -2^32+2, wraps
+    do (io::println (* (- 1073741824i32) 2i32)) # -2^31
+    do (io::println (* (- 1000000000i32) 10i32)) # overflow
+
+    # Mixed sign multiplies
+    do (io::println (* 127i8 (- 2i8)))   # 127 * -2 = -254 = 2
+    do (io::println (* (- 127i8) (- 2i8))) # 254
+
+    # u64 with large values
+    let big = 4294967296u64 # 2^32
+    do (io::println (* big big))         # 2^64 = 0
+
+    return 0i32
+end

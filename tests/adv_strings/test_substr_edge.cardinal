@@ -1,0 +1,18 @@
+module test_substr_edge
+
+import io
+import strings
+
+func main () -> i32
+    let s = "hello"
+    # substr from 0 for 5 (whole string)
+    let sub1 = (strings::substr s 0i64 5i64)
+    do (io::println sub1)
+    # substr from 5 (past end)
+    let sub2 = (strings::substr s 5i64 0i64)
+    do (io::println sub2)
+    # substr with count beyond end
+    let sub3 = (strings::substr s 2i64 100i64)
+    do (io::println sub3)
+    return 0i32
+end

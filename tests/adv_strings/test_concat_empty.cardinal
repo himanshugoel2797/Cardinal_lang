@@ -1,0 +1,17 @@
+module test_concat_empty
+
+import io
+import strings
+
+func main () -> i32
+    let s1 = ""
+    let s2 = "hello"
+    let s3 = ""
+    let r1 = (strings::concat s1 s2)
+    do (io::println r1)
+    let r2 = (strings::concat s2 s1)
+    do (io::println r2)
+    let r3 = (strings::concat s1 s3)
+    do (io::println r3)
+    return 0i32
+end

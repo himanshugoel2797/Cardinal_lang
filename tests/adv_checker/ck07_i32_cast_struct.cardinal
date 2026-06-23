@@ -1,0 +1,11 @@
+module ck07_i32_cast_struct
+# ILLEGAL: cannot cast struct to i32
+struct P
+    x i32
+end
+
+func f () -> i32
+    let p = (P x: 5i32)
+    let y = (as p i32)
+    return 0i32
+end

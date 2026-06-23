@@ -1,0 +1,37 @@
+module adv_gc02_closure_capture_reassign
+
+import io
+
+# Test: closure captures a binding that gets reassigned to a different object.
+# The old object should be collectible, but the closure should still work.
+# Tests that closure captures by reference and handles reassignment correctly.
+
+func make_accumulator () -> func(i32 -> i32)
+    let acc = 0i32
+    let f = func (x i32) -> i32
+        set acc = (+ acc x)
+        return acc
+    end
+    return f
+end
+
+func main () -> i32
+    let c = (make_accumulator)
+    let total = 0i32
+
+    for i = 0 to 10000
+        set total = (+ total (c i))
+
+        # Allocate heavily between calls to stress GC
+        if (== (% i 100) 0i32)
+            let v {i32} = (vec i32)
+            for j = 0 to 100
+                do (push v j)
+            end
+        end
+    end
+
+    # Expected: sum of 1+2+...+10000 = 50005000
+    do (io::println total)
+    return 0i32
+end

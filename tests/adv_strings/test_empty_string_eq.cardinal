@@ -1,0 +1,16 @@
+module test_empty_string_eq
+
+import io
+import strings
+
+func main () -> i32
+    let s1 = ""
+    let s2 = ""
+    let eq = (strings::eq s1 s2)
+    if eq
+        do (io::println "equal")
+    else
+        do (io::println "not equal")
+    end
+    return 0i32
+end

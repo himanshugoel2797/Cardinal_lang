@@ -1,0 +1,37 @@
+module test30
+
+import io
+
+type Option
+    Some (val i32)
+    None
+end
+
+func get_or_zero (o Option) -> i32
+    match o
+        case (Some v)
+            return v
+        case None
+            return 0
+    end
+    return 0
+end
+
+func wrap (x i32) -> Option
+    if (== x 0)
+        return None
+    else
+        return (Some val: x)
+    end
+end
+
+func chain_calls (x i32) (y i32) -> i32
+    return (get_or_zero (wrap (+ x y)))
+end
+
+func main () -> i32
+    do (io::println (chain_calls 0 0))
+    do (io::println (chain_calls 5 10))
+    do (io::println (chain_calls 1 (- 1)))
+    return 0i32
+end

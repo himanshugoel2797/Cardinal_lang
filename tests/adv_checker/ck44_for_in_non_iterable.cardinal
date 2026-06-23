@@ -1,0 +1,9 @@
+module ck44_for_in_non_iterable
+# ILLEGAL: cannot iterate over i32
+func f () -> i32
+    let x = 42i32
+    for item in x
+        do (io::println item)
+    end
+    return 0i32
+end

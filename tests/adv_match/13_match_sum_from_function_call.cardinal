@@ -1,0 +1,33 @@
+module test13
+
+import io
+
+type Maybe
+    Just (x i32)
+    Nothing
+end
+
+func make_maybe (cond bool) (val i32) -> Maybe
+    if cond
+        return (Just x: val)
+    else
+        return Nothing
+    end
+end
+
+func process_maybe (m Maybe) -> i32
+    match m
+        case (Just x)
+            return (+ x 100)
+        case Nothing
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (process_maybe (make_maybe true 5)))
+    do (io::println (process_maybe (make_maybe false 5)))
+    do (io::println (process_maybe (make_maybe true 20)))
+    return 0i32
+end

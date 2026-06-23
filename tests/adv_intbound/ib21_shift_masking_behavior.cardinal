@@ -1,0 +1,41 @@
+module ib21_shift_masking_behavior
+
+import io
+
+func main () -> i32
+    # Test shift masking: x86 masks shift counts to lower N bits
+    # i8/u8: mask to 3 bits (0-7)
+    # i16/u16: mask to 4 bits (0-15)
+    # i32/u32: mask to 5 bits (0-31)
+    # i64/u64: mask to 6 bits (0-63)
+
+    # For u8, shift by 8 should give 0, but if masked to 3 bits: 8 & 7 = 0, so it should be 0 anyway
+    # For u8, shift by 9 should give 0, but if masked: 9 & 7 = 1, so it might give shl(x,1)
+
+    # Test u8 shifts
+    let val_u8 = 1u8
+    do (io::println (shl val_u8 1u8))    # 2
+    do (io::println (shl val_u8 9u8))    # 9 & 7 = 1 in x86 masking, so 2 if bug, 0 if correct
+
+    # Test u16 shifts
+    let val_u16 = 1u16
+    do (io::println (shl val_u16 1u16))  # 2
+    do (io::println (shl val_u16 17u16)) # 17 & 15 = 1 in x86 masking, so 2 if bug, 0 if correct
+
+    # Test u32 shifts
+    let val_u32 = 1u32
+    do (io::println (shl val_u32 1u32))  # 2
+    do (io::println (shl val_u32 33u32)) # 33 & 31 = 1 in x86 masking, so 2 if bug, 0 if correct
+
+    # Test u64 shifts (known x86 bug)
+    let val_u64 = 1u64
+    do (io::println (shl val_u64 1u64))  # 2
+    do (io::println (shl val_u64 65u64)) # 65 & 63 = 1 in x86 masking, so 2 if bug, 0 if correct
+
+    # Right shifts
+    let val_r = 128u8
+    do (io::println (shr val_r 1u8))     # 64
+    do (io::println (shr val_r 9u8))     # Should be 0, but 9 & 7 = 1, so 64 if masked bug
+
+    return 0i32
+end

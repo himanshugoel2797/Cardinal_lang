@@ -1,0 +1,15 @@
+module ck47_match_wrong_payload_arity
+# ILLEGAL: Node has 2 payload fields but match binds only 1
+type Tree
+    Leaf
+    Node (x i32) (y i32)
+end
+
+func f (t Tree) -> i32
+    match t
+        case Leaf
+            return 0i32
+        case Node(x)
+            return x
+    end
+end

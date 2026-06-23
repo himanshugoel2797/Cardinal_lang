@@ -1,0 +1,8 @@
+module test_string_literal_tab
+
+import io
+
+func main () -> i32
+    do (io::println "a\tb\tc")
+    return 0i32
+end

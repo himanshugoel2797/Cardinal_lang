@@ -1,0 +1,14 @@
+module c30_closure_triple_float_params
+import io
+
+func apply_triple (f func(f64 f64 f64 -> f64)) -> f64
+    return (f 1.5 2.5 3.5)
+end
+
+func main () -> i32
+    let sum3 = func (a f64) (b f64) (c f64) -> f64
+        return (+ a (+ b c))
+    end
+    do (io::println (apply_triple sum3))
+    return 0i32
+end

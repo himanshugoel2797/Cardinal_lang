@@ -1,0 +1,6 @@
+module ck26_null_as_i32
+# ILLEGAL: cannot assign null to non-ref type i32
+func f () -> i32
+    let x i32 = null
+    return x
+end

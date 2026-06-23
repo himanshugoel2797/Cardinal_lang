@@ -1,0 +1,31 @@
+module ib20_narrow_div_mod
+
+import io
+
+func main () -> i32
+    # Division/modulo on i8, i16 (not heavily tested in u64-focused tests)
+
+    # i8 division edge cases
+    do (io::println (/ 100i8 7i8))       # 14
+    do (io::println (% 100i8 7i8))       # 2
+    do (io::println (/ (- 100i8) 7i8))   # -14
+    do (io::println (% (- 100i8) 7i8))   # -2
+
+    # i16 division
+    do (io::println (/ 10000i16 7i16))
+    do (io::println (% 10000i16 7i16))
+
+    # u16 division with large numerator
+    do (io::println (/ 65000u16 100u16))
+    do (io::println (% 65000u16 100u16))
+
+    # i8 modulo by negative
+    do (io::println (% 100i8 (- 7i8)))   # 2
+    do (io::println (% (- 100i8) (- 7i8))) # -2
+
+    # Edge case: i8 / -1
+    do (io::println (/ 127i8 (- 1i8)))   # -127
+    do (io::println (/ (- 128i8) (- 1i8))) # -128 (INT_MIN/-1 wraps)
+
+    return 0i32
+end

@@ -1,0 +1,6 @@
+module ck33_array_type_mismatch
+# ILLEGAL: array literal has mixed types (i32 and i64)
+func f () -> i32
+    let arr i32 = [1i32 2i64 3i32]
+    return 0i32
+end

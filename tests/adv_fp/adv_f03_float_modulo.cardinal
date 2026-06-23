@@ -1,0 +1,29 @@
+module adv_f03_float_modulo
+import io
+
+func main () -> i32
+    # Float modulo semantics: x % y = x - n*y where n = trunc(x/y)
+
+    # Positive operands
+    do (io::println (% 5.5 2.0))   # expect 1.5
+
+    # Negative dividend
+    do (io::println (% (- 5.5) 2.0))   # expect -1.5 (sign follows dividend)
+
+    # Negative divisor
+    do (io::println (% 5.5 (- 2.0)))   # expect 1.5 (sign follows dividend)
+
+    # Both negative
+    do (io::println (% (- 5.5) (- 2.0)))   # expect -1.5
+
+    # Zero dividend
+    do (io::println (% 0.0 5.0))   # expect 0
+
+    # Fractional results
+    do (io::println (% 3.2 1.0))   # expect 0.2 (with rounding)
+
+    # x % x = 0
+    do (io::println (% 7.5 7.5))   # expect 0
+
+    return 0i32
+end

@@ -1,0 +1,18 @@
+module test_map_with_struct_key
+
+import io
+
+enum Key
+    Alpha
+    Beta
+    Gamma
+end
+
+func main () -> i32
+    let m (map Key i32) = (map Key i32)
+    do (io::println (to_str m))
+    set m[Key::Alpha] = 10i32
+    set m[Key::Beta] = 20i32
+    do (io::println (to_str m))
+    return 0i32
+end

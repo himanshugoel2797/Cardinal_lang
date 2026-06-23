@@ -1,0 +1,29 @@
+module map_i32_key_negative
+
+import io
+
+func main () -> i32
+    # Test: i32 keys including negative numbers
+    let m {i32 i32} = (map i32 i32)
+    set m[(- 5i32)] = 100i32
+    set m[0i32] = 200i32
+    set m[5i32] = 300i32
+
+    do (io::println m[(- 5i32)])
+    do (io::println m[0i32])
+    do (io::println m[5i32])
+
+    # Iteration order (should be insertion order)
+    do (io::println "keys:")
+    for k in (map_keys m)
+        do (io::print k)
+        do (io::print " ")
+    end
+    do (io::println "")
+
+    # Delete and verify
+    do (map_del m 0i32)
+    do (io::println (len m))
+
+    return 0i32
+end

@@ -1,0 +1,29 @@
+module ib29_bitwise_shift_combo
+
+import io
+
+func main () -> i32
+    # Combinations of bitwise and shift operations
+
+    # Shift then bitwise
+    let val = 255u8
+    do (io::println (band (shl val 1u8) 255u8)) # (254) & 255 = 254
+
+    # Bitwise then shift
+    do (io::println (shl (bor 1u8 2u8) 1u8))     # (3) << 1 = 6
+
+    # Chained shifts
+    do (io::println (shl (shl 1u8 2u8) 2u8))     # (4) << 2 = 16
+
+    # Right shift chain
+    do (io::println (shr (shr 255u8 2u8) 2u8))   # (63) >> 2 = 15
+
+    # bnot then shift
+    do (io::println (shl (bnot 0u8) 1u8))        # 255 << 1 = 254
+
+    # Negative right shift chain
+    let neg = (- 1i8)
+    do (io::println (shr (shr neg 1i8) 1i8))     # (-1) >> 1 >> 1 = -1
+
+    return 0i32
+end

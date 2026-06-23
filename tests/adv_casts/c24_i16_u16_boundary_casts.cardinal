@@ -1,0 +1,23 @@
+module c24_i16_u16_boundary_casts
+
+import io
+
+func main () -> i32
+    # i16 <-> u16 boundaries
+    # i16 min = -32768
+    do (io::println (as (- 32768i16) u16))
+
+    # i16 max = 32767
+    do (io::println (as 32767i16 u16))
+
+    # u16 max = 65535 -> i16 = -1
+    do (io::println (as 65535u16 i16))
+
+    # u16 = 32768 (high bit set) -> i16 = -32768
+    do (io::println (as 32768u16 i16))
+
+    # u16 = 32767 -> i16 = 32767
+    do (io::println (as 32767u16 i16))
+
+    return 0i32
+end

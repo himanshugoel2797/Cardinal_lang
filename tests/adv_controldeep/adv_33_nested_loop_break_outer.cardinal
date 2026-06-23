@@ -1,0 +1,17 @@
+module adv_33_nested_loop_break_outer
+
+import io
+
+func main () -> i32
+	let sum = 0i32
+	for i = 0i32 to 5i32
+		for j = 0i32 to 5i32
+			set sum = (+ sum 1)
+			if (== (+ i j) 3i32)
+				break
+			end
+		end
+	end
+	do (io::println sum)
+	return 0
+end

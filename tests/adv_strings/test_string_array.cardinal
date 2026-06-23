@@ -1,0 +1,15 @@
+module test_string_array
+
+import io
+
+func main () -> i32
+    let arr [str] = ["a" "b" "c"]
+    do (io::println (len arr))
+    let s0 = arr[0i32]
+    let s1 = arr[1i32]
+    let s2 = arr[2i32]
+    do (io::println s0)
+    do (io::println s1)
+    do (io::println s2)
+    return 0i32
+end

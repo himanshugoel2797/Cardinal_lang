@@ -1,0 +1,13 @@
+module test_print_println
+
+import io
+
+func main () -> i32
+    do (io::print "start")
+    do (io::print "A")
+    do (io::print "B")
+    do (io::println "")
+    do (io::println "line1")
+    do (io::println "line2")
+    return 0i32
+end

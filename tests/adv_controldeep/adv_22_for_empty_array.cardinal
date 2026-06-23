@@ -1,0 +1,13 @@
+module adv_22_for_empty_array
+
+import io
+
+func main () -> i32
+	let arr = (array i32 0)
+	let count = 0i32
+	for x in arr
+		set count = (+ count 1)
+	end
+	do (io::println count)
+	return 0
+end

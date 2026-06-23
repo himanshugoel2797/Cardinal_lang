@@ -1,0 +1,17 @@
+module c14_capture_map
+import io
+
+func main () -> i32
+    let m = (map str i32)
+    set m["a"] = 10
+    set m["b"] = 20
+    let get_a = func () -> i32
+        return m["a"]
+    end
+    let get_b = func () -> i32
+        return m["b"]
+    end
+    do (io::println (get_a))
+    do (io::println (get_b))
+    return 0i32
+end

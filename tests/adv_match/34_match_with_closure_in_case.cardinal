@@ -1,0 +1,27 @@
+module test34
+
+import io
+
+type Operation
+    Apply (f func(i32 -> i32))
+    Constant (value i32)
+end
+
+func execute (op Operation) (x i32) -> i32
+    match op
+        case (Apply f)
+            return (f x)
+        case (Constant value)
+            return value
+    end
+    return 0
+end
+
+func main () -> i32
+    let double = func (n i32) -> i32
+        return (* n 2)
+    end
+    do (io::println (execute (Apply f: double) 5))
+    do (io::println (execute (Constant value: 99) 0))
+    return 0i32
+end

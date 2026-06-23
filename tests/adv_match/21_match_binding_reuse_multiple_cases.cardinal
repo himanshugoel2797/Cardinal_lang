@@ -1,0 +1,24 @@
+module test21
+
+import io
+
+type Result
+    Ok (value i32)
+    Err (value i32)
+end
+
+func extract_absolute (r Result) -> i32
+    match r
+        case (Ok value)
+            return (+ value 1000)
+        case (Err value)
+            return (* value (- 1))
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (extract_absolute (Ok value: 42)))
+    do (io::println (extract_absolute (Err value: 10)))
+    return 0i32
+end

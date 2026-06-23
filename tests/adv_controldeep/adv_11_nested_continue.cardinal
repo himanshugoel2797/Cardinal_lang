@@ -1,0 +1,18 @@
+module adv_11_nested_continue
+
+import io
+
+func main () -> i32
+	let sum = 0i32
+	for i = 0i32 to 3i32
+		for j = 0i32 to 3i32
+			if (== j 1i32)
+				continue
+			end
+			set sum = (+ sum j)
+		end
+		set sum = (+ sum 100i32)
+	end
+	do (io::println sum)
+	return 0
+end

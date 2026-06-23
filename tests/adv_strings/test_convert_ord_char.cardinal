@@ -1,0 +1,13 @@
+module test_convert_ord_char
+
+import io
+import convert
+
+func main () -> i32
+    let c = 'A'
+    let ord_c = (convert::ord c)
+    do (io::println ord_c)
+    let chr_back = (convert::chr (as ord_c i32))
+    do (io::println chr_back)
+    return 0i32
+end

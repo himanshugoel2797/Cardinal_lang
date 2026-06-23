@@ -1,0 +1,30 @@
+module adv_gc07_string_heavy_buildup
+
+import io
+
+# Test: allocate many strings in a tight loop, building up large string heap.
+# Tests string deduplication and GC of string allocations.
+
+func main () -> i32
+    let total = 0i32
+    let strings {str} = (vec str)
+
+    for i = 0 to 10000
+        # Create a string (may be interned or may allocate)
+        let s = (strings::concat "string_" (to_str (% i 100i32)))
+        do (push strings s)
+
+        # Also create strings in a map
+        let m {str i32} = (map str i32)
+        for j = 0 to 10
+            let key = (strings::concat "map_" (to_str j))
+            let m[key] = (+ i j)
+        end
+
+        set total = (+ total (len s))
+    end
+
+    # Also count unique strings
+    do (io::println (len strings))
+    return 0i32
+end

@@ -1,0 +1,38 @@
+module adv_f07_inf_arithmetic
+import io
+
+func main () -> i32
+    let inf = (/ 1.0 0.0)
+    let ninf = (/ (- 1.0) 0.0)
+
+    # inf + x = inf
+    do (io::println (+ inf 5.0))
+
+    # inf + inf = inf
+    do (io::println (+ inf inf))
+
+    # -inf + (-inf) = -inf
+    do (io::println (+ ninf ninf))
+
+    # inf - inf = NaN
+    do (io::println (- inf inf))
+
+    # inf * 2 = inf
+    do (io::println (* inf 2.0))
+
+    # inf * -1 = -inf
+    do (io::println (* inf (- 1.0)))
+
+    # inf / 2 = inf
+    do (io::println (/ inf 2.0))
+
+    # inf / inf = NaN
+    do (io::println (/ inf inf))
+
+    # Comparisons
+    do (io::println (> inf 1000.0))   # true
+    do (io::println (== inf inf))     # true
+    do (io::println (== inf ninf))    # false
+
+    return 0i32
+end

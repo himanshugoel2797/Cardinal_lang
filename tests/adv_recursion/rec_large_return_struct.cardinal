@@ -1,0 +1,37 @@
+module rec_large_return_struct
+
+import io
+
+# Recursion returning large structs (by-value semantics)
+# Target: return-value struct passing through deep recursion
+
+struct BigData
+    a i64
+    b i64
+    c i64
+    d i64
+    e f64
+end
+
+func make_data (n i64) -> BigData
+    return (BigData a: n b: (+ n 1) c: (+ n 2) d: (+ n 3) e: 3.14)
+end
+
+func sum_data (bd BigData) -> i64
+    return (+ bd.a (+ bd.b (+ bd.c bd.d)))
+end
+
+func recurse_return_struct (depth i64) -> BigData
+    if (<= depth 0)
+        return (make_data 0)
+    end
+    let inner_result = (recurse_return_struct (- depth 1))
+    return (make_data (+ inner_result.a 1))
+end
+
+func main () -> i32
+    let final_data = (recurse_return_struct 700i64)
+    let result = (sum_data final_data)
+    do (io::println result)
+    return 0i32
+end

@@ -1,0 +1,32 @@
+module c02_u64_to_u8_narrowing
+
+import io
+
+func main () -> i32
+    # u64 to u8: truncation tests
+    # 255 = max u8
+    do (io::println (as 255u64 u8))
+
+    # 256 = overflow, wraps to 0
+    do (io::println (as 256u64 u8))
+
+    # 511 = wraps to 255
+    do (io::println (as 511u64 u8))
+
+    # 512 = wraps to 0
+    do (io::println (as 512u64 u8))
+
+    # u64 max wraps to 255
+    do (io::println (as 18446744073709551615u64 u8))
+
+    # 2^16
+    do (io::println (as 65536u64 u8))
+
+    # 2^32
+    do (io::println (as 4294967296u64 u8))
+
+    # 1000
+    do (io::println (as 1000u64 u8))
+
+    return 0i32
+end

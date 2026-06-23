@@ -40,3 +40,34 @@ Per-area detail (every test + verdict) lives in each directory's `FINDINGS.md`:
 Collections (46), sums/enums (45), GC stress (14, also clean under
 ASan+UBSan at `CARDINAL_GC_THRESHOLD=0`), and the 120 checker tests found **no**
 divergences — corroborating those subsystems.
+
+---
+
+# Campaign 2 — deeper differential sweep (`tests/adv_*`)
+
+A second fleet (14 subagents, ~474 tests) targeted under-tested frontiers and
+subsystem *interactions* rather than re-covering campaign 1. It found **4 distinct
+bugs**, all fixed below. The clean subsystems: to_str/display (28), floats-deep
+(30), match/patterns (45), maps (29), integer-boundary (30), control-flow (45),
+recursion/ABI (22), GC-stress (16), checker-parity (50), lexer/parser (26).
+
+## Confirmed bugs found AND fixed (4)
+
+| # | Where | Bug | Fix |
+|---|-------|-----|-----|
+| J | `backend_x86.cardinal` `ICast` int→float | `u64 -> f64/f32` used `cvtsi2sd`, which treats the source as a *signed* 64-bit int, so any value ≥ 2^63 converted to a negative double (e.g. `u64_max` printed `-1` vs the correct `1.84467e+19`). | Standard unsigned-64 conversion: for a sign-bit-set value, halve with a sticky low bit, convert, then double back. NUL-free path unchanged. |
+| K | `backend_x86.cardinal` container elem load/store | A value struct whose size is 3/5/6/7 bytes (e.g. `{u8,u8,u8}`) in an array/vec is `nwords==1`, so `load_sized` fell through to a **1-byte** load (dropping fields at offset >0 → read `10,0,0` for `{10,11,12}`) and `store_sized` *overran* to 8 bytes. | Route non-{1,2,4,8} sizes through the byte-accurate copy helpers (`copy_rax_to_slot`/`copy_scratch_to_rax`). |
+| L | `backend_x86.cardinal` `ICallClosure` | A closure returning a >16B aggregate (e.g. `[i32]`/`cl_array`, 24B = SysV MEMORY) had no hidden-pointer return path, so the callee's `sret` ABI was unmet — the env/args were misplaced and the call **segfaulted**. | Mirror `emit_call`'s `hidden`/`base`: `&dst`→`%rdi`, env shifts to `%rsi`, args shift up one GP reg, result written through the sret pointer. |
+| M | `backend_c.cardinal` + `backend_x86.cardinal` + runtime | A string literal with an **embedded NUL** (`"a\0b"`) went through `cl_strlit`/`strlen`: the C backend truncated to length 1, and the x86 `.asciz` escape emitted a raw NUL byte that broke the assembler. Interp gave the correct length 3. | New runtime `cl_strlit_n(bytes, nbytes)` interns/pins exactly like `cl_strlit` but takes an explicit length (`cl_strlit` now delegates). C emits `cl_strlit_n("…", sizeof("…")-1)`; x86 emits the literal with `.ascii` + an end label and passes `end-start` as the length. Behavior-identical for NUL-free literals. |
+
+Note: the first attempt at M used `cl_str_from_utf8` directly, which returns an
+*un-rooted* fresh allocation — string-literal results aren't GC-rooted at the use
+site, so the self-host hit `use-after-free: stale handle`. The `cl_strlit_n`
+interning/pinning variant is what preserves the permanently-rooted invariant.
+
+## Verification gates after the fixes — all green
+- C self-host fixed point: **cc1.c == cc2.c byte-identical (72682 lines)**.
+- x86 self-host fixed point: **native x86 compiler emits identical C (72682 lines)**.
+- e2e sweeps: arith+floats+aggregates+control **116/116**, collections+sums+gc
+  **105/105** (one GC test flaked on a timeout under parallel load; passes solo).
+- All 4 bug repros + siblings now PASS three-way; string regressions clean.

@@ -1,0 +1,40 @@
+module adv_gc10_deep_recursion_alloc
+
+import io
+
+# Test: deep recursion where each frame allocates containers.
+# Tests stack root tracking and frame-local allocation GC.
+
+func recurse (depth i32) -> i32
+    if (<= depth 0i32)
+        return 1i32
+    end
+
+    # Each frame allocates a vec
+    let v {i32} = (vec i32)
+    for j = 0 to 10
+        do (push v j)
+    end
+
+    # Each frame allocates a map
+    let m {str i32} = (map str i32)
+    let m["x"] = depth
+
+    # Recurse
+    let result = (recurse (- depth 1i32))
+
+    # Use local allocations (prevent DCE)
+    let sum = 0i32
+    for x in v
+        set sum = (+ sum x)
+    end
+    set sum = (+ sum m["x"])
+
+    return (+ result sum)
+end
+
+func main () -> i32
+    let result = (recurse 1000i32)
+    do (io::println result)
+    return 0i32
+end

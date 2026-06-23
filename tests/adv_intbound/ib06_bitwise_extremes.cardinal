@@ -1,0 +1,44 @@
+module ib06_bitwise_extremes
+
+import io
+
+func main () -> i32
+    # Bitwise ops on boundary values
+
+    # band: any & 0 = 0, any & -1 = any
+    do (io::println (band 255u8 0u8))    # 0
+    do (io::println (band 255u8 255u8))  # 255
+    do (io::println (band (- 1i8) 127i8)) # 127
+
+    # bor: any | 0 = any, any | -1 = -1
+    do (io::println (bor 0u8 0u8))       # 0
+    do (io::println (bor 255u8 0u8))     # 255
+    do (io::println (bor 0u8 255u8))     # 255
+    do (io::println (bor (- 1i8) 0i8))   # -1
+
+    # bxor: any ^ 0 = any, any ^ -1 = ~any
+    do (io::println (bxor 0u8 0u8))      # 0
+    do (io::println (bxor 255u8 0u8))    # 255
+    do (io::println (bxor 255u8 255u8))  # 0
+    do (io::println (bxor (- 1i8) (- 1i8))) # 0
+
+    # bnot on max values
+    do (io::println (bnot 0u8))          # 255
+    do (io::println (bnot 255u8))        # 0
+    do (io::println (bnot (- 1i8)))      # 0
+    do (io::println (bnot 127i8))        # -128
+
+    # bnot on i64 max/min
+    let i64max = 9223372036854775807i64
+    do (io::println (bnot i64max))       # -9223372036854775808 (INT_MIN)
+    let i64min = (- 9223372036854775808i64)
+    do (io::println (bnot i64min))       # 9223372036854775807 (INT_MAX)
+
+    # Large u64 bitwise
+    let u64max = 18446744073709551615u64
+    do (io::println (bnot u64max))       # 0
+    do (io::println (band u64max 1u64))  # 1
+    do (io::println (bor u64max 0u64))   # u64max
+
+    return 0i32
+end

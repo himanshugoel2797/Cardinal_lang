@@ -1,0 +1,14 @@
+module ck36_nested_struct_field_type
+# ILLEGAL: nested struct field wrong type (expects struct, got int)
+struct Inner
+    value i32
+end
+
+struct Outer
+    inner Inner
+end
+
+func f () -> i32
+    let o = (Outer inner: 42i32)
+    return 0i32
+end

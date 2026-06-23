@@ -1,0 +1,12 @@
+module test_substr_utf8_codepoint
+
+import io
+import strings
+
+func main () -> i32
+    # substr should work on codepoint indices, not byte indices
+    let s = "café"
+    let sub = (strings::substr s 0i64 3i64)
+    do (io::println sub)
+    return 0i32
+end

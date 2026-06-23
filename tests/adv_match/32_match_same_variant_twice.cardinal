@@ -1,0 +1,38 @@
+module test32
+
+import io
+
+type Value
+    Num (x i32)
+    Str (s str)
+end
+
+func compare_values (v1 Value) (v2 Value) -> i32
+    match v1
+        case (Num x)
+            match v2
+                case (Num y)
+                    return (+ x y)
+                case (Str s)
+                    return x
+            end
+            return 0
+        case (Str s)
+            match v2
+                case (Num x)
+                    return x
+                case (Str s2)
+                    return (as (+ (len s) (len s2)) i32)
+            end
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (compare_values (Num x: 5) (Num x: 3)))
+    do (io::println (compare_values (Num x: 10) (Str s: "hi")))
+    do (io::println (compare_values (Str s: "hello") (Num x: 2)))
+    do (io::println (compare_values (Str s: "a") (Str s: "bc")))
+    return 0i32
+end

@@ -1,0 +1,43 @@
+module t07_sum_type_in_vec
+
+import io
+
+# Sum type variants in a vec: test proper tag/payload layout
+type Number
+    Int (value i32)
+    Float (value i64)
+end
+
+func main () -> i32
+    let nums {Number} = (vec Number)
+
+    do (push nums (Int value: 42))
+    do (push nums (Float value: 100))
+    do (push nums (Int value: 7))
+
+    do (io::println (len nums))       # 3
+
+    # Match and extract
+    match nums[0]
+        case (Int v)
+            do (io::println v)        # 42
+        case (Float v)
+            do (io::println 999)
+    end
+
+    match nums[1]
+        case (Int v)
+            do (io::println 888)
+        case (Float v)
+            do (io::println v)        # 100
+    end
+
+    match nums[2]
+        case (Int v)
+            do (io::println v)        # 7
+        case (Float v)
+            do (io::println 777)
+    end
+
+    return 0i32
+end

@@ -1,0 +1,15 @@
+module c28_closure_capturing_str
+import io
+import strings
+
+func main () -> i32
+    let s = "hello"
+    let get_s = func () -> str
+        return s
+    end
+    let len_s = func () -> i32
+        return (to_str (get_s))
+    end
+    do (io::println (get_s))
+    return 0i32
+end

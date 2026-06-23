@@ -1,0 +1,7 @@
+module ck38_map_has_wrong_key_type
+# ILLEGAL: map_has with wrong key type (expects i32, given str)
+func f () -> i32
+    let m = (map i32 str)
+    let exists = (map_has m "hello")
+    return 0i32
+end

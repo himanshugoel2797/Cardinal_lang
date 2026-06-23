@@ -1,0 +1,36 @@
+module map_enum_key
+
+import io
+
+enum Color
+    Red
+    Green
+    Blue
+end
+
+func main () -> i32
+    # Test: enum keys and iteration order
+    let m {Color str} = (map Color str)
+    set m[Color::Red] = "red"
+    set m[Color::Green] = "green"
+    set m[Color::Blue] = "blue"
+
+    do (io::println m[Color::Red])
+    do (io::println m[Color::Green])
+    do (io::println m[Color::Blue])
+
+    # Iteration order (insertion order)
+    do (io::println "keys in order:")
+    for k in (map_keys m)
+        # Can't print enum directly, just count
+        do (io::print ".")
+    end
+    do (io::println "")
+
+    # Verify len and deletion
+    do (io::println (len m))
+    do (map_del m Color::Green)
+    do (io::println (len m))
+
+    return 0i32
+end

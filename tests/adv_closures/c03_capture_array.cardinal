@@ -1,0 +1,11 @@
+module c03_capture_array
+import io
+
+func main () -> i32
+    let arr = [10 20 30]
+    let get_sum = func () -> i32
+        return (+ arr[0] (+ arr[1] arr[2]))
+    end
+    do (io::println (get_sum))
+    return 0i32
+end

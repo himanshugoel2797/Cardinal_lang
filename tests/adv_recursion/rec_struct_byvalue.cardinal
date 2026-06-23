@@ -1,0 +1,31 @@
+module rec_struct_byvalue
+
+import io
+
+# Struct passed by value through deep recursion
+# Target: frame-size stress, copy semantics through call stack
+
+struct Point
+    x i64
+    y i64
+    z i64
+end
+
+func sum_point (p Point) -> i64
+    return (+ p.x (+ p.y p.z))
+end
+
+func recurse_struct (depth i64) (p Point) -> i64
+    if (<= depth 0)
+        return (sum_point p)
+    end
+    let new_p = (Point x: (+ p.x 1) y: (+ p.y 1) z: (+ p.z 1))
+    return (recurse_struct (- depth 1) new_p)
+end
+
+func main () -> i32
+    let p = (Point x: 1 y: 2 z: 3)
+    let result = (recurse_struct 600i64 p)
+    do (io::println result)
+    return 0i32
+end

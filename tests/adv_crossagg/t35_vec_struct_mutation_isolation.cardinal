@@ -1,0 +1,41 @@
+module t35_vec_struct_mutation_isolation
+
+import io
+
+# Vec of structs: mutate one, verify others unchanged
+struct Entry
+    key i32
+    val1 i32
+    val2 i32
+    val3 i32
+end
+
+func main () -> i32
+    let v {Entry} = (vec Entry)
+    do (push v (Entry key: 1 val1: 10 val2: 11 val3: 12))
+    do (push v (Entry key: 2 val1: 20 val2: 21 val3: 22))
+    do (push v (Entry key: 3 val1: 30 val2: 31 val3: 32))
+
+    # Mutate middle entry thoroughly
+    set v[1].val1 = 200
+    set v[1].val2 = 210
+    set v[1].val3 = 220
+
+    # Verify isolation
+    do (io::println v[0].key)         # 1
+    do (io::println v[0].val1)        # 10
+    do (io::println v[0].val2)        # 11
+    do (io::println v[0].val3)        # 12
+
+    do (io::println v[1].key)         # 2
+    do (io::println v[1].val1)        # 200
+    do (io::println v[1].val2)        # 210
+    do (io::println v[1].val3)        # 220
+
+    do (io::println v[2].key)         # 3
+    do (io::println v[2].val1)        # 30
+    do (io::println v[2].val2)        # 31
+    do (io::println v[2].val3)        # 32
+
+    return 0i32
+end

@@ -1,0 +1,31 @@
+module adv_f13_float_negate
+import io
+
+func main () -> i32
+    # Negate zero (affects sign)
+    let pzero = 0.0
+    let nzero = (- pzero)
+
+    # Should print as same but sign is different in reciprocal
+    do (io::println pzero)
+    do (io::println nzero)
+
+    # Negate positive
+    do (io::println (- 5.5))   # expect -5.5
+
+    # Negate negative
+    do (io::println (- (- 3.3)))   # expect 3.3
+
+    # Negate infinity
+    let inf = (/ 1.0 0.0)
+    do (io::println (- inf))   # expect -inf
+
+    # Negate NaN
+    let nan = (/ 0.0 0.0)
+    do (io::println (- nan))   # expect nan
+
+    # Double negate NaN
+    do (io::println (- (- nan)))   # expect nan
+
+    return 0i32
+end

@@ -1,0 +1,13 @@
+module test_concat_three
+
+import io
+import strings
+
+func main () -> i32
+    let s1 = "a"
+    let s2 = "b"
+    let s3 = "c"
+    let result = (strings::concat (strings::concat s1 s2) s3)
+    do (io::println result)
+    return 0i32
+end

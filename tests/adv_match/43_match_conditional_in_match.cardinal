@@ -1,0 +1,43 @@
+module test43
+
+import io
+
+type Range
+    Min (x i32)
+    Max (x i32)
+    Between (x i32) (a i32) (b i32)
+end
+
+func check_range (r Range) (val i32) -> bool
+    match r
+        case (Min x)
+            return (>= val x)
+        case (Max x)
+            return (<= val x)
+        case (Between x a b)
+            return (and (>= val a) (<= val b))
+    end
+    return false
+end
+
+func main () -> i32
+    let r1 = (Min x: 5i32)
+    let r2 = (Max x: 20i32)
+    let r3 = (Between x: 0i32 a: 10i32 b: 30i32)
+    if (check_range r1 10i32)
+        do (io::println 1i32)
+    else
+        do (io::println 0i32)
+    end
+    if (check_range r2 15i32)
+        do (io::println 1i32)
+    else
+        do (io::println 0i32)
+    end
+    if (check_range r3 20i32)
+        do (io::println 1i32)
+    else
+        do (io::println 0i32)
+    end
+    return 0i32
+end

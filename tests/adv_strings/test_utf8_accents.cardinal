@@ -1,0 +1,15 @@
+module test_utf8_accents
+
+import io
+import strings
+
+func main () -> i32
+    # Test with accented characters
+    let s = "café"
+    let len_s = (len s)
+    do (io::println len_s)
+    let cs = (strings::chars s)
+    let len_cs = (len cs)
+    do (io::println len_cs)
+    return 0i32
+end

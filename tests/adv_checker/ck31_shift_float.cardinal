@@ -1,0 +1,7 @@
+module ck31_shift_float
+# ILLEGAL: shift on float
+func f () -> i32
+    let x = 1.5f64
+    let y = (shl x 1i32)
+    return 0i32
+end

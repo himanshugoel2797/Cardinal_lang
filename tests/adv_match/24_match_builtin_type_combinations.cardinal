@@ -1,0 +1,40 @@
+module test24
+
+import io
+
+type Container
+    IntBox (value i32)
+    StrBox (value str)
+    FloatBox (value f64)
+    BoolBox (value bool)
+    CharBox (value char)
+end
+
+func describe (c Container) -> i32
+    match c
+        case (IntBox value)
+            return value
+        case (StrBox value)
+            return (as (len value) i32)
+        case (FloatBox value)
+            return (as value i32)
+        case (BoolBox value)
+            if value
+                return 1
+            else
+                return 0
+            end
+        case (CharBox value)
+            return 99
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (describe (IntBox value: 42)))
+    do (io::println (describe (StrBox value: "hello")))
+    do (io::println (describe (FloatBox value: 3.14)))
+    do (io::println (describe (BoolBox value: true)))
+    do (io::println (describe (CharBox value: 'X')))
+    return 0i32
+end

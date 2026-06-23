@@ -1,0 +1,18 @@
+module c07_for_loop_capture_freshness
+import io
+
+func main () -> i32
+    let closures = (vec func(-> i32))
+    let i = 0i32
+    for i = 0 to 5
+        let f = func () -> i32
+            return i
+        end
+        do (push closures f)
+    end
+    do (io::println ((closures[0])))
+    do (io::println ((closures[1])))
+    do (io::println ((closures[2])))
+    do (io::println ((closures[4])))
+    return 0i32
+end

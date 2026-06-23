@@ -1,0 +1,32 @@
+module test10
+
+import io
+
+type Calc
+    Double (x i32)
+    Triple (x i32)
+    Square (x i32)
+    Negate (x i32)
+end
+
+func apply (c Calc) -> i32
+    match c
+        case (Double x)
+            return (* x 2)
+        case (Triple x)
+            return (* x 3)
+        case (Square x)
+            return (* x x)
+        case (Negate x)
+            return (- 0 x)
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (apply (Double x: 5)))
+    do (io::println (apply (Triple x: 4)))
+    do (io::println (apply (Square x: 6)))
+    do (io::println (apply (Negate x: 7)))
+    return 0i32
+end

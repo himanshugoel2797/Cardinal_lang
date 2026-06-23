@@ -1,0 +1,6 @@
+module ck13_keyword_step
+# ILLEGAL: "step" is a keyword, cannot use as binding
+func f () -> i32
+    let step = 5i32
+    return step
+end

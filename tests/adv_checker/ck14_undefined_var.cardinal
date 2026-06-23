@@ -1,0 +1,5 @@
+module ck14_undefined_var
+# ILLEGAL: using undefined variable
+func f () -> i32
+    return z
+end

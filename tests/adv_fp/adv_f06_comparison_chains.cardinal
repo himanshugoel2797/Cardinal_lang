@@ -1,0 +1,26 @@
+module adv_f06_comparison_chains
+import io
+
+func main () -> i32
+    let a = 1.0
+    let b = 2.0
+    let c = 3.0
+    let nan = (/ 0.0 0.0)
+
+    # Chain comparisons: (< a b) and (< b c)
+    do (io::println (and (< a b) (< b c)))   # expect 1 (true)
+
+    # (< a c) is true
+    do (io::println (< a c))   # expect 1
+
+    # Chain with NaN: NaN < x is false
+    do (io::println (and (< nan b) (< b c)))   # expect 0 (false due to NaN < b being false)
+
+    # Strict ordering check
+    do (io::println (and (< a b) (and (< b c) (< a c))))   # expect 1 (all true)
+
+    # Anti-chain with negative
+    do (io::println (and (> a b) (< b c)))   # expect 0 (first is false)
+
+    return 0i32
+end

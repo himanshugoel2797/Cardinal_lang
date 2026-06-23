@@ -1,0 +1,38 @@
+module test11
+
+import io
+
+type Signal
+    Start
+    Stop
+    Pause
+    Resume
+    Status
+    Reset
+    Error (code i32)
+end
+
+func handle (s Signal) -> i32
+    match s
+        case Start
+            return 10
+        case Stop
+            return 20
+        case Pause
+            return 30
+        case (Error c)
+            return c
+        else
+            return 99
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (handle Start))
+    do (io::println (handle Stop))
+    do (io::println (handle Resume))
+    do (io::println (handle Status))
+    do (io::println (handle (Error code: 42)))
+    return 0i32
+end

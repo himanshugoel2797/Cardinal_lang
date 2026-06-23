@@ -1,0 +1,31 @@
+module test22
+
+import io
+
+type Status
+    Running (pid i32)
+    Stopped (exit_code i32)
+    Failed (error_num i32)
+end
+
+func via_match (s Status) -> i32
+    match s
+        case (Running p)
+            return (+ p 100)
+        case (Stopped e)
+            return (- 0 e)
+        case (Failed e)
+            return e
+    end
+    return 999
+end
+
+func main () -> i32
+    let s1 = (Running pid: 1234)
+    let s2 = (Stopped exit_code: 2)
+    let s3 = (Failed error_num: 3)
+    do (io::println (via_match s1))
+    do (io::println (via_match s2))
+    do (io::println (via_match s3))
+    return 0i32
+end

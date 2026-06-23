@@ -1,0 +1,26 @@
+module t41_vec_vs_array_bytes
+
+import io
+
+# Same byte struct in vec instead of array: does it work?
+struct ThreeBytes
+    a u8
+    b u8
+    c u8
+end
+
+func main () -> i32
+    # Test with vec
+    let v {ThreeBytes} = (vec ThreeBytes)
+    do (push v (ThreeBytes a: 10 b: 11 c: 12))
+    do (push v (ThreeBytes a: 20 b: 21 c: 22))
+
+    do (io::println (as v[0].a i32))      # 10
+    do (io::println (as v[0].b i32))      # 11
+    do (io::println (as v[0].c i32))      # 12
+    do (io::println (as v[1].a i32))      # 20
+    do (io::println (as v[1].b i32))      # 21
+    do (io::println (as v[1].c i32))      # 22
+
+    return 0i32
+end

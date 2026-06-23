@@ -1,0 +1,59 @@
+module adv_gc09_closure_in_map_xref
+
+import io
+
+# Test: store closures in a map; those closures capture other containers.
+# Tests closure root tracking within map values.
+
+func main () -> i32
+    let closures {str func(-> i32)} = (map str func(-> i32))
+    let vecs {str {i32}} = (map str {i32})
+
+    for i = 0 to 500
+        let key = (strings::concat "key_" (to_str i))
+
+        # Create and store a vec
+        let v {i32} = (vec i32)
+        for j = 0 to 20
+            do (push v (+ i j))
+        end
+        let vecs[key] = v
+
+        # Create a closure that references the vec
+        # (We can't directly access the map from within the closure,
+        # but we can capture the value)
+        let captured_vec = v
+        let f = func () -> i32
+            let sum = 0i32
+            for x in captured_vec
+                set sum = (+ sum x)
+            end
+            return sum
+        end
+        let closures[key] = f
+
+        # Allocate heavily
+        if (== (% i 50) 0i32)
+            let temp {i32} = (vec i32)
+            for j = 0 to 100
+                do (push temp j)
+            end
+        end
+    end
+
+    # Invoke all closures
+    let total = 0i32
+    let keys {str} = (map_keys closures)
+    for k in keys
+        if (map_has closures k)
+            let f = closures[k]
+            set total = (+ total (f))
+        end
+    end
+
+    # Expected: for each i in 0..499, sum of (i+j) for j in 0..19
+    # = sum of (i*20 + (0+1+...+19)) = sum of (i*20 + 190) = 500*190 + 20*sum(i)
+    # = 95000 + 20 * 124750 = 95000 + 2495000 = 2590000
+    do (io::println total)
+    return 0i32
+end

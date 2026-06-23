@@ -1,0 +1,28 @@
+module t09_map_with_struct_values
+
+import io
+
+# Map with struct values: test proper C-ABI layout through map copy semantics
+struct Person
+    age i32
+    score i64
+end
+
+func main () -> i32
+    let m {str Person} = (map str Person)
+
+    set m["alice"] = (Person age: 25 score: 100)
+    set m["bob"] = (Person age: 30 score: 200)
+
+    # Read via key
+    do (io::println m["alice"].age)   # 25
+    do (io::println m["bob"].score)   # 200
+
+    # Maps copy on read, so mutations don't affect stored value
+    let p = m["alice"]
+    set p.age = 99
+    do (io::println m["alice"].age)   # 25 (unchanged in map)
+    do (io::println p.age)            # 99 (copy changed)
+
+    return 0i32
+end

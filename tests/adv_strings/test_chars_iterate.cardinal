@@ -1,0 +1,14 @@
+module test_chars_iterate
+
+import io
+import strings
+import convert
+
+func main () -> i32
+    let s = "abc"
+    let cs = (strings::chars s)
+    for c in cs
+        do (io::println (convert::ord c))
+    end
+    return 0i32
+end

@@ -1,0 +1,16 @@
+module test_vec_with_struct
+
+import io
+
+struct Point
+    x i32
+    y i32
+end
+
+func main () -> i32
+    let v (vec Point) = (vec Point)
+    do (push v (Point x: 1i32 y: 2i32))
+    do (push v (Point x: 3i32 y: 4i32))
+    do (io::println (to_str v))
+    return 0i32
+end

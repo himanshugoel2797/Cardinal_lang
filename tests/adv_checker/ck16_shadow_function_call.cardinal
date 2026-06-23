@@ -1,0 +1,10 @@
+module ck16_shadow_function_call
+# ILLEGAL: shadowing function name with local binding, then calling it
+func h (x i32) -> i32
+    return x
+end
+
+func f () -> i32
+    let h = 5i32
+    return (h 10i32)
+end

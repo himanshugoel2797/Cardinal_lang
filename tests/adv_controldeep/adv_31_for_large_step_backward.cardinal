@@ -1,0 +1,12 @@
+module adv_31_for_large_step_backward
+
+import io
+
+func main () -> i32
+	let count = 0i32
+	for i = 100i32 to 0i32 step (- 10i32)
+		set count = (+ count 1)
+	end
+	do (io::println count)
+	return 0
+end

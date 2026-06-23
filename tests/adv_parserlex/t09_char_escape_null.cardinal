@@ -1,0 +1,10 @@
+module t09_char_escape_null
+
+import io
+
+func main () -> i32
+    # Null char escape
+    let a = '\0'
+    do (io::println a)
+    return 0i32
+end

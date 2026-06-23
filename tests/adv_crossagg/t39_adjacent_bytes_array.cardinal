@@ -1,0 +1,23 @@
+module t39_adjacent_bytes_array
+
+import io
+
+# Adjacent byte fields in struct in array
+struct TwoBytesInWord
+    a u8
+    b u8
+end
+
+func main () -> i32
+    let arr [TwoBytesInWord] = [
+        (TwoBytesInWord a: 10 b: 11)
+        (TwoBytesInWord a: 20 b: 21)
+    ]
+
+    do (io::println (as arr[0].a i32))    # 10
+    do (io::println (as arr[0].b i32))    # 11
+    do (io::println (as arr[1].a i32))    # 20
+    do (io::println (as arr[1].b i32))    # 21
+
+    return 0i32
+end

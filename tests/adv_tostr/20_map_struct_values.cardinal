@@ -1,0 +1,19 @@
+module test_map_struct_values
+
+import io
+
+struct Pair
+    a i32
+    b str
+end
+
+func main () -> i32
+    let m (map str Pair) = (map str Pair)
+    do (io::println (to_str m))
+
+    set m["x"] = (Pair a: 10i32 b: "ten")
+    set m["y"] = (Pair a: 20i32 b: "twenty")
+    do (io::println (to_str m))
+
+    return 0i32
+end

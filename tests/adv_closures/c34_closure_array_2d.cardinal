@@ -1,0 +1,12 @@
+module c34_closure_array_2d
+import io
+
+func main () -> i32
+    let arr1 = [1 2 3]
+    let arr2 = [4 5 6]
+    let f = func () -> i32
+        return (+ arr1[0] arr2[2])
+    end
+    do (io::println (f))
+    return 0i32
+end

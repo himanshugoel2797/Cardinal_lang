@@ -1,0 +1,16 @@
+module adv_15_return_from_while
+
+import io
+
+func main () -> i32
+	let i = 0i32
+	while true
+		if (== i 3i32)
+			do (io::println i)
+			return i
+		end
+		set i = (+ i 1)
+	end
+	do (io::println 999i32)
+	return 0
+end

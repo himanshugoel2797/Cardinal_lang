@@ -1,0 +1,35 @@
+module t12_deep_copy_nested_struct
+
+import io
+
+# Deep copy semantics: mutate a copy, original unchanged
+struct Nested
+    a i32
+    b i64
+end
+
+struct Container
+    tag i32
+    nested Nested
+end
+
+func main () -> i32
+    let c = (Container tag: 5 nested: (Nested a: 10 b: 20))
+
+    # Copy and mutate
+    let c2 = c
+    set c2.nested.a = 99
+    set c2.tag = 99
+
+    # Original unchanged
+    do (io::println c.tag)            # 5
+    do (io::println c.nested.a)       # 10
+    do (io::println c.nested.b)       # 20
+
+    # Copy modified
+    do (io::println c2.tag)           # 99
+    do (io::println c2.nested.a)      # 99
+    do (io::println c2.nested.b)      # 20 (sibling unchanged)
+
+    return 0i32
+end

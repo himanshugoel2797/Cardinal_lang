@@ -540,8 +540,8 @@ int64_t cl_convert__str_to_int(cl_str s) {
  * un-rooted fresh allocation per evaluation). */
 static cl_map g_strlit_intern = CL_NULL;
 
-cl_str cl_strlit(const char *utf8_cstr) {
-    uint64_t key = (uint64_t)(uintptr_t)utf8_cstr;
+cl_str cl_strlit_n(const char *bytes, uint64_t nbytes) {
+    uint64_t key = (uint64_t)(uintptr_t)bytes;
     if (g_strlit_intern == CL_NULL) {
         g_strlit_intern = cl_map_new(sizeof(uint64_t), sizeof(cl_str), CL_MAP_SCALAR);
         /* PIN, not push_root: cl_strlit is called mid-frame, and a LIFO push here
@@ -550,11 +550,15 @@ cl_str cl_strlit(const char *utf8_cstr) {
     }
     if (cl_map_has(g_strlit_intern, &key))
         return *(cl_str *)cl_map_get(g_strlit_intern, &key);
-    cl_str s = cl_str_from_utf8(utf8_cstr, (uint64_t)strlen(utf8_cstr));
+    cl_str s = cl_str_from_utf8(bytes, nbytes);
     cl_gc_push_root(&s, sizeof s);              /* protect across map_set's alloc */
     cl_map_set(g_strlit_intern, &key, &s);      /* now also rooted via the map */
     cl_gc_pop_roots(1);
     return s;
+}
+
+cl_str cl_strlit(const char *utf8_cstr) {
+    return cl_strlit_n(utf8_cstr, (uint64_t)strlen(utf8_cstr));
 }
 
 /* --------------------------------------------------------------------------- *

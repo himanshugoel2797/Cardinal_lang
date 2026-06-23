@@ -1,0 +1,9 @@
+module ck25_if_branch_mismatch
+# ILLEGAL: if branch returns i32 but else returns i64
+func f (cond bool) -> i32
+    if cond
+        return 1i32
+    else
+        return 2i64
+    end
+end

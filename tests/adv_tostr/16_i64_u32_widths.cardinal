@@ -1,0 +1,17 @@
+module test_i64_u32_widths
+
+import io
+
+func main () -> i32
+    do (io::println (to_str 0i64))
+    do (io::println (to_str 1i64))
+    do (io::println (to_str -1i64))
+    do (io::println (to_str 9223372036854775807i64))
+    do (io::println (to_str -9223372036854775808i64))
+
+    do (io::println (to_str 0u32))
+    do (io::println (to_str 1u32))
+    do (io::println (to_str 4294967295u32))
+
+    return 0i32
+end

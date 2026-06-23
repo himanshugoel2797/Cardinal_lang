@@ -1,0 +1,25 @@
+module adv_f20_to_str_edge
+import io
+
+func main () -> i32
+    # to_str of special values
+    let inf = (/ 1.0 0.0)
+    let ninf = (/ (- 1.0) 0.0)
+    let nan = (/ 0.0 0.0)
+
+    do (io::println (to_str inf))
+    do (io::println (to_str ninf))
+    do (io::println (to_str nan))
+
+    # to_str of zero (no sign in string)
+    do (io::println (to_str 0.0))
+    do (io::println (to_str (- 0.0)))
+
+    # to_str of very small
+    do (io::println (to_str 1e-300))
+
+    # to_str of very large
+    do (io::println (to_str 1e300))
+
+    return 0i32
+end

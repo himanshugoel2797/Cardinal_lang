@@ -1,0 +1,28 @@
+module rec_mutual_complex
+
+import io
+
+# Complex mutual recursion with arithmetic
+# Target: mutual call patterns with computation
+
+func even_calc (n i64) -> i64
+    if (<= n 0)
+        return 0i64
+    end
+    return (+ n (odd_calc (- n 2)))
+end
+
+func odd_calc (n i64) -> i64
+    if (<= n 1)
+        return 1i64
+    end
+    return (+ n (even_calc (- n 2)))
+end
+
+func main () -> i32
+    let e = (even_calc 1300i64)
+    let o = (odd_calc 1300i64)
+    do (io::println e)
+    do (io::println o)
+    return 0i32
+end

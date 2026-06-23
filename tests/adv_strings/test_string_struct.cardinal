@@ -1,0 +1,15 @@
+module test_string_struct
+
+import io
+
+struct Entry
+    name str
+    value i32
+end
+
+func main () -> i32
+    let e = (Entry name: "test" value: 42i32)
+    do (io::println e.name)
+    do (io::println e.value)
+    return 0i32
+end

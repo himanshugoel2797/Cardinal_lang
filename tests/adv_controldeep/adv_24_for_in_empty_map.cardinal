@@ -1,0 +1,13 @@
+module adv_24_for_in_empty_map
+
+import io
+
+func main () -> i32
+	let m = (map str i32)
+	let count = 0i32
+	for k in (map_keys m)
+		set count = (+ count 1)
+	end
+	do (io::println count)
+	return 0
+end

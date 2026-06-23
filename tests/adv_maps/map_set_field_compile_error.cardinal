@@ -1,0 +1,20 @@
+module map_set_field_compile_error
+
+import io
+
+struct Coord
+    x i32
+    y i32
+end
+
+func main () -> i32
+    # Test: set m[k].field should be a COMPILE ERROR per spec
+    # This file should fail checkcmp.sh (DIFF: checker disagrees)
+    let m {str Coord} = (map str Coord)
+    set m["p1"] = (Coord x: 1i32 y: 2i32)
+
+    # This should compile-error (maps copy on retrieval, so this is invalid)
+    set m["p1"].x = 999i32
+
+    return 0i32
+end

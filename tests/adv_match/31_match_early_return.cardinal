@@ -1,0 +1,32 @@
+module test31
+
+import io
+
+type Command
+    Execute (cmd str)
+    Cancel
+    Done
+end
+
+func process (c Command) -> i32
+    match c
+        case (Execute cmd)
+            if (== cmd "immediate")
+                return 10
+            end
+            return 20
+        case Cancel
+            return 30
+        case Done
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (process (Execute cmd: "immediate")))
+    do (io::println (process (Execute cmd: "delayed")))
+    do (io::println (process Cancel))
+    do (io::println (process Done))
+    return 0i32
+end

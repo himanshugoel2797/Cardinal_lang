@@ -1,0 +1,30 @@
+module test27
+
+import io
+
+type Tree
+    Leaf (value i32)
+    Node (value i32) (left Tree) (right Tree)
+end
+
+func sum_trees (trees {Tree}) -> i32
+    let total = 0i32
+    for t in trees
+        match t
+            case (Leaf value)
+                set total = (+ total value)
+            case (Node value left right)
+                set total = (+ total (+ value 1))
+        end
+    end
+    return total
+end
+
+func main () -> i32
+    let trees = (vec Tree)
+    do (push trees (Leaf value: 5))
+    do (push trees (Leaf value: 10))
+    do (push trees (Node value: 0 left: (Leaf value: 1) right: (Leaf value: 2)))
+    do (io::println (sum_trees trees))
+    return 0i32
+end

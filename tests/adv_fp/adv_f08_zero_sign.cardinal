@@ -1,0 +1,25 @@
+module adv_f08_zero_sign
+import io
+
+func main () -> i32
+    let pzero = 0.0
+    let nzero = (- 0.0)
+
+    # +0.0 == -0.0
+    do (io::println (== pzero nzero))   # expect 1 (true)
+
+    # +0.0 is not < -0.0
+    do (io::println (< pzero nzero))   # expect 0 (false)
+
+    # Sign affects reciprocal
+    let pinf = (/ 1.0 pzero)
+    let ninf = (/ 1.0 nzero)
+
+    do (io::println pinf)   # expect inf
+    do (io::println ninf)   # expect -inf
+
+    # Check they're different
+    do (io::println (== pinf ninf))   # expect 0 (false)
+
+    return 0i32
+end

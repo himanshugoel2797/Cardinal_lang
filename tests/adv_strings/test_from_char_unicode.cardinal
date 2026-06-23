@@ -1,0 +1,13 @@
+module test_from_char_unicode
+
+import io
+import strings
+
+func main () -> i32
+    # Test with unicode character codes
+    let c1 = (strings::from_char 65i32)
+    do (io::println c1)
+    let c2 = (strings::from_char 128512i32)
+    do (io::println c2)
+    return 0i32
+end

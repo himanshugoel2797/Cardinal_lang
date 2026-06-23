@@ -1,0 +1,39 @@
+module test15
+
+import io
+
+type Nat
+    Zero
+    Succ (n Nat)
+end
+
+func nat_to_int (n Nat) -> i32
+    match n
+        case Zero
+            return 0
+        case (Succ m)
+            return (+ 1 (nat_to_int m))
+    end
+    return 0
+end
+
+func nat_add (a Nat) (b Nat) -> Nat
+    match a
+        case Zero
+            return b
+        case (Succ m)
+            return (Succ n: (nat_add m b))
+    end
+    return b
+end
+
+func main () -> i32
+    let z = Zero
+    let one = (Succ n: z)
+    let two = (Succ n: one)
+    let three = (Succ n: two)
+
+    let sum = (nat_add two three)
+    do (io::println (nat_to_int sum))
+    return 0i32
+end

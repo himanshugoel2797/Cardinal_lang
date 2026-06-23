@@ -1,0 +1,23 @@
+module rec_many_params_mixed
+
+import io
+
+# 8+ parameters with mixed types - forces everything to stack in SysV
+# Target: maximal spilling stress
+
+func calc_mixed (a i64) (b f64) (c i64) (d f64) (e i64) (f f64) (g i64) (h f64) -> f64
+    return (+ b (+ d (+ f h)))
+end
+
+func recurse_mixed (depth i64) (a i64) (b f64) (c i64) (d f64) (e i64) (f f64) (g i64) (h f64) -> f64
+    if (<= depth 0)
+        return (calc_mixed a b c d e f g h)
+    end
+    return (recurse_mixed (- depth 1) (+ a 1) (+ b 1.0) (+ c 2) (+ d 2.0) (+ e 3) (+ f 3.0) (+ g 4) (+ h 4.0))
+end
+
+func main () -> i32
+    let result = (recurse_mixed 400i64 1i64 1.0 2i64 2.0 3i64 3.0 4i64 4.0)
+    do (io::println result)
+    return 0i32
+end

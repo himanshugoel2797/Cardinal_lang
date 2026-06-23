@@ -1,0 +1,23 @@
+module adv_40_for_in_vec_break_continue
+
+import io
+
+func main () -> i32
+	let v = (vec i32)
+	do (push v 1i32)
+	do (push v 2i32)
+	do (push v 3i32)
+	do (push v 4i32)
+	let sum = 0i32
+	for x in v
+		if (== x 2i32)
+			continue
+		end
+		if (== x 4i32)
+			break
+		end
+		set sum = (+ sum x)
+	end
+	do (io::println sum)
+	return 0
+end

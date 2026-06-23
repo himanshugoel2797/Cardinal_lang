@@ -1,0 +1,46 @@
+module t20_deeply_nested_three_levels
+
+import io
+
+# Three levels of nesting: struct -> struct -> struct
+struct L3
+    value i32
+end
+
+struct L2
+    l3 L3
+    tag i32
+end
+
+struct L1
+    l2 L2
+    id i32
+end
+
+func main () -> i32
+    let root = (L1
+        l2: (L2
+            l3: (L3 value: 42)
+            tag: 7
+        )
+        id: 1
+    )
+
+    # Deep access
+    do (io::println root.id)          # 1
+    do (io::println root.l2.tag)      # 7
+    do (io::println root.l2.l3.value) # 42
+
+    # Deep mutation
+    set root.l2.l3.value = 999
+    do (io::println root.l2.l3.value) # 999
+    do (io::println root.l2.tag)      # 7 (unchanged sibling)
+
+    # Deep copy
+    let copy = root
+    set copy.l2.l3.value = 111
+    do (io::println root.l2.l3.value) # 999 (original unchanged)
+    do (io::println copy.l2.l3.value) # 111
+
+    return 0i32
+end

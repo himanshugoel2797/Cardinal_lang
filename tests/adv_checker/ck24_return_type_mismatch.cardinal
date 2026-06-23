@@ -1,0 +1,5 @@
+module ck24_return_type_mismatch
+# ILLEGAL: function declared to return i32 but returns i64
+func f () -> i32
+    return 42i64
+end

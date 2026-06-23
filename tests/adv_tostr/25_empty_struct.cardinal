@@ -1,0 +1,12 @@
+module test_empty_struct
+
+import io
+
+struct Empty
+end
+
+func main () -> i32
+    let e = (Empty)
+    do (io::println (to_str e))
+    return 0i32
+end

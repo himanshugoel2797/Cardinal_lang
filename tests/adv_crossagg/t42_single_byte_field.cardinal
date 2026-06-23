@@ -1,0 +1,22 @@
+module t42_single_byte_field
+
+import io
+
+# Single byte field struct: does it work in array?
+struct SingleByte
+    x u8
+end
+
+func main () -> i32
+    let arr [SingleByte] = [
+        (SingleByte x: 10)
+        (SingleByte x: 20)
+        (SingleByte x: 30)
+    ]
+
+    do (io::println (as arr[0].x i32))    # 10
+    do (io::println (as arr[1].x i32))    # 20
+    do (io::println (as arr[2].x i32))    # 30
+
+    return 0i32
+end

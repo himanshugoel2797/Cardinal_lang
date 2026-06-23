@@ -1,0 +1,6 @@
+module ck01_unsuffixed_array_literal
+# ILLEGAL: unsuffixed literal in array with no context
+func f () -> i32
+    let arr = [1 2 3]
+    return 0i32
+end

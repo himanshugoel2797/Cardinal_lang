@@ -1,0 +1,35 @@
+module map_mixed_value_types
+
+import io
+
+func main () -> i32
+    # Test: maps with different value types (int, float, bool, str)
+
+    # int values
+    let m1 {str i32} = (map str i32)
+    set m1["x"] = 42i32
+    do (io::println m1["x"])
+
+    # float values
+    let m2 {str f64} = (map str f64)
+    set m2["pi"] = 3.14159
+    do (io::println m2["pi"])
+
+    # bool values
+    let m3 {str bool} = (map str bool)
+    set m3["flag"] = true
+    do (io::println m3["flag"])
+
+    # str values
+    let m4 {str str} = (map str str)
+    set m4["msg"] = "hello"
+    do (io::println m4["msg"])
+
+    # Verify all operations work
+    do (io::println (len m1))
+    do (io::println (len m2))
+    do (io::println (len m3))
+    do (io::println (len m4))
+
+    return 0i32
+end

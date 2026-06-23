@@ -1,0 +1,15 @@
+module adv_28_while_infinite_with_break
+
+import io
+
+func main () -> i32
+	let count = 0i32
+	while true
+		set count = (+ count 1)
+		if (== count 5i32)
+			break
+		end
+	end
+	do (io::println count)
+	return 0
+end

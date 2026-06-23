@@ -1,0 +1,14 @@
+module test_from_char
+
+import io
+import strings
+
+func main () -> i32
+    let c1 = (strings::from_char 'A')
+    do (io::println c1)
+    let c2 = (strings::from_char 'z')
+    do (io::println c2)
+    let c3 = (strings::from_char '0')
+    do (io::println c3)
+    return 0i32
+end

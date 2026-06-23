@@ -1,0 +1,13 @@
+module test_concat_to_str
+
+import io
+import strings
+import convert
+
+func main () -> i32
+    let num = 42i32
+    let str_num = (convert::int_to_str num)
+    let result = (strings::concat "number: " str_num)
+    do (io::println result)
+    return 0i32
+end

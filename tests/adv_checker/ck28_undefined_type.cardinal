@@ -1,0 +1,6 @@
+module ck28_undefined_type
+# ILLEGAL: using undefined type Nonexistent
+func f () -> i32
+    let x Nonexistent = null
+    return 0i32
+end

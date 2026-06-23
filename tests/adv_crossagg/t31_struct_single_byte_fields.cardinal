@@ -1,0 +1,38 @@
+module t31_struct_single_byte_fields
+
+import io
+
+# Struct with single-byte fields: test tight packing
+struct Bytes
+    a u8
+    b u8
+    c u8
+    d u8
+    e u8
+end
+
+func main () -> i32
+    let b = (Bytes a: 1 b: 2 c: 3 d: 4 e: 5)
+
+    do (io::println (as b.a i32))    # 1
+    do (io::println (as b.c i32))    # 3
+    do (io::println (as b.e i32))    # 5
+
+    set b.b = 20
+    do (io::println (as b.b i32))    # 20
+    do (io::println (as b.a i32))    # 1 (unchanged)
+    do (io::println (as b.c i32))    # 3 (unchanged)
+
+    # In array
+    let arr [Bytes] = [
+        (Bytes a: 10 b: 11 c: 12 d: 13 e: 14)
+        (Bytes a: 20 b: 21 c: 22 d: 23 e: 24)
+    ]
+
+    do (io::println (as arr[0].a i32))   # 10
+    do (io::println (as arr[0].e i32))   # 14
+    do (io::println (as arr[1].a i32))   # 20
+    do (io::println (as arr[1].d i32))   # 23
+
+    return 0i32
+end

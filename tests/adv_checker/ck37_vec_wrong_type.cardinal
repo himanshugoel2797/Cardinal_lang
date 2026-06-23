@@ -1,0 +1,8 @@
+module ck37_vec_wrong_type
+# ILLEGAL: pushing wrong type onto vec
+func f () -> i32
+    let v = (vec i32)
+    do (push v 1i32)
+    do (push v 2i64)
+    return 0i32
+end

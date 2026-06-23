@@ -1,0 +1,7 @@
+module ck15_use_before_def
+# ILLEGAL: using variable before definition
+func f () -> i32
+    let y = x
+    let x = 5i32
+    return y
+end

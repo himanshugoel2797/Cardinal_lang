@@ -1,0 +1,23 @@
+module c04_u8_to_i64_zero_extension
+
+import io
+
+func main () -> i32
+    # u8 to i64: zero extension (NOT sign extension)
+    # 255u8 should become 255i64, not -1i64
+    do (io::println (as 255u8 i64))
+
+    # 200u8 should become 200i64
+    do (io::println (as 200u8 i64))
+
+    # 128u8 should become 128i64 (not -128i64)
+    do (io::println (as 128u8 i64))
+
+    # 127u8 should become 127i64
+    do (io::println (as 127u8 i64))
+
+    # 0u8 should stay 0i64
+    do (io::println (as 0u8 i64))
+
+    return 0i32
+end

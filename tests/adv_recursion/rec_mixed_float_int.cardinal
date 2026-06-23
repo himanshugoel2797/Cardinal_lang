@@ -1,0 +1,21 @@
+module rec_mixed_float_int
+
+import io
+
+# Mixed int/float parameters through deep recursion
+# Target: register/stack spilling with mixed types
+
+func mixed_sum (n i64) (f f64) (m i64) (g f64) -> f64
+    if (<= n 0)
+        return (+ f g)
+    end
+    let new_f = (+ f 1.0)
+    let new_g = (+ g 2.5)
+    return (mixed_sum (- n 1) new_f (+ m 1) new_g)
+end
+
+func main () -> i32
+    let result = (mixed_sum 800i64 0.0 0i64 0.0)
+    do (io::println result)
+    return 0i32
+end

@@ -1,0 +1,10 @@
+module test_escape_null
+
+import io
+
+func main () -> i32
+    let s = "hello\0world"
+    let len_s = (len s)
+    do (io::println len_s)
+    return 0i32
+end

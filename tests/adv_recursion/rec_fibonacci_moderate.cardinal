@@ -1,0 +1,21 @@
+module rec_fibonacci_moderate
+
+import io
+
+# Fibonacci with moderate depth
+# Target: exponential call tree, high recursion fan-out
+
+func fib (n i64) -> i64
+    if (< n 2)
+        return n
+    end
+    return (+ (fib (- n 1)) (fib (- n 2)))
+end
+
+func main () -> i32
+    let r1 = (fib 20i64)
+    let r2 = (fib 21i64)
+    do (io::println r1)
+    do (io::println r2)
+    return 0i32
+end

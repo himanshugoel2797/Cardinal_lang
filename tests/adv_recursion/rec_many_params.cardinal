@@ -1,0 +1,24 @@
+module rec_many_params
+
+import io
+
+# Function with 7+ parameters (forcing stack-passed args in x86-64 SysV ABI)
+# SysV ABI: first 6 args in registers (rdi, rsi, rdx, rcx, r8, r9), rest on stack
+# Target: parameter passing stress on deep recursion
+
+func sum_seven (a i64) (b i64) (c i64) (d i64) (e i64) (f i64) (g i64) -> i64
+    return (+ a (+ b (+ c (+ d (+ e (+ f g))))))
+end
+
+func recurse_seven (depth i64) (a i64) (b i64) (c i64) (d i64) (e i64) (f i64) (g i64) -> i64
+    if (<= depth 0)
+        return (sum_seven a b c d e f g)
+    end
+    return (recurse_seven (- depth 1) (+ a 1) (+ b 1) (+ c 1) (+ d 1) (+ e 1) (+ f 1) (+ g 1))
+end
+
+func main () -> i32
+    let result = (recurse_seven 500i64 1i64 2i64 3i64 4i64 5i64 6i64 7i64)
+    do (io::println result)
+    return 0i32
+end

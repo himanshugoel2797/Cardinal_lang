@@ -1,0 +1,27 @@
+module test06
+
+import io
+
+type Option
+    Some (val i32)
+    None
+end
+
+func extract_with_shadow (o Option) -> i32
+    let val = 0
+    match o
+        case (Some val)
+            return val
+        case None
+            return val
+    end
+    return 0
+end
+
+func main () -> i32
+    let o1 = (Some val: 42)
+    let o2 = None
+    do (io::println (extract_with_shadow o1))
+    do (io::println (extract_with_shadow o2))
+    return 0i32
+end

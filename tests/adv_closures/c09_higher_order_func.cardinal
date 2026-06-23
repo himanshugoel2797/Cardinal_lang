@@ -1,0 +1,14 @@
+module c09_higher_order_func
+import io
+
+func apply_twice (f func(i32 -> i32)) (x i32) -> i32
+    return (f (f x))
+end
+
+func main () -> i32
+    let double = func (x i32) -> i32
+        return (* 2 x)
+    end
+    do (io::println (apply_twice double 5))
+    return 0i32
+end

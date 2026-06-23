@@ -1,0 +1,28 @@
+module test08
+
+import io
+
+type Data
+    IntVal (i i32)
+    StrVal (s str)
+    FloatVal (f f64)
+end
+
+func process (d Data) -> i32
+    match d
+        case (IntVal i)
+            return i
+        case (StrVal s)
+            return 100
+        case (FloatVal f)
+            return (as f i32)
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (process (IntVal i: 7)))
+    do (io::println (process (StrVal s: "x")))
+    do (io::println (process (FloatVal f: 3.14)))
+    return 0i32
+end

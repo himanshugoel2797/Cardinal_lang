@@ -1,0 +1,31 @@
+module adv_f22_float_arithmetic_order
+import io
+
+func main () -> i32
+    # Floating point arithmetic is NOT associative
+    let a = 0.1
+    let b = 0.2
+    let c = 0.3
+
+    # (a + b) + c vs a + (b + c)
+    let left = (+ (+ a b) c)
+    let right = (+ a (+ b c))
+
+    do (io::println left)
+    do (io::println right)
+    do (io::println (== left right))
+
+    # Multiplication is also non-associative
+    let x = 1e16
+    let y = 1e16
+    let z = (/ 1.0 x)
+
+    let left_mul = (* (* x y) z)
+    let right_mul = (* x (* y z))
+
+    do (io::println left_mul)
+    do (io::println right_mul)
+    do (io::println (== left_mul right_mul))
+
+    return 0i32
+end

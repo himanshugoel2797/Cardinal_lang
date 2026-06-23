@@ -1,0 +1,26 @@
+module test19
+
+import io
+
+type Measurement
+    Celsius (temp f64)
+    Fahrenheit (temp f64)
+end
+
+func to_celsius (m Measurement) -> f64
+    match m
+        case (Celsius t)
+            return t
+        case (Fahrenheit t)
+            return (* (- t 32.0) 0.555555)
+    end
+    return 0.0
+end
+
+func main () -> i32
+    let c = (Celsius temp: 25.5)
+    let f = (Fahrenheit temp: 77.9)
+    do (io::println (as (to_celsius c) i32))
+    do (io::println (as (to_celsius f) i32))
+    return 0i32
+end

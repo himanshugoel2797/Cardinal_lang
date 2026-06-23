@@ -1,0 +1,32 @@
+module t14_pass_aggregate_by_value
+
+import io
+
+# Pass aggregate by value to function: test proper argument passing
+struct Record
+    id i32
+    val i64
+    tag i32
+end
+
+func inspect (r Record) -> i64
+    return r.val
+end
+
+func modify (r Record) -> Record
+    let r2 = r
+    set r2.id = 999
+    return r2
+end
+
+func main () -> i32
+    let rec = (Record id: 1 val: 100 tag: 5)
+
+    do (io::println (inspect rec))    # 100
+
+    let rec2 = (modify rec)
+    do (io::println rec.id)           # 1 (original unchanged)
+    do (io::println rec2.id)          # 999 (modified copy)
+
+    return 0i32
+end

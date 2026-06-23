@@ -1,0 +1,21 @@
+module ck49_compare_different_enums
+# ILLEGAL: cannot compare two different enum types
+enum Color
+    Red
+    Green
+end
+
+enum Size
+    Small
+    Large
+end
+
+func f () -> i32
+    let c = Color::Red
+    let s = Size::Small
+    if (== c s)
+        return 1i32
+    else
+        return 0i32
+    end
+end

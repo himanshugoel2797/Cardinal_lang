@@ -1,0 +1,20 @@
+module t23_operator_adjacency
+
+import io
+
+func main () -> i32
+    # Test tokenization of operators with no spaces
+    let a=(1i32+2i32)
+    let b=(3i32-4i32)
+    let c=(5i32*6i32)
+    let d=(true and false)
+    let e=(7i32<=8i32)
+    let f=(9i32!=10i32)
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    do (io::println e)
+    do (io::println f)
+    return 0i32
+end

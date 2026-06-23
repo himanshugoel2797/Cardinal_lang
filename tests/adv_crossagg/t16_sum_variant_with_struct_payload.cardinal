@@ -1,0 +1,47 @@
+module t16_sum_variant_with_struct_payload
+
+import io
+
+# Sum type variant carrying a struct payload
+struct Position
+    x i32
+    y i32
+end
+
+type Message
+    Move (pos Position)
+    Stop
+    Wait (duration i32)
+end
+
+func main () -> i32
+    let msgs {Message} = (vec Message)
+
+    do (push msgs (Move pos: (Position x: 10 y: 20)))
+    do (push msgs Stop)
+    do (push msgs (Wait duration: 5))
+    do (push msgs (Move pos: (Position x: 30 y: 40)))
+
+    # Match and extract struct from variant
+    match msgs[0]
+        case (Move p)
+            do (io::println p.x)      # 10
+            do (io::println p.y)      # 20
+        case Stop
+            do (io::println 888)
+        case (Wait d)
+            do (io::println 777)
+    end
+
+    match msgs[3]
+        case (Move p)
+            do (io::println p.x)      # 30
+            do (io::println p.y)      # 40
+        case Stop
+            do (io::println 888)
+        case (Wait d)
+            do (io::println 777)
+    end
+
+    return 0i32
+end

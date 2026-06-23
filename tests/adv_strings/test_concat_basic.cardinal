@@ -1,0 +1,12 @@
+module test_concat_basic
+
+import io
+import strings
+
+func main () -> i32
+    let s1 = "hello"
+    let s2 = "world"
+    let result = (strings::concat s1 s2)
+    do (io::println result)
+    return 0i32
+end

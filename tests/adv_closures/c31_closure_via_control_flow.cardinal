@@ -1,0 +1,18 @@
+module c31_closure_via_control_flow
+import io
+
+func main () -> i32
+    let x = 0i32
+    let f = func () -> i32
+        if (< x 10)
+            set x = (+ x 1)
+            return x
+        else
+            return (- x 1)
+        end
+    end
+    do (io::println (f))
+    do (io::println (f))
+    do (io::println (f))
+    return 0i32
+end

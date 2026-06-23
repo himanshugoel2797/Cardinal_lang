@@ -1,0 +1,16 @@
+module test_string_mul_concat
+
+import io
+import strings
+
+func main () -> i32
+    let s1 = "a"
+    let s2 = "b"
+    let s3 = "c"
+    let s4 = "d"
+    let r1 = (strings::concat s1 s2)
+    let r2 = (strings::concat s3 s4)
+    let result = (strings::concat r1 r2)
+    do (io::println result)
+    return 0i32
+end

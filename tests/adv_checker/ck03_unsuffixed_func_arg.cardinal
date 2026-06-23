@@ -1,0 +1,9 @@
+module ck03_unsuffixed_func_arg
+# ILLEGAL: unsuffixed literal passed to typed parameter with no inference
+func g (x i32) -> i32
+    return x
+end
+
+func f () -> i32
+    return (g 42)
+end

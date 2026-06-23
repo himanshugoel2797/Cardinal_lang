@@ -1,0 +1,11 @@
+module ck43_unknown_field_access
+# ILLEGAL: struct doesn't have field z
+struct P
+    x i32
+    y i32
+end
+
+func f () -> i32
+    let p = (P x: 1i32 y: 2i32)
+    return p.z
+end

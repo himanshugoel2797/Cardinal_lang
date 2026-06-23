@@ -1,0 +1,32 @@
+module ib28_div_by_small_negatives
+
+import io
+
+func main () -> i32
+    # Division/modulo by small negative numbers
+    # Testing sign semantics
+
+    # i32 / negative divisors
+    do (io::println (/ 100i32 (- 1i32)))
+    do (io::println (% 100i32 (- 1i32)))
+
+    do (io::println (/ 100i32 (- 3i32)))
+    do (io::println (% 100i32 (- 3i32)))
+
+    do (io::println (/ (- 100i32) (- 1i32)))
+    do (io::println (% (- 100i32) (- 1i32)))
+
+    do (io::println (/ (- 100i32) (- 3i32)))
+    do (io::println (% (- 100i32) (- 3i32)))
+
+    # i64 versions
+    do (io::println (/ 1000i64 (- 1i64)))
+    do (io::println (% 1000i64 (- 1i64)))
+
+    # u64 shouldn't have negative divisors, but test pattern anyway
+    let large = 18446744073709551000u64
+    do (io::println (/ large 2u64))
+    do (io::println (% large 2u64))
+
+    return 0i32
+end

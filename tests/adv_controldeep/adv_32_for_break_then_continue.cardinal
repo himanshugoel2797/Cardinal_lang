@@ -1,0 +1,16 @@
+module adv_32_for_break_then_continue
+
+import io
+
+func main () -> i32
+	let sum = 0i32
+	for i = 0i32 to 5i32
+		set sum = (+ sum i)
+		if (== i 2i32)
+			break
+		end
+		set sum = (+ sum 1000i32)
+	end
+	do (io::println sum)
+	return 0
+end

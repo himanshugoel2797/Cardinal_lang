@@ -1,0 +1,33 @@
+module t05_vec_of_vecs
+
+import io
+
+# Vec of vecs: nested dynamic collections
+func main () -> i32
+    let outer {{i32}} = (vec {i32})
+
+    let inner1 {i32} = (vec i32)
+    do (push inner1 1)
+    do (push inner1 2)
+    do (push inner1 3)
+
+    let inner2 {i32} = (vec i32)
+    do (push inner2 10)
+    do (push inner2 20)
+
+    do (push outer inner1)
+    do (push outer inner2)
+
+    # Access nested vec
+    do (io::println (len outer))         # 2
+    do (io::println (len outer[0]))      # 3
+    do (io::println (len outer[1]))      # 2
+
+    # Read through nesting
+    do (io::println outer[0][0])         # 1
+    do (io::println outer[0][2])         # 3
+    do (io::println outer[1][0])         # 10
+    do (io::println outer[1][1])         # 20
+
+    return 0i32
+end

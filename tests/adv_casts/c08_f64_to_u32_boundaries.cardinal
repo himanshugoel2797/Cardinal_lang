@@ -1,0 +1,34 @@
+module c08_f64_to_u32_boundaries
+
+import io
+
+func main () -> i32
+    # f64 to u32: unsigned boundaries
+    let f0 = 0.0
+    let f1 = 1.0
+    let fmax = 4294967295.0
+    let fover = 5000000000.0
+    let fm1 = (- 1.0)
+    let fmneg = (- 100.5)
+    let ffrac = 100.99
+
+    do (io::println (as f0 u32))
+
+    do (io::println (as f1 u32))
+
+    # u32 max = 4294967295
+    do (io::println (as fmax u32))
+
+    # Beyond u32 max
+    do (io::println (as fover u32))
+
+    # Negative f64 to u32 (undefined behavior territory)
+    do (io::println (as fm1 u32))
+
+    do (io::println (as fmneg u32))
+
+    # Fractional values
+    do (io::println (as ffrac u32))
+
+    return 0i32
+end

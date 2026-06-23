@@ -1,0 +1,37 @@
+module rec_three_way_mutual
+
+import io
+
+# Three-way mutual recursion
+# Target: complex call-graph with three functions calling each other
+
+func fa (n i64) -> i64
+    if (<= n 0)
+        return 1i64
+    end
+    return (fb (- n 1))
+end
+
+func fb (n i64) -> i64
+    if (<= n 0)
+        return 2i64
+    end
+    return (fc (- n 1))
+end
+
+func fc (n i64) -> i64
+    if (<= n 0)
+        return 3i64
+    end
+    return (fa (- n 1))
+end
+
+func main () -> i32
+    let r1 = (fa 500i64)
+    let r2 = (fb 500i64)
+    let r3 = (fc 500i64)
+    do (io::println r1)
+    do (io::println r2)
+    do (io::println r3)
+    return 0i32
+end

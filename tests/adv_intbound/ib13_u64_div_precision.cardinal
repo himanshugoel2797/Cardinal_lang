@@ -1,0 +1,38 @@
+module ib13_u64_div_precision
+
+import io
+
+func main () -> i32
+    # u64 division/modulo with values above 2^63 to stress interpreter precision
+
+    # Tests targeting BUG 1: interpreter uses float division (53-bit mantissa)
+    # which loses precision on 64-bit integers
+
+    # u64_max / small numbers (various divisors)
+    let u64max = 18446744073709551615u64
+    do (io::println (/ u64max 1u64))     # Should be u64max
+    do (io::println (/ u64max 2u64))     # Should be 9223372036854775807
+    do (io::println (/ u64max 3u64))     # Should be 6148914691236517205
+    do (io::println (/ u64max 4u64))
+    do (io::println (/ u64max 5u64))
+    do (io::println (/ u64max 7u64))
+    do (io::println (/ u64max 10u64))
+
+    # u64_max % various
+    do (io::println (% u64max 1u64))     # Should be 0
+    do (io::println (% u64max 2u64))     # Should be 1
+    do (io::println (% u64max 3u64))     # Should be 0
+    do (io::println (% u64max 5u64))     # Should be 0
+
+    # Large u64 values not equal to max
+    let large1 = 18446744073709551614u64
+    do (io::println (/ large1 2u64))
+    do (io::println (% large1 2u64))
+
+    let large2 = 9223372036854775808u64 # 2^63
+    do (io::println (/ large2 1u64))
+    do (io::println (/ large2 2u64))
+    do (io::println (% large2 2u64))
+
+    return 0i32
+end

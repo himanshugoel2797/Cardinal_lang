@@ -1,0 +1,26 @@
+module ib02_overflow_u64_all
+
+import io
+
+func main () -> i32
+    # u64 max value operations
+    let u64max = 18446744073709551615u64
+
+    # Add overflow at max
+    do (io::println (+ u64max 1u64))     # should be 0
+    do (io::println (+ u64max 2u64))     # should be 1
+
+    # Sub: 0-1 = max
+    do (io::println (- 0u64 1u64))       # should be 18446744073709551615
+
+    # Sub: 1-2 = max
+    do (io::println (- 1u64 2u64))       # should be 18446744073709551615
+
+    # Mul: max*2 wraps heavily
+    do (io::println (* u64max 2u64))     # 0xffffffff*2 = 0xfffffffe
+
+    # Mul: max*max
+    do (io::println (* u64max u64max))   # 1
+
+    return 0i32
+end

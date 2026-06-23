@@ -1,0 +1,38 @@
+module rec_sumtype_fold
+
+import io
+
+# Deeply recursive sum-type fold
+# Target: match patterns with variant payloads through recursion
+
+type Tree
+    Leaf (val i64)
+    Node (lc i64) (left Tree) (right Tree)
+end
+
+func fold_tree (t Tree) -> i64
+    match t
+    case Leaf(v)
+        return v
+    case Node(c l r)
+        let left_sum = (fold_tree l)
+        let right_sum = (fold_tree r)
+        return (+ c (+ left_sum right_sum))
+    end
+    return 0i64
+end
+
+func build_tree_spine (depth i64) -> Tree
+    if (<= depth 0)
+        return (Leaf val: 1)
+    end
+    let child = (build_tree_spine (- depth 1))
+    return (Node lc: 1 left: child right: (Leaf val: 2))
+end
+
+func main () -> i32
+    let t = (build_tree_spine 1200i64)
+    let result = (fold_tree t)
+    do (io::println result)
+    return 0i32
+end

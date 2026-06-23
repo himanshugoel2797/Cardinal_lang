@@ -1,0 +1,29 @@
+module t26_mixed_size_array_in_struct
+
+import io
+
+# Struct with mixed-size array field and other fields: test packing
+struct DataPack
+    tag i8
+    ids [i32]
+    count i32
+end
+
+func main () -> i32
+    let ids [i32] = [10 20 30]
+    let dp = (DataPack tag: 5 ids: ids count: 3)
+
+    do (io::println dp.tag)          # 5
+    do (io::println dp.count)        # 3
+    do (io::println (len dp.ids))    # 3
+    do (io::println dp.ids[0])       # 10
+    do (io::println dp.ids[1])       # 20
+    do (io::println dp.ids[2])       # 30
+
+    set dp.ids[1] = 200
+    do (io::println dp.ids[1])       # 200
+    do (io::println dp.tag)          # 5 (unchanged)
+    do (io::println dp.count)        # 3 (unchanged)
+
+    return 0i32
+end

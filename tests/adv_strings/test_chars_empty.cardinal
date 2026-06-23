@@ -1,0 +1,12 @@
+module test_chars_empty
+
+import io
+import strings
+
+func main () -> i32
+    let s = ""
+    let cs = (strings::chars s)
+    let len_cs = (len cs)
+    do (io::println len_cs)
+    return 0i32
+end

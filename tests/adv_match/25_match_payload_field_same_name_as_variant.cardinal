@@ -1,0 +1,26 @@
+module test25
+
+import io
+
+type Node
+    Node (node i32)
+    Leaf
+end
+
+func extract (n Node) -> i32
+    match n
+        case (Node node)
+            return node
+        case Leaf
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    let n1 = (Node node: 5)
+    let n2 = Leaf
+    do (io::println (extract n1))
+    do (io::println (extract n2))
+    return 0i32
+end

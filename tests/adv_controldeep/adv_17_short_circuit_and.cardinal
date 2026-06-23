@@ -1,0 +1,14 @@
+module adv_17_short_circuit_and
+
+import io
+
+func side_effect () -> bool
+	do (io::println 1i32)
+	return true
+end
+
+func main () -> i32
+	let result = (and false (side_effect))
+	do (io::println result)
+	return 0
+end

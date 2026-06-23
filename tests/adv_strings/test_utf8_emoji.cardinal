@@ -1,0 +1,15 @@
+module test_utf8_emoji
+
+import io
+import strings
+
+func main () -> i32
+    # Test with emoji (multibyte UTF-8)
+    let s = "hello 😀 world"
+    let len_s = (len s)
+    do (io::println len_s)
+    let cs = (strings::chars s)
+    let len_cs = (len cs)
+    do (io::println len_cs)
+    return 0i32
+end

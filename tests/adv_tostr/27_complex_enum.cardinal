@@ -1,0 +1,18 @@
+module test_complex_enum
+
+import io
+
+enum Status
+    Idle
+    Running
+    Done
+    Error
+    Waiting
+end
+
+func main () -> i32
+    do (io::println (to_str Status::Idle))
+    do (io::println (to_str Status::Running))
+    do (io::println (to_str Status::Error))
+    return 0i32
+end

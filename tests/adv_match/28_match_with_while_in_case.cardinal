@@ -1,0 +1,30 @@
+module test28
+
+import io
+
+type Input
+    Count (n i32)
+    Text (text str)
+end
+
+func process (inp Input) -> i32
+    match inp
+        case (Count n)
+            let sum = 0i32
+            let i = 0i32
+            while (< i n)
+                set sum = (+ sum i)
+                set i = (+ i 1)
+            end
+            return sum
+        case (Text text)
+            return (as (len text) i32)
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (process (Count n: 5)))
+    do (io::println (process (Text text: "hello")))
+    return 0i32
+end

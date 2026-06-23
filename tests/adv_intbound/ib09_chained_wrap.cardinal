@@ -1,0 +1,31 @@
+module ib09_chained_wrap
+
+import io
+
+func main () -> i32
+    # Chained arithmetic that wraps mid-expression
+
+    # i8: (127 + 1) + 1 = -128 + 1 = -127
+    let i8max = 127i8
+    do (io::println (+ (+ i8max 1i8) 1i8))
+
+    # i32: build up to overflow then add more
+    let i32max = 2147483647i32
+    do (io::println (+ (+ i32max 1i32) (- 10i32)))
+
+    # u64: chain of additions wrapping multiple times
+    let u64max = 18446744073709551615u64
+    do (io::println (+ (+ u64max 1u64) 1u64))  # (0) + 1 = 1
+
+    # Nested mul/add: (127*2) + 1 = (-2) + 1 = -1
+    do (io::println (+ (* 127i8 2i8) 1i8))
+
+    # Multiple subtractions with wrapping
+    do (io::println (- (- 0i32 1i32) 1i32))  # -1 - 1 = -2
+
+    # Mixed operations
+    let x = 255u8
+    do (io::println (+ (* x 2u8) 1u8)) # (254) + 1 = 255
+
+    return 0i32
+end

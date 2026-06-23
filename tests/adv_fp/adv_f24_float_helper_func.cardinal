@@ -1,0 +1,40 @@
+module adv_f24_float_helper_func
+import io
+
+func add_three (a f64) (b f64) (c f64) -> f64
+    return (+ a (+ b c))
+end
+
+func multiply_chain (a f64) (b f64) (c f64) -> f64
+    return (* a (* b c))
+end
+
+func compare_vals (x f64) (y f64) -> i32
+    if (< x y)
+        return 1i32
+    elsif (> x y)
+        return 2i32
+    else
+        return 0i32
+    end
+end
+
+func main () -> i32
+    # Call with float args
+    do (io::println (add_three 1.5 2.5 3.5))   # 7.5
+
+    do (io::println (multiply_chain 2.0 3.0 4.0))   # 24.0
+
+    # Comparisons
+    do (io::println (compare_vals 1.0 2.0))   # 1 (less)
+    do (io::println (compare_vals 2.0 1.0))   # 2 (greater)
+    do (io::println (compare_vals 1.5 1.5))   # 0 (equal)
+
+    # With NaN
+    let nan = (/ 0.0 0.0)
+    do (io::println (add_three nan 1.0 2.0))   # nan
+
+    do (io::println (multiply_chain nan 3.0 4.0))   # nan
+
+    return 0i32
+end

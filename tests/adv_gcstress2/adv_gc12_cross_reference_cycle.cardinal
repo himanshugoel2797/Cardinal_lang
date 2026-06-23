@@ -1,0 +1,48 @@
+module adv_gc12_cross_reference_cycle
+
+import io
+
+# Test: structures that reference each other indirectly through closures/containers.
+# Not a true cycle (no circular pointers), but tests complex root patterns.
+
+func main () -> i32
+    let container1 {i32} = (vec i32)
+    let container2 {i32} = (vec i32)
+
+    for i = 0 to 100
+        do (push container1 (+ i 0i32))
+        do (push container2 (+ i 100i32))
+    end
+
+    # Create a closure over both containers
+    let combined = func () -> i32
+        let sum1 = 0i32
+        for x in container1
+            set sum1 = (+ sum1 x)
+        end
+        let sum2 = 0i32
+        for x in container2
+            set sum2 = (+ sum2 x)
+        end
+        return (+ sum1 sum2)
+    end
+
+    let total = 0i32
+    for i = 0 to 5000
+        set total = (+ total (combined))
+
+        # Allocate heavily between calls
+        if (== (% i 100) 0i32)
+            let temp {i32} = (vec i32)
+            for j = 0 to 200
+                do (push temp j)
+            end
+        end
+    end
+
+    # Expected: 5000 * (combined result)
+    # combined = sum(0..99) + sum(100..199) = 4950 + 14950 = 19900
+    # total = 5000 * 19900 = 99500000
+    do (io::println total)
+    return 0i32
+end

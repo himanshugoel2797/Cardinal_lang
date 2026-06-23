@@ -1,0 +1,46 @@
+module adv_gc14_map_of_vecs_heavy
+
+import io
+
+# Test: map of vectors, with heavy allocation between build and use.
+# Tests that map values (which are copied) survive GC.
+
+func main () -> i32
+    let m {str {i32}} = (map str {i32})
+
+    # Build a map of vecs
+    for i = 0 to 200
+        let key = (strings::concat "vec_" (to_str i))
+        let v {i32} = (vec i32)
+        for j = 0 to 50
+            do (push v (+ i j))
+        end
+        let m[key] = v
+    end
+
+    # Now allocate heavily (might trigger GC)
+    for iteration = 0 to 100
+        let temp {str i32} = (map str i32)
+        for i = 0 to 100
+            let key = (strings::concat "temp_" (to_str i))
+            let temp[key] = i
+        end
+    end
+
+    # Now read from the original map
+    let total = 0i32
+    let keys {str} = (map_keys m)
+    for k in keys
+        let v {i32} = m[k]
+        for x in v
+            set total = (+ total x)
+        end
+    end
+
+    # Expected: for each i in 0..199:
+    # sum of (i+j) for j in 0..49 = i*50 + (0+1+...+49) = i*50 + 1225
+    # Total = sum of (i*50 + 1225) = 50 * sum(i for i in 0..199) + 200*1225
+    # = 50 * 19900 + 245000 = 995000 + 245000 = 1240000
+    do (io::println total)
+    return 0i32
+end

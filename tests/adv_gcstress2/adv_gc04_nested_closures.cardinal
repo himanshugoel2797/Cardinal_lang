@@ -1,0 +1,42 @@
+module adv_gc04_nested_closures
+
+import io
+
+# Test: closure that returns a closure that captures from outer scope.
+# Tests nested environment handling and multi-level GC.
+
+func outer (n i32) -> func(-> func(-> i32))
+    let cell = n
+    let mid = func () -> func(-> i32)
+        let captured = cell
+        let inner = func () -> i32
+            return captured
+        end
+        return inner
+    end
+    return mid
+end
+
+func main () -> i32
+    let total = 0i32
+
+    for i = 0 to 5000
+        let f = (outer i)
+        let g = (f)
+        let result = (g)
+
+        set total = (+ total result)
+
+        # Allocate heavily between iterations
+        if (== (% i 50) 0i32)
+            let v {i32} = (vec i32)
+            for j = 0 to 200
+                do (push v j)
+            end
+        end
+    end
+
+    # Expected: sum of 0..4999 = 12497500
+    do (io::println total)
+    return 0i32
+end

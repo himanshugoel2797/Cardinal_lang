@@ -1,0 +1,21 @@
+module map_i64_key
+
+import io
+
+func main () -> i32
+    # Test: i64 keys (large values, negative)
+    let m {i64 str} = (map i64 str)
+    set m[1000000000000i64] = "trillion"
+    set m[(- 1000000000000i64)] = "neg-trillion"
+    set m[0i64] = "zero"
+
+    do (io::println m[0i64])
+    do (io::println m[1000000000000i64])
+    do (io::println m[(- 1000000000000i64)])
+
+    # Verify map operations
+    do (io::println (len m))
+    do (io::println (map_has m 1000000000000i64))
+
+    return 0i32
+end

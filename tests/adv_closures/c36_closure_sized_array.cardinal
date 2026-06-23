@@ -1,0 +1,15 @@
+module c36_closure_sized_array
+import io
+
+func main () -> i32
+    let arr = (array i32 5)
+    set arr[0] = 10
+    set arr[1] = 20
+    set arr[2] = 30
+    let get_elem = func (i i32) -> i32
+        return arr[i]
+    end
+    do (io::println (get_elem 0))
+    do (io::println (get_elem 2))
+    return 0i32
+end

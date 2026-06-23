@@ -1,0 +1,16 @@
+module test_len_basic
+
+import io
+
+func main () -> i32
+    let s1 = "hello"
+    let len1 = (len s1)
+    do (io::println len1)
+    let s2 = ""
+    let len2 = (len s2)
+    do (io::println len2)
+    let s3 = "a"
+    let len3 = (len s3)
+    do (io::println len3)
+    return 0i32
+end

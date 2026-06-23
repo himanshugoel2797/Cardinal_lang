@@ -1,0 +1,31 @@
+module adv_f05_accumulation_error
+import io
+
+func main () -> i32
+    # Test sum of 0.1 repeated 10 times
+    # Binary representation of 0.1 is inexact, cumulative error expected
+    let sum = 0.0
+    let i = 0i32
+
+    let s = (+ sum 0.1)
+    let s = (+ s 0.1)
+    let s = (+ s 0.1)
+    let s = (+ s 0.1)
+    let s = (+ s 0.1)
+    let s = (+ s 0.1)
+    let s = (+ s 0.1)
+    let s = (+ s 0.1)
+    let s = (+ s 0.1)
+    let s = (+ s 0.1)
+
+    # 10 * 0.1 should be 1.0 but will be slightly off
+    do (io::println s)
+
+    # Direct 1.0 for comparison
+    do (io::println 1.0)
+
+    # Are they equal?
+    do (io::println (== s 1.0))
+
+    return 0i32
+end

@@ -1,0 +1,27 @@
+module adv_12_break_inside_match
+
+import io
+
+type Opt
+	Some (v i32)
+	None
+end
+
+func main () -> i32
+	let sum = 0i32
+	for i = 0i32 to 5i32
+		let opt = if (== (% i 2i32) 0i32)
+			(Some v: i)
+		else
+			None
+		end
+		match opt
+		case Some(v)
+			set sum = (+ sum v)
+		case None
+			break
+		end
+	end
+	do (io::println sum)
+	return 0
+end

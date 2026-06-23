@@ -1,0 +1,28 @@
+module adv_f15_float_modulo_edge
+import io
+
+func main () -> i32
+    # Float modulo with inf/nan
+    let inf = (/ 1.0 0.0)
+    let ninf = (/ (- 1.0) 0.0)
+    let nan = (/ 0.0 0.0)
+
+    # inf % x = NaN
+    do (io::println (% inf 2.0))
+
+    # x % 0 = NaN
+    do (io::println (% 5.0 0.0))
+
+    # x % inf = x
+    do (io::println (% 5.5 inf))
+
+    # nan % x = nan
+    do (io::println (% nan 2.0))
+
+    # Negative modulo results
+    do (io::println (% (- 7.0) 3.0))   # -1 (sign follows dividend)
+
+    do (io::println (% 7.0 (- 3.0)))   # 1 (sign follows dividend)
+
+    return 0i32
+end

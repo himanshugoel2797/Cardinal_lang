@@ -1,0 +1,9 @@
+module t21_struct_empty_body
+
+struct Empty
+end
+
+func main () -> i32
+    let e = (Empty)
+    return 0i32
+end

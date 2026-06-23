@@ -1,0 +1,18 @@
+module test_nested_array_struct
+
+import io
+
+struct Point
+    x i32
+    y i32
+end
+
+func main () -> i32
+    let ps [Point] = [(Point x: 1 y: 2) (Point x: 3 y: 4)]
+    do (io::println (to_str ps))
+
+    let mat [[i32]] = [[1 2] [3 4]]
+    do (io::println (to_str mat))
+
+    return 0i32
+end

@@ -1,0 +1,49 @@
+module adv_gc08_struct_with_vec_mutation
+
+import io
+
+# Test: struct containing a vec; store struct in array; mutate vec.
+# Tests GC of vecs within struct values.
+
+struct Container
+    id i32
+    data {i32}
+end
+
+func main () -> i32
+    let containers [(Container)] = (array Container 1000)
+
+    for i = 0 to 1000
+        let v {i32} = (vec i32)
+        for j = 0 to 50
+            do (push v (+ i j))
+        end
+
+        let c = (Container id: i data: v)
+        set containers[i] = c
+
+        # Allocate heavily
+        if (== (% i 50) 0i32)
+            let temp {i32} = (vec i32)
+            for j = 0 to 200
+                do (push temp j)
+            end
+        end
+    end
+
+    # Sum all data
+    let total = 0i32
+    for i = 0 to 1000
+        let c = containers[i]
+        for v in c.data
+            set total = (+ total v)
+        end
+    end
+
+    # Expected: sum of (i+j) for i in 0..999, j in 0..49
+    # = 1000 * sum(j for j in 0..49) + sum(i*50 for i in 0..999)
+    # = 1000 * 1225 + 50 * 499500
+    # = 1225000 + 24975000 = 26200000
+    do (io::println total)
+    return 0i32
+end

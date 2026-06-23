@@ -1,0 +1,26 @@
+module test37
+
+import io
+
+type Pair
+    IntPair (a i32) (b i32)
+    StrPair (a str) (b str)
+end
+
+func extract_first (p Pair) -> i32
+    match p
+        case (IntPair a b)
+            return a
+        case (StrPair a b)
+            return (as (len a) i32)
+    end
+    return 0
+end
+
+func main () -> i32
+    let p1 = (IntPair a: 10 b: 20)
+    let p2 = (StrPair a: "hello" b: "world")
+    do (io::println (extract_first p1))
+    do (io::println (extract_first p2))
+    return 0i32
+end

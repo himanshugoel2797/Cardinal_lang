@@ -1,0 +1,32 @@
+module ib07_mul_overflow_bits
+
+import io
+
+func main () -> i32
+    # Multiplication that overflows and produces high bits
+
+    # i8: 127*127 = 16129
+    do (io::println (* 127i8 127i8))
+
+    # i32: 65536 * 65536 = 4294967296 = 2^32, wraps to 0
+    do (io::println (* 65536i32 65536i32))
+
+    # u32: 2^16 * 2^16 = 2^32 = 0
+    do (io::println (* 65536u32 65536u32))
+
+    # u64: 2^32 * 2^32 = 2^64 = 0
+    do (io::println (* 4294967296u64 4294967296u64))
+
+    # i64: 2^31 * 2^31 = 2^62, fits in i64 but...
+    let big = 2147483648i64 # 2^31
+    do (io::println (* big big))
+
+    # Negative * positive overflow
+    do (io::println (* (- 127i8) 2i8))
+
+    # Large unsigned product with high bits
+    let large = 1099511627776u64 # 2^40
+    do (io::println (* large large)) # 2^80, wraps
+
+    return 0i32
+end

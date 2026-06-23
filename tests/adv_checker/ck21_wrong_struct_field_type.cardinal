@@ -1,0 +1,11 @@
+module ck21_wrong_struct_field_type
+# ILLEGAL: field x expects i32, got i64
+struct P
+    x i32
+    y i32
+end
+
+func f () -> i32
+    let p = (P x: 1i64 y: 2i32)
+    return 0i32
+end

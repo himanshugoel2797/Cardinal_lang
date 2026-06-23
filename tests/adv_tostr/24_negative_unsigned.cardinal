@@ -1,0 +1,11 @@
+module test_neg_unsigned
+
+import io
+
+func main () -> i32
+    let x = (as (- 1i64) u64)
+    do (io::println (to_str x))
+    let y = (as (- 2i64) u64)
+    do (io::println (to_str y))
+    return 0i32
+end

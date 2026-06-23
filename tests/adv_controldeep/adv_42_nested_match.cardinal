@@ -1,0 +1,37 @@
+module adv_42_nested_match
+
+import io
+
+type Opt
+	Some (v i32)
+	None
+end
+
+func main () -> i32
+	let result = 0i32
+	for i = 0i32 to 3i32
+		let opt1 = if (== i 0i32)
+			(Some v: 10i32)
+		else
+			None
+		end
+		match opt1
+		case Some(v)
+			let opt2 = if (== v 10i32)
+				(Some v: 20i32)
+			else
+				None
+			end
+			match opt2
+			case Some(v2)
+				set result = v2
+			case None
+				set result = 0i32
+			end
+		case None
+			set result = 99i32
+		end
+	end
+	do (io::println result)
+	return 0
+end

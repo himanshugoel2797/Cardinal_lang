@@ -1,0 +1,12 @@
+module ck19_missing_struct_field
+# ILLEGAL: constructing struct with missing field y
+struct P
+    x i32
+    y i32
+    z i32
+end
+
+func f () -> i32
+    let p = (P x: 1i32 z: 3i32)
+    return 0i32
+end

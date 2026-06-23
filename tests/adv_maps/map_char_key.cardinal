@@ -1,0 +1,26 @@
+module map_char_key
+
+import io
+
+func main () -> i32
+    # Test: char keys including multi-byte UTF-8 codepoints
+    let m {char str} = (map char str)
+    set m['a'] = "letter-a"
+    set m['😀'] = "grinning-face"
+    set m['é'] = "e-acute"
+
+    do (io::println m['a'])
+    do (io::println m['é'])
+    do (io::println m['😀'])
+
+    # Verify operations
+    do (io::println (len m))
+    do (io::println (map_has m 'a'))
+    do (io::println (map_has m '😀'))
+
+    # Delete and verify
+    do (map_del m 'é')
+    do (io::println (len m))
+
+    return 0i32
+end

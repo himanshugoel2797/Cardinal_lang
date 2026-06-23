@@ -1,0 +1,7 @@
+module ck08_cast_str_int
+# ILLEGAL: cannot cast str to i32
+func f () -> i32
+    let s = "hello"
+    let x = (as s i32)
+    return 0i32
+end

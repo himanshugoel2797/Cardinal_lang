@@ -1,0 +1,19 @@
+module adv_19_if_chain_side_effects
+
+import io
+
+func main () -> i32
+	let counter = 0i32
+	let result = if (== counter 1i32)
+		do (io::println 10i32)
+		10i32
+	elsif (== counter 2i32)
+		do (io::println 20i32)
+		20i32
+	else
+		do (io::println 30i32)
+		30i32
+	end
+	do (io::println result)
+	return 0
+end

@@ -280,6 +280,9 @@ func cescape (s str) -> str
             set out = (strings::concat out "\\t")
         elsif (== c '\r')
             set out = (strings::concat out "\\r")
+        elsif (== c '\0')
+            # NUL: 3-digit octal (unambiguous; \x would greedily eat following hex).
+            set out = (strings::concat out "\\000")
         else
             set out = (strings::concat out (strings::from_char c))
         end
@@ -351,10 +354,12 @@ func val (v IVal) -> str
         case (ImmChar cp)
             return (strings::concat "((int32_t)" (strings::concat (convert::int_to_str cp) ")"))
         case (ImmStr s)
-            # Interned literal: a stable, permanently-rooted handle. The runtime
-            # strlens the C string for the byte length (so multi-byte UTF-8 is
-            # correct, unlike a codepoint count).
-            return (strings::concat "cl_strlit(\"" (strings::concat (cescape s) "\")"))
+            # Interned literal. Construct from an explicit byte length (sizeof the C
+            # array literal minus its terminator) rather than strlen, so a literal
+            # with an embedded NUL keeps all its bytes. For NUL-free literals
+            # sizeof-1 == strlen, so this is behavior-identical.
+            let esc = (cescape s)
+            return (strings::concat "cl_strlit_n(\"" (strings::concat esc (strings::concat "\", sizeof(\"" (strings::concat esc "\")-1)"))))
         case ImmUnit
             return "0"
         case (ImmNull ty)

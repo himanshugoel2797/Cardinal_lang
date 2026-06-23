@@ -1,0 +1,32 @@
+module c14_f64_to_f32_narrowing
+
+import io
+
+func main () -> i32
+    # f64 to f32: narrowing with precision loss
+    let f0 = 0.0
+    let f1 = 1.0
+    let fm1 = (- 1.0)
+    let flarge = 1.0e39
+    let fmlarge = (- 1.0e39)
+    let ffrac = 1.5
+    let fpi = 3.14159
+
+    do (io::println (as f0 f32))
+
+    do (io::println (as f1 f32))
+
+    do (io::println (as fm1 f32))
+
+    # Large f64 values beyond f32 range become infinity
+    do (io::println (as flarge f32))
+
+    do (io::println (as fmlarge f32))
+
+    # Values within f32 range
+    do (io::println (as ffrac f32))
+
+    do (io::println (as fpi f32))
+
+    return 0i32
+end

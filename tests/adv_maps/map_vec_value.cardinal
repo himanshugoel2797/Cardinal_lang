@@ -1,0 +1,28 @@
+module map_vec_value
+
+import io
+
+func main () -> i32
+    # Test: map with vector values (reference vs copy semantics)
+    let m {str {i32}} = (map str {i32})
+    let v1 = {1i32 2i32 3i32}
+    set m["v1"] = v1
+
+    # Retrieve and modify
+    let v_retrieved = m["v1"]
+    do (io::println (len v_retrieved))
+    do (io::println v_retrieved[0i32])
+
+    # Insert another vector
+    set m["v2"] = {10i32 20i32}
+
+    # Verify both are accessible
+    do (io::println (len m["v1"]))
+    do (io::println (len m["v2"]))
+
+    # Delete and verify
+    do (map_del m "v1")
+    do (io::println (len m))
+
+    return 0i32
+end

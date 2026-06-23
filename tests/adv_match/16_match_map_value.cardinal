@@ -1,0 +1,37 @@
+module test16
+
+import io
+
+type Status
+    Active (id i32)
+    Inactive
+    Pending (reason str)
+end
+
+func check_status (statuses {str Status}) (key str) -> i32
+    if (map_has statuses key)
+        let status = statuses[key]
+        match status
+            case (Active id)
+                return id
+            case Inactive
+                return 0
+            case (Pending reason)
+                return (- 1)
+        end
+    end
+    return (- 2)
+end
+
+func main () -> i32
+    let statuses = (map str Status)
+    set statuses["user1"] = (Active id: 42)
+    set statuses["user2"] = Inactive
+    set statuses["user3"] = (Pending reason: "approval")
+
+    do (io::println (check_status statuses "user1"))
+    do (io::println (check_status statuses "user2"))
+    do (io::println (check_status statuses "user3"))
+    do (io::println (check_status statuses "unknown"))
+    return 0i32
+end

@@ -1,0 +1,19 @@
+module test_empty_string_ops
+
+import io
+import strings
+
+func main () -> i32
+    let empty = ""
+    let len_e = (len empty)
+    do (io::println len_e)
+
+    let result = (strings::concat empty empty)
+    let len_r = (len result)
+    do (io::println len_r)
+
+    let eq_result = (strings::eq empty empty)
+    do (io::println eq_result)
+
+    return 0i32
+end

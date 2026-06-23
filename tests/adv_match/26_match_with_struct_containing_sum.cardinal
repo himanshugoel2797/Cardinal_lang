@@ -1,0 +1,31 @@
+module test26
+
+import io
+
+type Status
+    Active
+    Inactive
+end
+
+struct Config
+    id i32
+    status Status
+end
+
+func is_active (cfg Config) -> i32
+    match cfg.status
+        case Active
+            return 1
+        case Inactive
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    let cfg1 = (Config id: 1 status: Active)
+    let cfg2 = (Config id: 2 status: Inactive)
+    do (io::println (is_active cfg1))
+    do (io::println (is_active cfg2))
+    return 0i32
+end

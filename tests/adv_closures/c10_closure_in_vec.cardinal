@@ -1,0 +1,22 @@
+module c10_closure_in_vec
+import io
+
+func main () -> i32
+    let funcs = (vec func(-> i32))
+    let f1 = func () -> i32
+        return 1i32
+    end
+    let f2 = func () -> i32
+        return 2i32
+    end
+    let f3 = func () -> i32
+        return 3i32
+    end
+    do (push funcs f1)
+    do (push funcs f2)
+    do (push funcs f3)
+    do (io::println ((funcs[0])))
+    do (io::println ((funcs[1])))
+    do (io::println ((funcs[2])))
+    return 0i32
+end

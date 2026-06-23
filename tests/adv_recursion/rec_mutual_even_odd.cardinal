@@ -1,0 +1,28 @@
+module rec_mutual_even_odd
+
+import io
+
+# Mutual recursion: even/odd check via deep recursion
+# Target: call-convention alternation, ~1.5k frames
+
+func is_even (n i64) -> bool
+    if (<= n 0)
+        return true
+    end
+    return (is_odd (- n 1))
+end
+
+func is_odd (n i64) -> bool
+    if (<= n 0)
+        return false
+    end
+    return (is_even (- n 1))
+end
+
+func main () -> i32
+    let e = (is_even 1500i64)
+    let o = (is_odd 1500i64)
+    do (io::println e)
+    do (io::println o)
+    return 0i32
+end

@@ -1,0 +1,46 @@
+module t19_struct_with_sum_and_vec_fields
+
+import io
+
+# Struct with array field AND sum field AND map field: all together
+type Color
+    RGB (r i32) (g i32) (b i32)
+    Gray (level i32)
+end
+
+struct Image
+    width i32
+    height i32
+    pixels [i32]
+    tint Color
+end
+
+func main () -> i32
+    let pixels [i32] = [255 128 64 32]
+    let img = (Image
+        width: 800
+        height: 600
+        pixels: pixels
+        tint: (RGB r: 255 g: 0 b: 0)
+    )
+
+    do (io::println img.width)        # 800
+    do (io::println img.height)       # 600
+    do (io::println img.pixels[0])    # 255
+    do (io::println img.pixels[2])    # 64
+
+    match img.tint
+        case (RGB r g b)
+            do (io::println r)        # 255
+            do (io::println g)        # 0
+            do (io::println b)        # 0
+        case (Gray l)
+            do (io::println 999)
+    end
+
+    # Mutate array field
+    set img.pixels[1] = 200
+    do (io::println img.pixels[1])    # 200
+
+    return 0i32
+end

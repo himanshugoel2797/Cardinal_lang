@@ -1,0 +1,17 @@
+module c18_closure_returning_struct
+import io
+
+struct Result
+    sum i32
+    prod i32
+end
+
+func main () -> i32
+    let make_result = func (x i32) (y i32) -> Result
+        return (Result sum: (+ x y) prod: (* x y))
+    end
+    let r = (make_result 3 4)
+    do (io::println r.sum)
+    do (io::println r.prod)
+    return 0i32
+end

@@ -1,0 +1,13 @@
+module t20_empty_parens_no_args
+
+import io
+
+func foo () -> i32
+    return 42i32
+end
+
+func main () -> i32
+    let a = (foo)
+    do (io::println a)
+    return 0i32
+end

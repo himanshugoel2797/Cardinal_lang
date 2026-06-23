@@ -1,0 +1,14 @@
+module test_concat_empty_middle
+
+import io
+import strings
+
+func main () -> i32
+    let s1 = "a"
+    let s2 = ""
+    let s3 = "b"
+    let r1 = (strings::concat s1 s2)
+    let r2 = (strings::concat r1 s3)
+    do (io::println r2)
+    return 0i32
+end

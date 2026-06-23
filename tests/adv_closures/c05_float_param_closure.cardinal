@@ -1,0 +1,16 @@
+module c05_float_param_closure
+import io
+
+func make_adder (base f64) -> func(f64 -> f64)
+    let f = func (x f64) -> f64
+        return (+ base x)
+    end
+    return f
+end
+
+func main () -> i32
+    let add3 = (make_adder 3.5)
+    do (io::println (add3 2.1))
+    do (io::println (add3 1.4))
+    return 0i32
+end

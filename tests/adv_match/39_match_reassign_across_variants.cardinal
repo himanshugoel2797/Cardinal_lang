@@ -1,0 +1,29 @@
+module test39
+
+import io
+
+type Item
+    Weapon (damage i32)
+    Armor (defense i32)
+    Item (value i32)
+end
+
+func calculate_stat (item Item) -> i32
+    let result = 0i32
+    match item
+        case (Weapon damage)
+            set result = damage
+        case (Armor defense)
+            set result = (- 0 defense)
+        case (Item value)
+            set result = value
+    end
+    return result
+end
+
+func main () -> i32
+    do (io::println (calculate_stat (Weapon damage: 10)))
+    do (io::println (calculate_stat (Armor defense: 5)))
+    do (io::println (calculate_stat (Item value: 3)))
+    return 0i32
+end

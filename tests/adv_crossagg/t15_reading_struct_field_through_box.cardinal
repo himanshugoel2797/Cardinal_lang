@@ -1,0 +1,34 @@
+module t15_reading_struct_field_through_box
+
+import io
+
+# Read a multi-word struct field accessed through a box (prior bug area D)
+struct Large
+    a i64
+    b i64
+    c i64
+end
+
+struct Box
+    content Large
+end
+
+func get_box (tag i32) -> Box
+    return (Box content: (Large a: (as tag i64) b: 200 c: 300))
+end
+
+func main () -> i32
+    let box = (get_box 1)
+
+    # Read through the box
+    do (io::println box.content.a)    # 1
+    do (io::println box.content.b)    # 200
+    do (io::println box.content.c)    # 300
+
+    # Mutate and verify
+    set box.content.a = 999
+    do (io::println box.content.a)    # 999
+    do (io::println box.content.b)    # 200 (unchanged)
+
+    return 0i32
+end

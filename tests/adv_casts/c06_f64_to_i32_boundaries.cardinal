@@ -1,0 +1,43 @@
+module c06_f64_to_i32_boundaries
+
+import io
+
+func main () -> i32
+    # f64 to i32: boundary and special cases
+    let f0 = 0.0
+    let f1 = 1.0
+    let fm1 = (- 1.0)
+    let fmax = 2147483647.0
+    let fmin = (- 2147483648.0)
+    let fover = 3000000000.0
+    let funder = (- 3000000000.0)
+    let ffrac = 1.7
+    let fmfrac = (- 1.7)
+
+    # Integer values that fit
+    do (io::println (as f0 i32))
+
+    do (io::println (as f1 i32))
+
+    do (io::println (as fm1 i32))
+
+    # Large values near i32 bounds
+    # i32 max = 2147483647
+    do (io::println (as fmax i32))
+
+    # i32 min = -2147483648
+    do (io::println (as fmin i32))
+
+    # Overflow: f64 > i32_max
+    do (io::println (as fover i32))
+
+    # Underflow: f64 < i32_min
+    do (io::println (as funder i32))
+
+    # Fractional part (truncate toward zero)
+    do (io::println (as ffrac i32))
+
+    do (io::println (as fmfrac i32))
+
+    return 0i32
+end

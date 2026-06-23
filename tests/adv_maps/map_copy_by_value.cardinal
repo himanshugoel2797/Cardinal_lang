@@ -1,0 +1,27 @@
+module map_copy_by_value
+
+import io
+
+func modify_map (m {str i32}) -> unit
+    set m["new"] = 999i32
+    do (map_del m "x")
+end
+
+func main () -> i32
+    # Test: maps copy by value (mutations in a function don't affect caller's map)
+    let m {str i32} = (map str i32)
+    set m["x"] = 1i32
+    set m["y"] = 2i32
+
+    do (io::println "before call:")
+    do (io::println (len m))
+
+    do (modify_map m)
+
+    do (io::println "after call:")
+    do (io::println (len m))
+    do (io::println (map_has m "x"))      # should still be true
+    do (io::println (map_has m "new"))    # should be false
+
+    return 0i32
+end

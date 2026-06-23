@@ -1,0 +1,27 @@
+module map_single_entry
+
+import io
+
+func main () -> i32
+    # Test: single entry map (edge case)
+    let m {i32 i32} = (map i32 i32)
+    set m[42i32] = 99i32
+
+    do (io::println (len m))
+    do (io::println m[42i32])
+    do (io::println (map_has m 42i32))
+
+    # Overwrite single entry
+    set m[42i32] = 100i32
+    do (io::println m[42i32])
+
+    # Delete single entry
+    do (map_del m 42i32)
+    do (io::println (len m))
+
+    # Re-insert
+    set m[42i32] = 200i32
+    do (io::println (len m))
+
+    return 0i32
+end

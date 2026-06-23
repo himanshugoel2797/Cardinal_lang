@@ -1,0 +1,13 @@
+module test_substr_zero_length
+
+import io
+import strings
+
+func main () -> i32
+    let s = "hello"
+    let sub = (strings::substr s 2i64 0i64)
+    do (io::println sub)
+    let len_sub = (len sub)
+    do (io::println len_sub)
+    return 0i32
+end

@@ -1,0 +1,42 @@
+module adv_f04_float_in_conditionals
+import io
+
+func main () -> i32
+    # Float in conditionals: 0.0 is false, non-zero is true
+    # But Cardinal doesn't have implicit float->bool conversion
+    # So test float comparison results in conditionals
+
+    let zero = 0.0
+    let nonzero = 5.5
+    let nan = (/ 0.0 0.0)
+
+    # (== zero 0.0) should be true
+    if (== zero 0.0)
+        do (io::println 1i32)
+    else
+        do (io::println 0i32)
+    end
+
+    # (== nonzero 0.0) should be false
+    if (== nonzero 0.0)
+        do (io::println 0i32)
+    else
+        do (io::println 1i32)
+    end
+
+    # NaN != NaN should be true
+    if (!= nan nan)
+        do (io::println 1i32)
+    else
+        do (io::println 0i32)
+    end
+
+    # (< nan 5.0) should be false
+    if (< nan 5.0)
+        do (io::println 0i32)
+    else
+        do (io::println 1i32)
+    end
+
+    return 0i32
+end

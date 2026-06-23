@@ -1,0 +1,24 @@
+module t04_float_edge_forms
+
+import io
+
+func main () -> i32
+    # Edge case float literal forms
+    let a = 1.0
+    let b = 0.5
+    let c = 1.
+    let d = .5
+    let e = 1e9
+    let f = 1.5e-3
+    let g = 1E9
+    let h = 1.5E+3
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    do (io::println e)
+    do (io::println f)
+    do (io::println g)
+    do (io::println h)
+    return 0i32
+end

@@ -1,0 +1,34 @@
+module test33
+
+import io
+
+enum Color
+    Red
+    Green
+    Blue
+end
+
+type ColoredBox
+    Box (color Color) (value i32)
+end
+
+func describe_box (b ColoredBox) -> i32
+    match b
+        case (Box color value)
+            if (== color Color::Red)
+                return (+ value 1000)
+            elsif (== color Color::Green)
+                return (+ value 2000)
+            else
+                return (+ value 3000)
+            end
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (describe_box (Box color: Color::Red value: 5)))
+    do (io::println (describe_box (Box color: Color::Green value: 10)))
+    do (io::println (describe_box (Box color: Color::Blue value: 15)))
+    return 0i32
+end

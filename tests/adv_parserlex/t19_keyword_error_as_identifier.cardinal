@@ -1,0 +1,10 @@
+module t19_keyword_error_as_identifier
+
+import io
+
+func main () -> i32
+    # Reserved keywords cannot be used as identifiers
+    # This should fail in both checkers
+    let if = 1i32
+    return 0i32
+end

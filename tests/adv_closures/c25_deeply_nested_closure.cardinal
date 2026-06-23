@@ -1,0 +1,19 @@
+module c25_deeply_nested_closure
+import io
+
+func main () -> i32
+    let a = 1i32
+    let f1 = func (b i32) -> func(i32 -> func(i32 -> i32))
+        let f2 = func (c i32) -> func(i32 -> i32)
+            let f3 = func (d i32) -> i32
+                return (+ a (+ b (+ c d)))
+            end
+            return f3
+        end
+        return f2
+    end
+    let g = (f1 2)
+    let h = (g 3)
+    do (io::println (h 4))
+    return 0i32
+end

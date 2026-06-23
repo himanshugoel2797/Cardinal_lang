@@ -1,0 +1,35 @@
+module t01_array_of_structs
+
+import io
+
+# Array of structs: test accessing and mutating nested fields
+struct Point
+    x i32
+    y i32
+end
+
+func main () -> i32
+    let arr [Point] = [
+        (Point x: 1 y: 2)
+        (Point x: 3 y: 4)
+        (Point x: 5 y: 6)
+    ]
+
+    # Read via index
+    do (io::println arr[0].x)        # 1
+    do (io::println arr[1].y)        # 4
+    do (io::println arr[2].x)        # 5
+
+    # Mutate via index
+    set arr[0].x = 10
+    do (io::println arr[0].x)        # 10
+    do (io::println arr[0].y)        # 2 (unchanged)
+
+    # Copy then mutate
+    let p = arr[1]
+    set p.x = 30
+    do (io::println arr[1].x)        # 3 (original unchanged)
+    do (io::println p.x)             # 30
+
+    return 0i32
+end

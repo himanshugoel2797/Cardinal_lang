@@ -1,0 +1,28 @@
+module adv_f17_float_cast_edge
+import io
+
+func main () -> i32
+    # Cast inf to int (undefined behavior / depends on impl)
+    let inf = (/ 1.0 0.0)
+    let ninf = (/ (- 1.0) 0.0)
+
+    # Cast inf to i32 (typically wraps or saturates)
+    do (io::println (as inf i32))
+
+    do (io::println (as ninf i32))
+
+    # Cast NaN to int
+    let nan = (/ 0.0 0.0)
+    do (io::println (as nan i32))
+
+    # Cast large i64 to f32 (loses precision)
+    let large = 9223372036854775807i64   # i64::max
+    let as_f32 = (as large f32)
+    let back = (as as_f32 i64)
+
+    do (io::println (as as_f32 f64))
+    do (io::println back)
+    do (io::println (== large back))   # expect false (precision loss)
+
+    return 0i32
+end

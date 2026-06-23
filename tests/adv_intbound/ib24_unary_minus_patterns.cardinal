@@ -1,0 +1,32 @@
+module ib24_unary_minus_patterns
+
+import io
+
+func main () -> i32
+    # Unary minus on extreme values
+
+    # i8
+    do (io::println (- 0i8))             # 0
+    do (io::println (- 127i8))           # -127
+    do (io::println (- (- 128i8)))       # -128 (double negation of INT_MIN)
+
+    # i16
+    do (io::println (- 32767i16))        # -32767
+    do (io::println (- (- 32768i16)))    # -32768
+
+    # i32
+    do (io::println (- 2147483647i32))   # -2147483647
+    do (io::println (- (- 2147483648i32))) # -2147483648
+
+    # i64
+    let i64max = 9223372036854775807i64
+    do (io::println (- i64max))
+    let i64min = (- 9223372036854775808i64)
+    do (io::println (- i64min))          # -i64min = i64min (wraparound)
+
+    # u64 (no unary minus, but negation via 0-x)
+    let u64max = 18446744073709551615u64
+    do (io::println (- 0u64 u64max))
+
+    return 0i32
+end

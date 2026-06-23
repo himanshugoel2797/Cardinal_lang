@@ -1,0 +1,55 @@
+module adv_f26_float_sum_type
+import io
+
+type Value
+    IntVal (v i32)
+    FloatVal (v f64)
+    NanVal
+end
+
+func main () -> i32
+    let v1 = (FloatVal v: 3.5)
+    let v2 = (FloatVal v: (/ 0.0 0.0))
+    let v3 = NanVal
+    let v4 = (FloatVal v: (/ 1.0 0.0))
+
+    # Match on float variants
+    match v1
+    case FloatVal(v)
+        do (io::println v)   # 3.5
+    case IntVal(v)
+        do (io::println 999i32)
+    else
+        do (io::println 888i32)
+    end
+
+    # Match on nan
+    match v2
+    case FloatVal(v)
+        do (io::println v)   # nan
+    case NanVal
+        do (io::println 777i32)
+    else
+        do (io::println 666i32)
+    end
+
+    # Match on explicit NanVal
+    match v3
+    case NanVal
+        do (io::println 1i32)
+    case FloatVal(v)
+        do (io::println 0i32)
+    else
+        do (io::println 2i32)
+    end
+
+    # Match on inf
+    match v4
+    case FloatVal(v)
+        do (io::println v)   # inf
+    else
+        do (io::println 0i32)
+    end
+
+    return 0i32
+end

@@ -1,0 +1,39 @@
+module test04
+
+import io
+
+type Inner
+    A (x i32)
+    B (y i32)
+end
+
+type Outer
+    Wrapped (inner Inner)
+    Empty
+end
+
+func extract (o Outer) -> i32
+    match o
+        case (Wrapped inn)
+            match inn
+                case (A x)
+                    return (+ x 100)
+                case (B y)
+                    return (+ y 200)
+            end
+            return 0
+        case Empty
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    let o1 = (Wrapped inner: (A x: 5))
+    let o2 = (Wrapped inner: (B y: 7))
+    let o3 = Empty
+    do (io::println (extract o1))
+    do (io::println (extract o2))
+    do (io::println (extract o3))
+    return 0i32
+end

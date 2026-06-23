@@ -1,0 +1,26 @@
+module c05_i32_u32_same_width_reinterpret
+
+import io
+
+func main () -> i32
+    # i32 <-> u32: same-width reinterpretation (bit pattern preserved)
+    # -1i32 has all bits set = 4294967295u32
+    do (io::println (as (- 1i32) u32))
+
+    # 2147483648u32 (high bit set) reinterprets as -2147483648i32
+    do (io::println (as 2147483648u32 i32))
+
+    # 2147483647u32 reinterprets as 2147483647i32
+    do (io::println (as 2147483647u32 i32))
+
+    # 0u32 reinterprets as 0i32
+    do (io::println (as 0u32 i32))
+
+    # 1u32 reinterprets as 1i32
+    do (io::println (as 1u32 i32))
+
+    # 4294967295u32 reinterprets as -1i32
+    do (io::println (as 4294967295u32 i32))
+
+    return 0i32
+end

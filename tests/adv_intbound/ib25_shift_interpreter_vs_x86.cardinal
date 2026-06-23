@@ -1,0 +1,33 @@
+module ib25_shift_interpreter_vs_x86
+
+import io
+
+func main () -> i32
+    # The interpreter doesn't mask shift counts, but x86 does
+    # Interpreter: shift by 64+ on u64 gives 0
+    # x86: shlq/shrq mask to 6 bits, so shift by 64 becomes shift by 0 = identity
+
+    # Test with known pattern where masking makes a difference
+    # For u64: shift by 64 should give 0
+    # If x86 masks: 64 & 63 = 0, so result is 1 (identity)
+    # If correct: result is 0
+
+    let val = 1u64
+    do (io::println (shl val 64u64))     # interpreter:0, x86:1 (known bug)
+    do (io::println (shr val 64u64))     # interpreter:0, x86:1 (known bug)
+
+    # For u32: shift by 32 should give 0
+    # If x86 masks: 32 & 31 = 0, so result is identity
+    let val32 = 1u32
+    do (io::println (shl val32 32u32))
+
+    # For i64 with negative: shift by 64 with sign fill
+    let val_neg = (- 1i64)
+    do (io::println (shr val_neg 64i64))  # should be -1
+
+    # Large shifts that exceed 64
+    let huge_shift = 128u64
+    do (io::println (shl 1u64 huge_shift)) # should be 0
+
+    return 0i32
+end

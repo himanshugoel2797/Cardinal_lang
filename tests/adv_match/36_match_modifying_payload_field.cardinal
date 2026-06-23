@@ -1,0 +1,28 @@
+module test36
+
+import io
+
+type Container
+    Box (value i32)
+    Empty
+end
+
+func modify_in_match (c Container) -> i32
+    match c
+        case (Box value)
+            let x = value
+            set x = (+ x 100)
+            return x
+        case Empty
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    let c1 = (Box value: 5)
+    let c2 = Empty
+    do (io::println (modify_in_match c1))
+    do (io::println (modify_in_match c2))
+    return 0i32
+end

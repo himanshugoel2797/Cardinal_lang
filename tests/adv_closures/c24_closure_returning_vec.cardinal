@@ -1,0 +1,16 @@
+module c24_closure_returning_vec
+import io
+
+func main () -> i32
+    let make_vec = func () -> {i32}
+        let v = (vec i32)
+        do (push v 100)
+        do (push v 200)
+        return v
+    end
+    let v = (make_vec)
+    do (io::println (len v))
+    do (io::println v[0])
+    do (io::println v[1])
+    return 0i32
+end

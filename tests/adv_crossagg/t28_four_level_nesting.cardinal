@@ -1,0 +1,55 @@
+module t28_four_level_nesting
+
+import io
+
+# Four levels of nesting: deeply nested structure access
+struct L4
+    val i32
+end
+
+struct L3
+    l4 L4
+    id i32
+end
+
+struct L2
+    l3 L3
+    flag i32
+end
+
+struct L1
+    l2 L2
+    tag i32
+end
+
+func main () -> i32
+    let root = (L1
+        l2: (L2
+            l3: (L3
+                l4: (L4 val: 777)
+                id: 88
+            )
+            flag: 9
+        )
+        tag: 1
+    )
+
+    # Four levels deep
+    do (io::println root.l2.l3.l4.val)    # 777
+
+    # Three levels
+    do (io::println root.l2.l3.id)        # 88
+
+    # Two levels
+    do (io::println root.l2.flag)         # 9
+
+    # One level
+    do (io::println root.tag)             # 1
+
+    # Mutate at depth 4
+    set root.l2.l3.l4.val = 555
+    do (io::println root.l2.l3.l4.val)    # 555
+    do (io::println root.l2.l3.id)        # 88 (unchanged sibling)
+
+    return 0i32
+end

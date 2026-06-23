@@ -1,0 +1,22 @@
+module test_sum_type_tostr
+
+import io
+
+type Expr
+    Num (value i32)
+    Add (lhs Expr) (rhs Expr)
+    Neg (operand Expr)
+end
+
+func main () -> i32
+    let n = (Num value: 42i32)
+    do (io::println (to_str n))
+
+    let a = (Add lhs: (Num value: 1i32) rhs: (Num value: 2i32))
+    do (io::println (to_str a))
+
+    let neg = (Neg operand: (Num value: 5i32))
+    do (io::println (to_str neg))
+
+    return 0i32
+end

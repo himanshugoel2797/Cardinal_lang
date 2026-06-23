@@ -1,0 +1,39 @@
+module adv_f27_closure_indirect_call
+import io
+
+func apply_twice (f func(f64 -> f64)) (x f64) -> f64
+    let y = (f x)
+    return (f y)
+end
+
+func main () -> i32
+    # Simple closure
+    let double = func (x f64) -> f64
+        return (* x 2.0)
+    end
+
+    # apply_twice with double: x -> 2x -> 4x
+    let result = (apply_twice double 3.0)
+    do (io::println result)   # expect 12.0
+
+    # Closure that adds to captured value
+    let base = 5.5
+    let adder = func (x f64) -> f64
+        return (+ x base)
+    end
+
+    # apply_twice with adder: x -> x+5.5 -> x+11.0
+    let result2 = (apply_twice adder 1.0)
+    do (io::println result2)   # expect 12.0
+
+    # Closure with NaN in capture
+    let nan = (/ 0.0 0.0)
+    let nan_adder = func (x f64) -> f64
+        return (+ x nan)
+    end
+
+    let result3 = (apply_twice nan_adder 3.0)
+    do (io::println result3)   # expect nan
+
+    return 0i32
+end

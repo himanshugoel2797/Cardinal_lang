@@ -1,0 +1,56 @@
+module map_dense_reinsert
+
+import io
+
+func main () -> i32
+    # Test: heavy insert/delete/re-insert cycle with order verification
+    let m {i32 i32} = (map i32 i32)
+
+    # Insert 10 items
+    let i = 0i32
+    loop
+        set m[i] = i
+        set i = (+ i 1i32)
+        if (== i 10i32)
+            break
+        end
+    end
+
+    # Delete odds (1, 3, 5, 7, 9)
+    set i = 1i32
+    loop
+        do (map_del m i)
+        set i = (+ i 2i32)
+        if (== i 11i32)
+            break
+        end
+    end
+
+    # Verify evens remain
+    do (io::println "after deleting odds:")
+    for k in (map_keys m)
+        do (io::print k)
+        do (io::print " ")
+    end
+    do (io::println "")
+
+    # Re-insert odds
+    set i = 1i32
+    loop
+        set m[i] = i
+        set i = (+ i 2i32)
+        if (== i 11i32)
+            break
+        end
+    end
+
+    # Verify final order
+    do (io::println "after re-inserting odds:")
+    for k in (map_keys m)
+        do (io::print k)
+        do (io::print " ")
+    end
+    do (io::println "")
+
+    return 0i32
+end

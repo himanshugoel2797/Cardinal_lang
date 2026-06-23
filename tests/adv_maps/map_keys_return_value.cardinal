@@ -1,0 +1,32 @@
+module map_keys_return_value
+
+import io
+
+func main () -> i32
+    # Test: map_keys return value (is it a vec? can we iterate it multiple times?)
+    let m {str i32} = (map str i32)
+    set m["a"] = 1i32
+    set m["b"] = 2i32
+    set m["c"] = 3i32
+
+    let keys = (map_keys m)
+    # keys should be iterable and have a length
+    do (io::println (len keys))
+
+    # Iterate twice
+    do (io::println "first iteration:")
+    for k in keys
+        do (io::print k)
+        do (io::print " ")
+    end
+    do (io::println "")
+
+    do (io::println "second iteration:")
+    for k in keys
+        do (io::print k)
+        do (io::print " ")
+    end
+    do (io::println "")
+
+    return 0i32
+end

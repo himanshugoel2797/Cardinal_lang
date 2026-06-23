@@ -1,0 +1,14 @@
+module c17_closure_returning_array
+import io
+
+func main () -> i32
+    let make_arr = func () -> [i32]
+        let arr [i32] = [100 200 300]
+        return arr
+    end
+    let arr [i32] = (make_arr)
+    do (io::println arr[0])
+    do (io::println arr[1])
+    do (io::println arr[2])
+    return 0i32
+end

@@ -1,0 +1,19 @@
+module c26_closure_for_loop_mutation
+import io
+
+func main () -> i32
+    let x = 0i32
+    let closures = (vec func(-> i32))
+    let i = 0i32
+    for i = 0 to 3
+        let f = func () -> i32
+            return x
+        end
+        do (push closures f)
+        set x = (+ x 10)
+    end
+    do (io::println ((closures[0])))
+    do (io::println ((closures[1])))
+    do (io::println ((closures[2])))
+    return 0i32
+end

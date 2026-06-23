@@ -1,0 +1,35 @@
+module ib30_cast_overflow_patterns
+
+import io
+
+func main () -> i32
+    # Casting with overflow to narrower types
+
+    # i32 to i8
+    let i32_large = 256i32
+    do (io::println (as i32_large i8))   # 0
+
+    let i32_large2 = 257i32
+    do (io::println (as i32_large2 i8))  # 1
+
+    # u32 to u8
+    let u32_large = 256u32
+    do (io::println (as u32_large u8))   # 0
+
+    # i64 to i8
+    let i64_large = 128i64
+    do (io::println (as i64_large i8))   # -128
+
+    # u64 to i8
+    let u64_large = 256u64
+    do (io::println (as u64_large i8))   # 0
+
+    # Negative cast narrow
+    let i32_neg = (- 1i32)
+    do (io::println (as i32_neg u8))     # 255
+
+    let i64_neg = (- 128i64)
+    do (io::println (as i64_neg i8))     # -128
+
+    return 0i32
+end

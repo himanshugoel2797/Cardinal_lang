@@ -1,0 +1,28 @@
+module ib10_i64_u64_boundary
+
+import io
+
+func main () -> i32
+    # Test comparisons and operations at i64/u64 boundary
+    # i64 max = 9223372036854775807
+    # u64 max = 18446744073709551615
+
+    let i64max = 9223372036854775807i64
+    let u64high = 18446744073709551615u64
+
+    # u64 division of values above 2^63
+    # These are beyond i64 range
+    do (io::println (/ 18446744073709551615u64 2u64))
+    do (io::println (/ 18446744073709551615u64 3u64))
+    do (io::println (% 18446744073709551615u64 2u64))
+    do (io::println (% 18446744073709551615u64 3u64))
+
+    # u64 modulo by values > 2^32
+    do (io::println (% 18446744073709551615u64 9223372036854775807u64))
+
+    # Large u64 arithmetic
+    do (io::println (+ 9223372036854775808u64 9223372036854775808u64))
+    do (io::println (- 18446744073709551615u64 9223372036854775808u64))
+
+    return 0i32
+end

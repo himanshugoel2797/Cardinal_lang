@@ -1,0 +1,18 @@
+module t07_char_escape_simple
+
+import io
+
+func main () -> i32
+    # Simple char escapes
+    let a = 'a'
+    let b = '0'
+    let c = ' '
+    let d = '\n'
+    let e = '\t'
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    do (io::println e)
+    return 0i32
+end

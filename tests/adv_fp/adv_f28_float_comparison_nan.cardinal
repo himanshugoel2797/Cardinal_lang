@@ -1,0 +1,27 @@
+module adv_f28_float_comparison_nan
+import io
+
+func main () -> i32
+    let nan = (/ 0.0 0.0)
+    let x = 5.0
+
+    # All comparisons with NaN are false (except !=)
+    do (io::println (== nan x))   # 0
+    do (io::println (!= nan x))   # 1
+    do (io::println (< nan x))    # 0
+    do (io::println (<= nan x))   # 0
+    do (io::println (> nan x))    # 0
+    do (io::println (>= nan x))   # 0
+
+    # NaN is not equal to itself
+    do (io::println (== nan nan))   # 0
+    do (io::println (!= nan nan))   # 1
+
+    # x compared with nan
+    do (io::println (< x nan))     # 0
+    do (io::println (> x nan))     # 0
+    do (io::println (<= x nan))    # 0
+    do (io::println (>= x nan))    # 0
+
+    return 0i32
+end

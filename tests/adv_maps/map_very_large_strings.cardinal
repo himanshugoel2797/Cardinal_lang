@@ -1,0 +1,28 @@
+module map_very_large_strings
+
+import io
+import strings
+
+func main () -> i32
+    # Test: map with long string keys and values
+    let m {str str} = (map str str)
+
+    # Use reasonably long strings
+    let bigkey = "this_is_a_fairly_long_key_string_for_testing"
+    let bigval = "and_this_is_a_fairly_long_value_string_for_testing"
+
+    set m[bigkey] = bigval
+
+    # Retrieve and verify
+    do (io::println (len m))
+    do (io::println (map_has m bigkey))
+
+    let retrieved = m[bigkey]
+    do (io::println retrieved)
+
+    # Delete and verify
+    do (map_del m bigkey)
+    do (io::println (len m))
+
+    return 0i32
+end

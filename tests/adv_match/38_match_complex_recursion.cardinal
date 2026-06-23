@@ -1,0 +1,35 @@
+module test38
+
+import io
+
+type List
+    Cons (head i32) (tail List)
+    Nil
+end
+
+func list_sum (l List) -> i32
+    match l
+        case (Cons head tail)
+            return (+ head (list_sum tail))
+        case Nil
+            return 0i32
+    end
+    return 0i32
+end
+
+func list_len (l List) -> i32
+    match l
+        case (Cons head tail)
+            return (+ 1 (list_len tail))
+        case Nil
+            return 0i32
+    end
+    return 0i32
+end
+
+func main () -> i32
+    let l = (Cons head: 1 tail: (Cons head: 2 tail: (Cons head: 3 tail: Nil)))
+    do (io::println (list_sum l))
+    do (io::println (list_len l))
+    return 0i32
+end

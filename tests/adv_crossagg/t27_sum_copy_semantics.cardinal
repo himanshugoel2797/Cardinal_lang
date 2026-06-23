@@ -1,0 +1,39 @@
+module t27_sum_copy_semantics
+
+import io
+
+# Sum type with large payload: test deep copy semantics
+type BinaryTree
+    Leaf (value i32)
+    Node (left BinaryTree) (right BinaryTree)
+end
+
+func make_leaf (v i32) -> BinaryTree
+    return (Leaf value: v)
+end
+
+func copy_tree (t BinaryTree) -> BinaryTree
+    return t
+end
+
+func main () -> i32
+    let t1 = (make_leaf 42)
+
+    match t1
+        case (Leaf v)
+            do (io::println v)        # 42
+        case Node
+            do (io::println 999)
+    end
+
+    # Copy
+    let t2 = (copy_tree t1)
+    match t2
+        case (Leaf v)
+            do (io::println v)        # 42
+        case Node
+            do (io::println 999)
+    end
+
+    return 0i32
+end

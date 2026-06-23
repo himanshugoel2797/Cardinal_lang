@@ -1,0 +1,31 @@
+module t30_large_struct_through_function
+
+import io
+
+# Large struct (multiple i64 fields) passed through function: test calling convention
+struct Large
+    a i64
+    b i64
+    c i64
+    d i64
+end
+
+func process (l Large) -> i64
+    return (+ (+ l.a l.b) (+ l.c l.d))
+end
+
+func get_first (l Large) -> i64
+    return l.a
+end
+
+func main () -> i32
+    let big = (Large a: 10 b: 20 c: 30 d: 40)
+
+    let sum = (process big)
+    do (io::println sum)              # 100
+
+    let first = (get_first big)
+    do (io::println first)            # 10
+
+    return 0i32
+end

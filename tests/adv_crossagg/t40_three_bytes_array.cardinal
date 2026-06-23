@@ -1,0 +1,22 @@
+module t40_three_bytes_array
+
+import io
+
+# Three byte fields in struct in array
+struct ThreeBytesUnaligned
+    a u8
+    b u8
+    c u8
+end
+
+func main () -> i32
+    let arr [ThreeBytesUnaligned] = [
+        (ThreeBytesUnaligned a: 10 b: 11 c: 12)
+    ]
+
+    do (io::println (as arr[0].a i32))    # 10
+    do (io::println (as arr[0].b i32))    # 11
+    do (io::println (as arr[0].c i32))    # 12
+
+    return 0i32
+end

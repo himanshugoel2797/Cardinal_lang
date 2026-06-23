@@ -1,0 +1,18 @@
+module c02_mutate_struct_through_closure
+import io
+
+struct Box
+    val i32
+end
+
+func main () -> i32
+    let b = (Box val: 100)
+    let inc = func () -> i32
+        set b.val = (+ b.val 1)
+        return b.val
+    end
+    do (io::println (inc))
+    do (io::println (inc))
+    do (io::println b.val)
+    return 0i32
+end

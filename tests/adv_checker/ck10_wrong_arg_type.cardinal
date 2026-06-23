@@ -1,0 +1,9 @@
+module ck10_wrong_arg_type
+# ILLEGAL: passing i64 where i32 expected
+func f (x i32) -> i32
+    return x
+end
+
+func main () -> i32
+    return (f 1i64)
+end

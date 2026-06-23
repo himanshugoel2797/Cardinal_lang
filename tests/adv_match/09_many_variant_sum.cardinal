@@ -1,0 +1,66 @@
+module test09
+
+import io
+
+type Command
+    Quit
+    Print (s str)
+    Add (a i32) (b i32)
+    Sub (a i32) (b i32)
+    Mul (a i32) (b i32)
+    Div (a i32) (b i32)
+    Mod (a i32) (b i32)
+    Pow (a i32) (b i32)
+    Max (a i32) (b i32)
+    Min (a i32) (b i32)
+    Abs (x i32)
+end
+
+func execute (c Command) -> i32
+    match c
+        case Quit
+            return 0
+        case (Print s)
+            return 1
+        case (Add a b)
+            return (+ a b)
+        case (Sub a b)
+            return (- a b)
+        case (Mul a b)
+            return (* a b)
+        case (Div a b)
+            return (/ a b)
+        case (Mod a b)
+            return (% a b)
+        case (Pow a b)
+            return (as (+ (as a i64) (as b i64)) i32)
+        case (Max a b)
+            if (<= a b)
+                return b
+            else
+                return a
+            end
+        case (Min a b)
+            if (>= a b)
+                return b
+            else
+                return a
+            end
+        case (Abs x)
+            if (< x 0)
+                return (- x)
+            else
+                return x
+            end
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (execute (Add a: 3 b: 5)))
+    do (io::println (execute (Sub a: 10 b: 3)))
+    do (io::println (execute (Mul a: 4 b: 7)))
+    do (io::println (execute (Abs x: (- 8))))
+    do (io::println (execute (Min a: 5 b: 3)))
+    return 0i32
+end

@@ -1,0 +1,34 @@
+module adv_f01_nan_comparisons
+import io
+
+func sqrt_neg (x f64) -> f64
+    # Returns NaN on negative input (via 0.0/0.0)
+    if (< x 0.0)
+        return (/ 0.0 0.0)
+    end
+    return (/ x 1.0)
+end
+
+func main () -> i32
+    let nan = (sqrt_neg (- 1.0))
+
+    # IEEE 754: NaN == NaN is FALSE
+    do (io::println (== nan nan))
+
+    # IEEE 754: NaN != NaN is TRUE
+    do (io::println (!= nan nan))
+
+    # IEEE 754: NaN < x is FALSE for any x
+    do (io::println (< nan 0.0))
+
+    # IEEE 754: x < NaN is FALSE for any x
+    do (io::println (< 5.0 nan))
+
+    # IEEE 754: NaN <= x is FALSE for any x
+    do (io::println (<= nan 0.0))
+
+    # IEEE 754: NaN > x is FALSE for any x
+    do (io::println (> nan 0.0))
+
+    return 0i32
+end

@@ -1,0 +1,49 @@
+module adv_gc05_vec_of_vecs_realloc
+
+import io
+
+# Test: vec of vecs where adding to outer vec causes realloc of inner vecs.
+# Inner vecs might not be properly rooted during outer realloc.
+
+func main () -> i32
+    let outer {
+        {i32}
+    } = (vec {i32})
+
+    # Outer vec expansion causes inner vecs to move
+    for i = 0 to 1000
+        let inner {i32} = (vec i32)
+
+        # Fill inner vec (small to medium)
+        for j = 0 to 20
+            do (push inner (+ i j))
+        end
+
+        # Push to outer (may trigger outer realloc)
+        do (push outer inner)
+    end
+
+    # Now reallocate and pump outer vec further
+    for i = 1000 to 2000
+        let inner {i32} = (vec i32)
+        for j = 0 to 20
+            do (push inner (+ i j))
+        end
+        do (push outer inner)
+    end
+
+    # Sum all inner vecs
+    let total = 0i32
+    for inner in outer
+        for v in inner
+            set total = (+ total v)
+        end
+    end
+
+    # Expected: sum of (i + j) for i in 0..1999, j in 0..19
+    # = 2000*sum(j for j in 0..19) + sum(i*20 for i in 0..1999)
+    # = 2000 * 190 + 20 * 1999*2000/2
+    # = 380000 + 20 * 1999000 = 380000 + 39980000 = 40360000
+    do (io::println total)
+    return 0i32
+end

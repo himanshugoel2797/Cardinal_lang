@@ -1,0 +1,36 @@
+module t02_vec_of_structs
+
+import io
+
+# Vec of structs: dynamic collection with nested access
+struct Record
+    id i32
+    val i64
+end
+
+func main () -> i32
+    let v {Record} = (vec Record)
+
+    do (push v (Record id: 1 val: 100))
+    do (push v (Record id: 2 val: 200))
+    do (push v (Record id: 3 val: 300))
+
+    # Read via index
+    do (io::println v[0].id)         # 1
+    do (io::println v[1].val)        # 200
+    do (io::println v[2].id)         # 3
+
+    # Mutate via index
+    set v[0].val = 111
+    do (io::println v[0].val)        # 111
+    do (io::println v[1].val)        # 200 (unchanged)
+
+    # Iterate and print
+    for r in v
+        do (io::println r.id)
+        do (io::println r.val)
+    end
+    # 1, 111, 2, 200, 3, 300
+
+    return 0i32
+end

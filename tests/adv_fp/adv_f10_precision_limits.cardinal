@@ -1,0 +1,31 @@
+module adv_f10_precision_limits
+import io
+
+func main () -> i32
+    # F64 precision limits
+    let max_f64 = 1.7976931348623157e308
+    let min_positive_f64 = 2.2250738585072014e-308
+
+    # F32 equivalent extremes (cast from f64)
+    let max_f32_as_f64 = (as (as 3.4028235e38 f32) f64)
+    let min_f32_as_f64 = (as (as 1.1754944e-38 f32) f64)
+
+    do (io::println max_f64)
+    do (io::println min_positive_f64)
+
+    # Arithmetic at the edge
+    do (io::println (* max_f64 2.0))   # Should be inf
+
+    do (io::println (/ min_positive_f64 2.0))   # Approaches subnormal
+
+    # Large exponent literals
+    do (io::println 1e308)   # Near max
+    do (io::println 1e309)   # Should be inf
+
+    # Tiny exponent literals
+    do (io::println 1e-308)   # Near min
+    do (io::println 1e-309)   # Subnormal
+    do (io::println 1e-323)   # Smallest subnormal
+
+    return 0i32
+end

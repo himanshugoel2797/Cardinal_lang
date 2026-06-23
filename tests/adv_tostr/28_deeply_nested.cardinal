@@ -1,0 +1,21 @@
+module test_deeply_nested
+
+import io
+
+struct Inner
+    val i32
+end
+
+struct Middle
+    inner Inner
+end
+
+struct Outer
+    middle Middle
+end
+
+func main () -> i32
+    let o = (Outer middle: (Middle inner: (Inner val: 42i32)))
+    do (io::println (to_str o))
+    return 0i32
+end

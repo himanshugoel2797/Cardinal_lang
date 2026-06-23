@@ -1,0 +1,11 @@
+module ck20_extra_struct_field
+# ILLEGAL: constructing struct with extra field w
+struct P
+    x i32
+    y i32
+end
+
+func f () -> i32
+    let p = (P x: 1i32 y: 2i32 w: 3i32)
+    return 0i32
+end

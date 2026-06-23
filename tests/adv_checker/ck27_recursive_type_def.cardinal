@@ -1,0 +1,11 @@
+module ck27_recursive_type_def
+# LEGAL: recursive type def is allowed (no cycle issue for sum types)
+type Tree
+    Leaf (x i32)
+    Node (left Tree) (right Tree)
+end
+
+func f () -> i32
+    let t = (Leaf x: 5i32)
+    return 0i32
+end

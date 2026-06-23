@@ -1,0 +1,12 @@
+module c04_float_capture
+import io
+
+func main () -> i32
+    let x = 3.5
+    let y = 2.1
+    let f = func () -> f64
+        return (+ x y)
+    end
+    do (io::println (f))
+    return 0i32
+end

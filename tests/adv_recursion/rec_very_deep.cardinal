@@ -1,0 +1,19 @@
+module rec_very_deep
+
+import io
+
+# Very deep recursion - push harder toward stack limits
+# Target: 4k+ frames
+
+func countdown_sum (n i64) -> i64
+    if (<= n 0)
+        return 0i64
+    end
+    return (+ n (countdown_sum (- n 1)))
+end
+
+func main () -> i32
+    let result = (countdown_sum 4000i64)
+    do (io::println result)
+    return 0i32
+end

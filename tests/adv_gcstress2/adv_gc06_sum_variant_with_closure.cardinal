@@ -1,0 +1,55 @@
+module adv_gc06_sum_variant_with_closure
+
+import io
+
+# Test: sum type with a closure variant (closures as enum payloads).
+# Tests closure GC within sum-type discriminators.
+
+type Thunk
+    Done (v i32)
+    Lazy (f func(-> i32))
+end
+
+func main () -> i32
+    let thunks {Thunk} = (vec Thunk)
+    let accumulator = 0i32
+
+    for i = 0 to 5000
+        # Alternate between Done and Lazy variants
+        if (== (% i 2i32) 0i32)
+            let t = (Done v: (+ i 1))
+            do (push thunks t)
+        else
+            let n = i
+            let t = (Lazy f: (func () -> i32
+                return (+ n 10)
+            end))
+            do (push thunks t)
+        end
+
+        # Allocate heavily
+        if (== (% i 100) 0i32)
+            let v {i32} = (vec i32)
+            for j = 0 to 50
+                do (push v j)
+            end
+        end
+    end
+
+    # Now evaluate all thunks
+    for t in thunks
+        match t
+            case (Done v)
+                set accumulator = (+ accumulator v)
+            case (Lazy f)
+                set accumulator = (+ accumulator (f))
+        end
+    end
+
+    # Expected: 2500 * (i+1) for even i in 0..4998 + 2500 * (n+10) for odd n
+    # = sum of (i+1) for i in 0,2,4,...,4998 + sum of (i+10) for i in 1,3,5,...,4999
+    # = (1+3+5+...+4999) + (11+13+15+...+5009)
+    # = 6250000 + 6260000 = 12510000
+    do (io::println accumulator)
+    return 0i32
+end

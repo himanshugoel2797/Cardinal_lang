@@ -1,0 +1,11 @@
+module ck04_unsuffixed_struct_field
+# ILLEGAL: unsuffixed literal as struct field value with no context
+struct P
+    x i32
+    y i32
+end
+
+func f () -> i32
+    let p = (P x: 10 y: 20)
+    return 0i32
+end

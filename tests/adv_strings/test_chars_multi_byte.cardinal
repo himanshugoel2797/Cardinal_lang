@@ -1,0 +1,13 @@
+module test_chars_multi_byte
+
+import io
+import strings
+
+func main () -> i32
+    # Multi-byte UTF-8 character
+    let s = "é"
+    let cs = (strings::chars s)
+    let len_cs = (len cs)
+    do (io::println len_cs)
+    return 0i32
+end

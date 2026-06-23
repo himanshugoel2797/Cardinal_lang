@@ -1,0 +1,6 @@
+module ck12_keyword_as_var
+# ILLEGAL: "loop" is a keyword, cannot use as binding
+func f () -> i32
+    let loop = 5i32
+    return loop
+end

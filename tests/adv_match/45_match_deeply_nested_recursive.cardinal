@@ -1,0 +1,36 @@
+module test45
+
+import io
+
+type Tree
+    Leaf (v i32)
+    Node (v i32) (left Tree) (right Tree)
+end
+
+func depth (t Tree) -> i32
+    match t
+        case (Leaf v)
+            return 1i32
+        case (Node v left right)
+            let ld = (depth left)
+            let rd = (depth right)
+            if (> ld rd)
+                return (+ 1 ld)
+            else
+                return (+ 1 rd)
+            end
+    end
+    return 0i32
+end
+
+func main () -> i32
+    let t = (Node v: 1
+                 left: (Node v: 2
+                            left: (Leaf v: 4)
+                            right: (Leaf v: 5))
+                 right: (Node v: 3
+                             left: (Leaf v: 6)
+                             right: (Leaf v: 7)))
+    do (io::println (depth t))
+    return 0i32
+end

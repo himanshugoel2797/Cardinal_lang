@@ -1,0 +1,15 @@
+module c29_closure_map_return
+import io
+
+func main () -> i32
+    let make_map = func () -> {str i32}
+        let m = (map str i32)
+        set m["x"] = 100
+        set m["y"] = 200
+        return m
+    end
+    let m = (make_map)
+    do (io::println m["x"])
+    do (io::println m["y"])
+    return 0i32
+end

@@ -1,0 +1,12 @@
+module c32_closure_u32_i64_mixed
+import io
+
+func main () -> i32
+    let x = 10u32
+    let y = 20i64
+    let f = func () -> i64
+        return (+ (as x i64) y)
+    end
+    do (io::println (f))
+    return 0i32
+end

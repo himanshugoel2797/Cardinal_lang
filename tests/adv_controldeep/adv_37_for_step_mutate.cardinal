@@ -1,0 +1,14 @@
+module adv_37_for_step_mutate
+
+import io
+
+func main () -> i32
+	let step = 1i32
+	let sum = 0i32
+	for i = 0i32 to 10i32 step step
+		set sum = (+ sum i)
+		set step = 100i32
+	end
+	do (io::println sum)
+	return 0
+end

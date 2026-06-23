@@ -1,0 +1,10 @@
+module adv_23_complex_cond_short_circuit
+
+import io
+
+func main () -> i32
+	let evals = 0i32
+	let result = (and (== 1i32 1i32) (== 2i32 2i32) (== 3i32 4i32))
+	do (io::println result)
+	return 0
+end

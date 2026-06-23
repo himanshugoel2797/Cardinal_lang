@@ -1,0 +1,10 @@
+module ck40_recursive_struct_direct
+# ILLEGAL: struct cannot directly contain itself (infinite size)
+struct Node
+    value i32
+    next Node
+end
+
+func f () -> i32
+    return 0i32
+end

@@ -1,0 +1,32 @@
+module map_bool_key_order
+
+import io
+
+func main () -> i32
+    # Test: bool keys and insertion order (only 2 possible keys: true/false)
+    let m {bool i32} = (map bool i32)
+    set m[false] = 100i32
+    set m[true] = 200i32
+
+    do (io::println m[true])
+    do (io::println m[false])
+
+    # Check iteration order (false inserted first, then true)
+    do (io::println "keys:")
+    for k in (map_keys m)
+        do (io::print k)
+        do (io::print " ")
+    end
+    do (io::println "")
+
+    # Overwrite false
+    set m[false] = 999i32
+    do (io::println "after overwrite:")
+    for k in (map_keys m)
+        do (io::print k)
+        do (io::print " ")
+    end
+    do (io::println "")
+
+    return 0i32
+end

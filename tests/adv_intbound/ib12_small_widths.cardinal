@@ -1,0 +1,31 @@
+module ib12_small_widths
+
+import io
+
+func main () -> i32
+    # Comprehensive tests for i8, u8, i16, u16 (not heavily tested in arith)
+
+    # u8 operations across full range
+    do (io::println (+ 200u8 100u8))     # 300 % 256 = 44
+    do (io::println (* 200u8 200u8))     # 40000 % 256 = 64
+    do (io::println (- 50u8 100u8))      # wraps to 206
+
+    # i16 division edge cases
+    do (io::println (/ (- 32768i16) 2i16)) # -16384
+    do (io::println (/ 32000i16 (- 1i16))) # -32000
+
+    # u16 high value ops
+    let u16max = 65535u16
+    do (io::println (+ u16max 1u16))     # 0
+    do (io::println (* u16max 2u16))     # 65534
+
+    # i8 remainder corner cases
+    do (io::println (% (- 120i8) 7i8))   # (-120) % 7 = -1
+    do (io::println (% 120i8 (- 7i8)))   # 120 % (-7) = 1
+
+    # i16 remainder
+    do (io::println (% (- 1000i16) 3i16)) # should be -1
+    do (io::println (% 1000i16 (- 3i16))) # should be 1
+
+    return 0i32
+end

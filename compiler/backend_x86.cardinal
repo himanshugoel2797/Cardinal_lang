@@ -59,6 +59,10 @@ func asm_escape (s str) -> str
             set out = (strings::concat out "\\t")
         elsif (== c '\r')
             set out = (strings::concat out "\\r")
+        elsif (== c '\0')
+            # NUL: octal escape so the .ascii line stays a valid token (a raw NUL
+            # byte would make `as` choke). The byte is preserved in rodata.
+            set out = (strings::concat out "\\000")
         else
             set out = (strings::concat out (strings::from_char c))
         end
@@ -849,9 +853,14 @@ end
 func load_to_rax (bx BX) (v IVal) -> str
     match v
         case (ImmStr s)
+            # ptr in %rdi, byte length (end-label - start-label) in %rsi; build the
+            # string from explicit bytes so embedded NULs survive (cl_strlit would
+            # strlen-truncate). For NUL-free literals this matches the old behavior.
             let lab = bx.strs[s]
             let out = (line (cat2 "    leaq " (cat2 lab "(%rip), %rdi")))
-            return (strings::concat out (line "    call cl_strlit"))
+            set out = (strings::concat out (line (cat2 "    leaq " (cat2 lab "_end(%rip), %rsi"))))
+            set out = (strings::concat out (line "    subq %rdi, %rsi"))
+            return (strings::concat out (line "    call cl_strlit_n"))
         else
             return (load_into bx "%rax" v)
     end
@@ -1606,25 +1615,35 @@ func copy_rax_to_slot (bx BX) (dst IVal) (sz i64) -> str
     return out
 end
 
+# A size that load_sized/store_sized handle exactly with one mov (1/2/4/8). Other
+# sizes (3/5/6/7) only arise for packed value structs/arrays and must be copied
+# byte-accurately: store_sized would write 8 bytes (overrunning the next packed
+# element) and load_sized would read only the low byte (dropping fields at >0).
+func clean_word_size (sz i64) -> bool
+    return (or (== sz 1i64) (or (== sz 2i64) (or (== sz 4i64) (== sz 8i64))))
+end
+
 # Store a container element (parked in scratch[0..]) into the buffer slot whose
-# address is in %rax. ≤8B: exact sized store; multi-word: byte-accurate copy.
+# address is in %rax. ≤8B clean size: exact sized store; otherwise byte-accurate.
 func store_elem_at_rax (bx BX) (ety IRType) -> str
     let nw = (nwords ety bx.structs)
-    if (== nw 1i64)
+    let sz = (type_size ety bx.structs)
+    if (and (== nw 1i64) (clean_word_size sz))
         let out = (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx")))
-        return (strings::concat out (store_sized (type_size ety bx.structs) "c" "(%rax)"))
+        return (strings::concat out (store_sized sz "c" "(%rax)"))
     end
-    return (copy_scratch_to_rax bx (type_size ety bx.structs))
+    return (copy_scratch_to_rax bx sz)
 end
 
 # Load a container element (buffer address in %rax) into dst's slot.
 func load_elem_from_rax (bx BX) (dst IVal) (ty IRType) -> str
     let nw = (nwords ty bx.structs)
-    if (== nw 1i64)
-        let out = (load_sized (type_size ty bx.structs) (irt_signed ty) "(%rax)")
+    let sz = (type_size ty bx.structs)
+    if (and (== nw 1i64) (clean_word_size sz))
+        let out = (load_sized sz (irt_signed ty) "(%rax)")
         return (strings::concat out (store_rax bx dst))
     end
-    return (copy_rax_to_slot bx dst (type_size ty bx.structs))
+    return (copy_rax_to_slot bx dst sz)
 end
 
 # Load a container element parked in scratch[0..] into dst's slot (for cl_vec_pop,
@@ -2151,6 +2170,28 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                 # int -> float: cvtsi2sd/ss from a 64-bit GP reg (operand normalized)
                 let out = (load_into bx "%rax" v)
                 set out = (strings::concat out (extend_rax (irt_bits (iv_ty v)) (irt_signed (iv_ty v))))
+                # u64 -> float: cvtsi2sd treats %rax as a SIGNED 64-bit int, so a
+                # value >= 2^63 converts to a negative double. Use the standard
+                # unsigned 64-bit conversion (matches C / the interpreter): for a
+                # negative-as-signed value, halve with a sticky low bit, convert,
+                # then double back.
+                if (and (== (irt_bits (iv_ty v)) 64i64) (not (irt_signed (iv_ty v))))
+                    let neg = (lbl bx (strings::concat "u2f_neg_" (iv_key dst)))
+                    let done = (lbl bx (strings::concat "u2f_done_" (iv_key dst)))
+                    set out = (strings::concat out (line "    testq %rax, %rax"))
+                    set out = (strings::concat out (line (cat2 "    js " neg)))
+                    set out = (strings::concat out (line (cat3 "    cvtsi2" (sse_sfx toty) "q %rax, %xmm0")))
+                    set out = (strings::concat out (line (cat2 "    jmp " done)))
+                    set out = (strings::concat out (line (cat2 neg ":")))
+                    set out = (strings::concat out (line "    movq %rax, %rdx"))
+                    set out = (strings::concat out (line "    shrq $1, %rdx"))
+                    set out = (strings::concat out (line "    andq $1, %rax"))
+                    set out = (strings::concat out (line "    orq %rax, %rdx"))
+                    set out = (strings::concat out (line (cat3 "    cvtsi2" (sse_sfx toty) "q %rdx, %xmm0")))
+                    set out = (strings::concat out (line (cat3 "    add" (sse_sfx toty) " %xmm0, %xmm0")))
+                    set out = (strings::concat out (line (cat2 done ":")))
+                    return (strings::concat out (store_xmm bx "%xmm0" dst))
+                end
                 set out = (strings::concat out (line (cat3 "    cvtsi2" (sse_sfx toty) "q %rax, %xmm0")))
                 return (strings::concat out (store_xmm bx "%xmm0" dst))
             end
@@ -2577,10 +2618,24 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             # float arg read garbage from an unset xmm register.
             let out = (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key clos)) 8i64)) ", %rax")))
             set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+            # MEMORY-class return (>16B, e.g. a cl_array 24B): &dst is the hidden
+            # first GP arg (%rdi); the env shifts to %rsi and the real args shift up
+            # one register. Without this the callee's hidden-pointer ABI is unmet and
+            # the call corrupts the stack (segfault).
+            let hidden = false
+            if has_dst
+                if (> (nwords ret bx.structs) 2i64)
+                    set hidden = true
+                end
+            end
+            let hbase = 0i64
+            if hidden
+                set hbase = 1i64
+            end
             let argcat {i64} = (vec i64)
             let argscr {i64} = (vec i64)
             let argoff {i64} = (vec i64)
-            let gpw = 1i64
+            let gpw = (+ 1i64 hbase)
             let xmmw = 0i64
             let pw = 1i64
             let stackbytes = 0i64
@@ -2629,8 +2684,11 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                 end
                 set i = (+ i 1)
             end
-            set out = (strings::concat out (line (cat3 "    movq " (off_mem bx.scratch) ", %rdi")))
-            let gpreg = 1i64
+            if hidden
+                set out = (strings::concat out (line (cat3 "    leaq " (off_mem (slot_off bx (iv_key dst))) ", %rdi")))
+            end
+            set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem bx.scratch) ", ") (argreg hbase))))
+            let gpreg = (+ 1i64 hbase)
             set i = 0u64
             while (< i (len args))
                 if (== argcat[i] 0i64)
@@ -2659,7 +2717,9 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                 set out = (strings::concat out (line (cat2 "    addq $" (cat2 (i2s memtotal) ", %rsp"))))
             end
             if has_dst
-                if (irt_is_float ret)
+                if hidden
+                    pass
+                elsif (irt_is_float ret)
                     set out = (strings::concat out (store_xmm bx "%xmm0" dst))
                 elsif (> (nwords ret bx.structs) 1i64)
                     set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) "")))
@@ -2941,9 +3001,13 @@ export func emit (m IRModule) -> str
     set out = (strings::concat out (line "    .asciz \"float division by zero\""))
     # string-literal pool (one rodata entry per distinct literal; cl_strlit interns
     # by pointer, so identical literals share a label -> a single interned handle).
+    # Emit each literal with a trailing end label and use .ascii (no implicit NUL
+    # terminator): the byte length is end-label minus start-label, so embedded NULs
+    # are preserved. cl_str_from_utf8 (see load_to_rax) takes an explicit length.
     for s in (map_keys strs)
         set out = (strings::concat out (line (cat2 strs[s] ":")))
-        set out = (strings::concat out (line (cat3 "    .asciz \"" (asm_escape s) "\"")))
+        set out = (strings::concat out (line (cat3 "    .ascii \"" (asm_escape s) "\"")))
+        set out = (strings::concat out (line (cat2 strs[s] "_end:")))
     end
     set out = (strings::concat out (line "    .text"))
     # float-literal pool (filled while emitting funcs; rodata emitted at the end).

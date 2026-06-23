@@ -1,0 +1,24 @@
+module c25_i8_boundary_all_paths
+
+import io
+
+func main () -> i32
+    # i8 boundaries through various source types
+    # From i16
+    do (io::println (as (- 129i16) i8))
+
+    do (io::println (as 128i16 i8))
+
+    # From i32
+    do (io::println (as (- 200i32) i8))
+
+    do (io::println (as 200i32 i8))
+
+    # From u8 to i8 reinterpret
+    do (io::println (as 200u8 i8))
+
+    # From u16 to i8
+    do (io::println (as 256u16 i8))
+
+    return 0i32
+end

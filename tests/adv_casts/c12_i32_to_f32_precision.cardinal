@@ -1,0 +1,20 @@
+module c12_i32_to_f32_precision
+
+import io
+
+func main () -> i32
+    # i32 to f32: most i32 fit in f32 exactly
+    do (io::println (as 0i32 f32))
+
+    do (io::println (as 1i32 f32))
+
+    do (io::println (as (- 1i32) f32))
+
+    # i32 max = 2147483647, fits in f32 but near precision boundary
+    do (io::println (as 2147483647i32 f32))
+
+    # i32 min = -2147483648
+    do (io::println (as (- 2147483648i32) f32))
+
+    return 0i32
+end

@@ -1,0 +1,24 @@
+module t05_int_suffix_forms
+
+import io
+
+func main () -> i32
+    # All signed and unsigned integer suffixes
+    let a = 1i8
+    let b = 1i16
+    let c = 1i32
+    let d = 1i64
+    let e = 1u8
+    let f = 1u16
+    let g = 1u32
+    let h = 1u64
+    do (io::println a)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    do (io::println e)
+    do (io::println f)
+    do (io::println g)
+    do (io::println h)
+    return 0i32
+end

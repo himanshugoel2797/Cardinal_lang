@@ -1,0 +1,48 @@
+module t23_sum_in_struct_in_array
+
+import io
+
+# Sum type field in a struct, stored in an array: test layout combination
+type Option
+    Some (value i32)
+    None
+end
+
+struct Wrapper
+    id i32
+    opt Option
+end
+
+func main () -> i32
+    let arr [Wrapper] = [
+        (Wrapper id: 1 opt: (Some value: 10))
+        (Wrapper id: 2 opt: Option::None)
+        (Wrapper id: 3 opt: (Some value: 20))
+    ]
+
+    do (io::println arr[0].id)        # 1
+    match arr[0].opt
+        case (Some v)
+            do (io::println v)        # 10
+        case None
+            do (io::println 999)
+    end
+
+    do (io::println arr[1].id)        # 2
+    match arr[1].opt
+        case (Some v)
+            do (io::println 888)
+        case None
+            do (io::println 77)       # 77
+    end
+
+    do (io::println arr[2].id)        # 3
+    match arr[2].opt
+        case (Some v)
+            do (io::println v)        # 20
+        case None
+            do (io::println 999)
+    end
+
+    return 0i32
+end

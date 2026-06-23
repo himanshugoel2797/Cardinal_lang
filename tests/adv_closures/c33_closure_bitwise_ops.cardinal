@@ -1,0 +1,16 @@
+module c33_closure_bitwise_ops
+import io
+
+func main () -> i32
+    let a = 15i32
+    let b = 7i32
+    let band_f = func () -> i32
+        return (band a b)
+    end
+    let bor_f = func () -> i32
+        return (bor a b)
+    end
+    do (io::println (band_f))
+    do (io::println (bor_f))
+    return 0i32
+end

@@ -1,0 +1,11 @@
+module ck23_sum_missing_field
+# ILLEGAL: sum variant missing field y
+type Tree
+    Leaf
+    Node (x i32) (y i32)
+end
+
+func f () -> i32
+    let t = (Node x: 1i32)
+    return 0i32
+end

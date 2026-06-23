@@ -1,0 +1,41 @@
+module adv_gc03_mixed_type_churn
+
+import io
+
+# Test: interleave allocation of strings, maps, vecs, and closures.
+# Stresses root tracking across heterogeneous heap churn.
+
+func main () -> i32
+    let total = 0i32
+
+    for i = 0 to 5000
+        # String allocation
+        let s = (strings::concat "iter" (to_str i))
+
+        # Vec allocation
+        let v {i32} = (vec i32)
+        for j = 0 to 10
+            do (push v (+ i j))
+        end
+
+        # Map allocation
+        let m {str i32} = (map str i32)
+        let m[s] = i
+
+        # Closure allocation
+        let f = func () -> i32
+            return i
+        end
+
+        # Accumulate results
+        set total = (+ total (f))
+        set total = (+ total (len v))
+        set total = (+ total m[s])
+    end
+
+    # Expected: 5000 * (1 + 10 + 1) = 60000 + 5000*i sum
+    # i sum = 5000*4999/2 = 12497500
+    # Total = 60000 + 12497500 = 12557500
+    do (io::println total)
+    return 0i32
+end

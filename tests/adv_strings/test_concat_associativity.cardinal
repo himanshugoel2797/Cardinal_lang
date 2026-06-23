@@ -1,0 +1,17 @@
+module test_concat_associativity
+
+import io
+import strings
+
+func main () -> i32
+    let a = "x"
+    let b = "y"
+    let c = "z"
+    # ((a concat b) concat c)
+    let r1 = (strings::concat (strings::concat a b) c)
+    # (a concat (b concat c))
+    let r2 = (strings::concat a (strings::concat b c))
+    do (io::println r1)
+    do (io::println r2)
+    return 0i32
+end

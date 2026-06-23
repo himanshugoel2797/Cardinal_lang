@@ -1,0 +1,20 @@
+module rec_float_only
+
+import io
+
+# Deep recursion with only float arguments and return
+# Target: floating-point register pressure in deep call chains
+
+func float_recurse (n i64) (acc f64) -> f64
+    if (<= n 0)
+        return acc
+    end
+    let new_acc = (+ acc 0.5)
+    return (float_recurse (- n 1) new_acc)
+end
+
+func main () -> i32
+    let result = (float_recurse 1200i64 0.0)
+    do (io::println result)
+    return 0i32
+end

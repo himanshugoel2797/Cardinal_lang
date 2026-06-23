@@ -1,0 +1,19 @@
+module rec_deep_numeric
+
+import io
+
+# Test moderately deep recursion with numeric result accumulation
+# Target: ~2k frames, returns i64
+
+func countdown (n i64) -> i64
+    if (<= n 0)
+        return 1i64
+    end
+    return (+ (countdown (- n 1)) 1i64)
+end
+
+func main () -> i32
+    let result = (countdown 2000i64)
+    do (io::println result)
+    return 0i32
+end

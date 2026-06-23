@@ -1,0 +1,23 @@
+module c16_i16_to_i64_sign_extension
+
+import io
+
+func main () -> i32
+    # i16 to i64: sign extension over intermediate i32
+    # Small positive
+    do (io::println (as 100i16 i64))
+
+    # i16 max = 32767
+    do (io::println (as 32767i16 i64))
+
+    # -1 extends to -1
+    do (io::println (as (- 1i16) i64))
+
+    # i16 min = -32768
+    do (io::println (as (- 32768i16) i64))
+
+    # -100
+    do (io::println (as (- 100i16) i64))
+
+    return 0i32
+end

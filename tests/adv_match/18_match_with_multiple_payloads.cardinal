@@ -1,0 +1,39 @@
+module test18
+
+import io
+
+type Event
+    Click (x i32) (y i32) (button i32)
+    KeyPress (code i32) (shift bool) (ctrl bool)
+    Scroll (delta i32) (horizontal bool)
+end
+
+func handle_event (e Event) -> i32
+    match e
+        case (Click x y button)
+            return (+ x (+ y button))
+        case (KeyPress code shift ctrl)
+            if shift
+                return (+ code 1000)
+            elsif ctrl
+                return (+ code 2000)
+            else
+                return code
+            end
+        case (Scroll delta horizontal)
+            if horizontal
+                return (* delta 10)
+            else
+                return delta
+            end
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (handle_event (Click x: 10 y: 20 button: 1)))
+    do (io::println (handle_event (KeyPress code: 65 shift: true ctrl: false)))
+    do (io::println (handle_event (KeyPress code: 65 shift: false ctrl: true)))
+    do (io::println (handle_event (Scroll delta: 5 horizontal: true)))
+    return 0i32
+end

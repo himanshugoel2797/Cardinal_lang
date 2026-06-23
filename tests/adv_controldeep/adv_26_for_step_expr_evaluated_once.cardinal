@@ -1,0 +1,16 @@
+module adv_26_for_step_expr_evaluated_once
+
+import io
+
+func get_step () -> i32
+	return 2i32
+end
+
+func main () -> i32
+	let sum = 0i32
+	for i = 0i32 to 10i32 step (get_step)
+		set sum = (+ sum i)
+	end
+	do (io::println sum)
+	return 0
+end

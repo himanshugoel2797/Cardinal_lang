@@ -1,0 +1,19 @@
+module c19_shared_cell_semantics
+import io
+
+func main () -> i32
+    let counter = 0i32
+    let inc = func () -> i32
+        set counter = (+ counter 1)
+        return counter
+    end
+    let get = func () -> i32
+        return counter
+    end
+    do (io::println (inc))
+    do (io::println (inc))
+    do (io::println (get))
+    do (io::println (inc))
+    do (io::println (get))
+    return 0i32
+end

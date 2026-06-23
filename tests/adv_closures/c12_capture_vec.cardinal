@@ -1,0 +1,18 @@
+module c12_capture_vec
+import io
+
+func main () -> i32
+    let v = (vec i32)
+    do (push v 10)
+    do (push v 20)
+    do (push v 30)
+    let get_len = func () -> i32
+        return (len v)
+    end
+    let get_sum = func () -> i32
+        return (+ v[0] (+ v[1] v[2]))
+    end
+    do (io::println (get_len))
+    do (io::println (get_sum))
+    return 0i32
+end

@@ -1,0 +1,28 @@
+module ib16_div_by_max
+
+import io
+
+func main () -> i32
+    # Division by maximum values
+
+    # i8: divide by max
+    let i8max = 127i8
+    do (io::println (/ 0i8 i8max))
+    do (io::println (/ 1i8 i8max))
+    do (io::println (/ (- 1i8) i8max))
+    do (io::println (/ 127i8 i8max))
+    do (io::println (/ (- 128i8) i8max))
+
+    # i8: modulo by max
+    do (io::println (% 0i8 i8max))
+    do (io::println (% 1i8 i8max))
+    do (io::println (% 127i8 i8max))
+
+    # u64: divide by u64_max
+    let u64max = 18446744073709551615u64
+    do (io::println (/ 0u64 u64max))
+    do (io::println (/ 1u64 u64max))
+    do (io::println (/ u64max u64max))
+
+    return 0i32
+end

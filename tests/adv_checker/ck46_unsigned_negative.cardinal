@@ -1,0 +1,6 @@
+module ck46_unsigned_negative
+# LEGAL (bit pattern): cast -1i32 to u32 should work
+func f () -> i32
+    let x = (as (- 1i32) u32)
+    return 0i32
+end

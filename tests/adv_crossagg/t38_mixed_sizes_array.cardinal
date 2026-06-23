@@ -1,0 +1,23 @@
+module t38_mixed_sizes_array
+
+import io
+
+# Mixed field sizes: does byte field access work in mixed arrays?
+struct Mixed
+    a i32
+    b u8
+end
+
+func main () -> i32
+    let arr [Mixed] = [
+        (Mixed a: 10 b: 11)
+        (Mixed a: 20 b: 21)
+    ]
+
+    do (io::println arr[0].a)         # 10
+    do (io::println (as arr[0].b i32))    # 11
+    do (io::println arr[1].a)         # 20
+    do (io::println (as arr[1].b i32))    # 21
+
+    return 0i32
+end

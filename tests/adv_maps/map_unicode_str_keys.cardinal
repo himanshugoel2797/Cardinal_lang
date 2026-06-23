@@ -1,0 +1,33 @@
+module map_unicode_str_keys
+
+import io
+
+func main () -> i32
+    # Test: UTF-8 string keys (emoji, accents, CJK)
+    let m {str i32} = (map str i32)
+
+    set m["hello"] = 1i32
+    set m["héllo"] = 2i32          # é (2-byte UTF-8)
+    set m["日本"] = 3i32            # CJK (3-byte UTF-8)
+    set m["😀"] = 4i32             # emoji (4-byte UTF-8)
+
+    # Verify all exist
+    do (io::println (len m))
+    do (io::println m["hello"])
+    do (io::println m["héllo"])
+    do (io::println m["日本"])
+    do (io::println m["😀"])
+
+    # Delete one
+    do (map_del m "日本")
+    do (io::println (len m))
+
+    # Verify order preserved
+    for k in (map_keys m)
+        do (io::print k)
+        do (io::print " ")
+    end
+    do (io::println "")
+
+    return 0i32
+end

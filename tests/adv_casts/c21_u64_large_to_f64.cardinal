@@ -1,0 +1,22 @@
+module c21_u64_large_to_f64
+
+import io
+
+func main () -> i32
+    # x86 bug: u64 large values to f64 produce incorrect sign/interpretation
+    # u64 max = 18446744073709551615
+    let u64_max = 18446744073709551615u64
+
+    # This should be 1.84467e+19 in all three, but x86 gives -1
+    do (io::println (as u64_max f64))
+
+    # Also test other large u64 values
+    let u64_large = 10000000000000000000u64
+    do (io::println (as u64_large f64))
+
+    # Beyond 2^63
+    let u64_beyond_i64 = 9223372036854775808u64
+    do (io::println (as u64_beyond_i64 f64))
+
+    return 0i32
+end

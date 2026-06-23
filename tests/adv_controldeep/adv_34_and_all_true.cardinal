@@ -1,0 +1,9 @@
+module adv_34_and_all_true
+
+import io
+
+func main () -> i32
+	let result = (and true true true true)
+	do (io::println result)
+	return 0
+end
