@@ -97,6 +97,8 @@ func ctype_t (t Type) -> str
             return "cl_map"
         case (TFunc p r)
             return "cl_closure"
+        case (TSum n)
+            return "cl_handle"
         else
             return "void"
     end
@@ -176,6 +178,8 @@ func managed (t IRType) -> bool
                 case (TMap k v)
                     return true
                 case (TFunc p r)
+                    return true
+                case (TSum n)
                     return true
                 case (TPrim n)
                     return (strings::eq n "str")    # str is a managed handle
@@ -853,6 +857,62 @@ func emit_instr (ins Instr) (nroots i64) -> {str}
             return (line1 (cat p))
         case (IMapKeys dst mp)
             return (line1 (strings::concat (val dst) (strings::concat " = cl_map_keys(" (strings::concat (val mp) ");"))))
+        case (ISumNew dst variant_qual tag fnames fvals)
+            let cn = (struct_cname variant_qual)
+            let out {str} = (vec str)
+            let h {str} = (vec str)
+            do (push h (val dst))
+            do (push h " = cl_gc_alloc(sizeof(")
+            do (push h cn)
+            do (push h "));")
+            do (push out (cat h))
+            let tg {str} = (vec str)
+            do (push tg "((")
+            do (push tg cn)
+            do (push tg "*)cl_gc_deref(")
+            do (push tg (val dst))
+            do (push tg "))->cl_tag = ")
+            do (push tg (convert::int_to_str tag))
+            do (push tg ";")
+            do (push out (cat tg))
+            let i = 0u64
+            while (< i (len fnames))
+                let fl {str} = (vec str)
+                do (push fl "((")
+                do (push fl cn)
+                do (push fl "*)cl_gc_deref(")
+                do (push fl (val dst))
+                do (push fl "))->")
+                do (push fl fnames[i])
+                do (push fl " = ")
+                do (push fl (val fvals[i]))
+                do (push fl ";")
+                do (push out (cat fl))
+                set i = (+ i 1)
+            end
+            return out
+        case (ISumTag dst sm sum_qual)
+            let cn = (struct_cname sum_qual)
+            let p {str} = (vec str)
+            do (push p (val dst))
+            do (push p " = ((")
+            do (push p cn)
+            do (push p "*)cl_gc_deref(")
+            do (push p (val sm))
+            do (push p "))->cl_tag;")
+            return (line1 (cat p))
+        case (ISumField dst sm variant_qual field ty)
+            let cn = (struct_cname variant_qual)
+            let p {str} = (vec str)
+            do (push p (val dst))
+            do (push p " = ((")
+            do (push p cn)
+            do (push p "*)cl_gc_deref(")
+            do (push p (val sm))
+            do (push p "))->")
+            do (push p field)
+            do (push p ";")
+            return (line1 (cat p))
         case (IAlloc dst ty)
             let p {str} = (vec str)
             do (push p (val dst))

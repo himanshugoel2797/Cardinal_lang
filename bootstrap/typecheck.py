@@ -385,13 +385,13 @@ class Checker:
         if not name.endswith("_to_str"):
             return
         tn = name[:-len("_to_str")]
-        if tn not in sig.structs and tn not in sig.enums:
+        if tn not in sig.structs and tn not in sig.enums and tn not in sig.sums:
             return
         want = f"{sig.name}::{tn}"
         okp = False
         if len(d.params) == 1:
             pt = self.resolve(d.params[0][1], sig)
-            okp = isinstance(pt, (StructT, EnumT)) and pt.name == want
+            okp = isinstance(pt, (StructT, EnumT, SumT)) and pt.name == want
         okr = d.ret is not None and isinstance(self.resolve(d.ret, sig), PrimT) \
             and self.resolve(d.ret, sig).name == "str"
         if not (okp and okr):

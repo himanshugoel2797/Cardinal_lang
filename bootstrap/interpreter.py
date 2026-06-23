@@ -1018,6 +1018,7 @@ class SumV:
     sum: str                # sum-type name
     variant: str
     fields: dict            # field name -> value; reference semantics (not copied)
+    defmod: object = None   # defining module name, for to_str-override dispatch (§5.5)
 
 @dataclass
 class Closure:
@@ -1430,7 +1431,7 @@ class Interp:
         if vd is not None:
             if self.variant_fields(vd, name):
                 raise CardinalError(f"variant {name} needs fields; use ({name} ...)")
-            return SumV(vd.name, name, {})
+            return SumV(vd.name, name, {}, self.variant_defmod(name, ms))
         raise CardinalError(f"undefined name '{name}'")
 
     def lookup_path(self, parts, ms):
@@ -1887,6 +1888,16 @@ class Interp:
                 return mod.variants[name]
         return None
 
+    def variant_defmod(self, name, ms):
+        # The module that defines the sum owning variant `name` (for the §5.5
+        # to_str-override dispatch, so a sum's display travels with its type).
+        if name in ms.variants:
+            return ms.name
+        for mod in ms.imported_modules.values():
+            if name in mod.variants:
+                return mod.name
+        return None
+
     def variant_fields(self, vd, vname):
         for vn, fs in vd.variants:
             if vn == vname:
@@ -1902,10 +1913,15 @@ class Interp:
                 raise CardinalError(f"variant {vname} has no field '{fname}'")
             v = self.eval(fexpr, env, ms, expected=fty[fname])
             given[fname] = self.copy_value(self.coerce(v, fty[fname], ms))
+        # Store fields in DECLARATION order (not construction-label order) so the
+        # display is canonical and matches the compiled layout (DESIGN §5.5) — the
+        # same normalization eval_struct does for structs.
+        ordered = {}
         for fname, _ in spec:
             if fname not in given:
                 raise CardinalError(f"missing field '{fname}' in {vname}")
-        return SumV(vd.name, vname, given)
+            ordered[fname] = given[fname]
+        return SumV(vd.name, vname, ordered, self.variant_defmod(vname, ms))
 
 
 # --------------------------------------------------------------------------- #
@@ -1974,6 +1990,9 @@ def _display(interp, v):
             return interp.call(fn, [v], interp.modules[v.defmod])
         return f"{v.enum}::{v.variant}"
     if isinstance(v, SumV):
+        fn = _to_str_override(interp, v.defmod, v.sum)
+        if fn is not None:
+            return interp.call(fn, [v], interp.modules[v.defmod])
         inner = " ".join(f"{k}: {_display(interp, x)}" for k, x in v.fields.items())
         return f"({v.variant}{(' ' + inner) if inner else ''})"
     if isinstance(v, StructV):

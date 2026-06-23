@@ -1121,6 +1121,8 @@ func type_user_name (t Type) -> str
             return n
         case (TEnum n)
             return n
+        case (TSum n)
+            return n
         else
             return ""
     end
@@ -1143,7 +1145,7 @@ func check_to_str_hook (ctx Ctx) (name str) (params {Param}) (ret Ty) (has_ret b
         return
     end
     let tn = (strings::substr name 0u64 (- (len name) 7u64))
-    if (not (or (map_has ctx.cur.structs tn) (map_has ctx.cur.enums tn)))
+    if (not (or (or (map_has ctx.cur.structs tn) (map_has ctx.cur.enums tn)) (map_has ctx.cur.sum_variants tn)))
         return
     end
     let want = (make_qual ctx.cur.name tn)

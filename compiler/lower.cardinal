@@ -248,6 +248,24 @@ func t_is_struct (t Type) -> bool
     end
     return false
 end
+func t_is_sum (t Type) -> bool
+    match t
+        case (TSum n)
+            return true
+        else
+            return false
+    end
+    return false
+end
+func t_sum_name (t Type) -> str
+    match t
+        case (TSum n)
+            return n
+        else
+            return ""
+    end
+    return ""
+end
 func t_elem (t Type) -> Type
     match t
         case (TArray e)
@@ -836,8 +854,12 @@ func lower_name (lx LX) (vs {str IVal}) (ts {str Binding}) (id str) -> IVal
         end
         return v
     end
-    # a top-level function used as a value -> a closure wrapping a thunk
     let ft = (checker::check_expr lx.ctx (EName ident: id) ts TNone)
+    # a nullary sum variant constructed bare (e.g. `Leaf`)
+    if (t_is_sum ft)
+        return (lower_sum_lit lx vs ts ft id (vec Field))
+    end
+    # a top-level function used as a value -> a closure wrapping a thunk
     if (t_is_func ft)
         return (func_value lx (callee_mangle lx (EName ident: id)) ft)
     end
@@ -1345,6 +1367,57 @@ func bare_name (qn str) -> str
     return qn
 end
 
+# The module prefix of a "mod::Name" qualified identity ("" if unqualified).
+func qual_module (qn str) -> str
+    let cs = (strings::chars qn)
+    let i = 0u64
+    while (< i (len cs))
+        if (and (== cs[i] ':') (and (< (+ i 1u64) (len cs)) (== cs[(+ i 1u64)] ':')))
+            return (strings::substr qn 0u64 i)
+        end
+        set i = (+ i 1u64)
+    end
+    return ""
+end
+
+# --------------------------------------------------------------------------- #
+# Sum types (DESIGN §5.3): a sum value is a handle to a heap object laid out as
+# { int32 tag; payload... }, one C struct per variant (cl_struct_<mod>__<Sum>__
+# <Variant>) plus a tag-only header struct (cl_struct_<mod>__<Sum>). The tag is
+# the variant's index in the sum's declared variant order.
+# --------------------------------------------------------------------------- #
+
+# The qualified name of a variant's heap-struct identity: "mod::Sum__Variant".
+func variant_qual (sumq str) (variant str) -> str
+    return (strings::concat sumq (strings::concat "__" variant))
+end
+
+# The variant's tag = its index in the sum's declared variant list.
+func sum_tag (lx LX) (sumq str) (variant str) -> i64
+    let m = (qual_module sumq)
+    let b = (bare_name sumq)
+    if (map_has lx.ctx.sigs m)
+        let sig = lx.ctx.sigs[m]
+        if (map_has sig.sum_variants b)
+            return (index_of sig.sum_variants[b] variant)
+        end
+    end
+    do (panic (strings::concat "lower: unknown sum variant " variant))
+    return 0i64
+end
+
+# The variant's payload field defs (name + resolved type), in declaration order.
+func variant_fields (lx LX) (sumq str) (variant str) -> {FieldDef}
+    let m = (qual_module sumq)
+    if (map_has lx.ctx.sigs m)
+        let sig = lx.ctx.sigs[m]
+        if (map_has sig.variants variant)
+            return sig.variants[variant].fields
+        end
+    end
+    do (panic (strings::concat "lower: unknown sum variant " variant))
+    return (vec FieldDef)
+end
 
 # --------------------------------------------------------------------------- #
 # to_str (DESIGN §5.5) — the sole value formatter: io::print is print(to_str(x)).
@@ -1414,6 +1487,8 @@ func lower_to_str (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) 
         case (TMap k v)
             return (lts_map lx vs ts iv t)
         case (TEnum nm)
+            return (ts_call1 lx (to_str_sym nm) iv)
+        case (TSum nm)
             return (ts_call1 lx (to_str_sym nm) iv)
         case (TFunc p r)
             # DESIGN §5.5: a closure renders as the opaque token "<closure>".
@@ -1618,6 +1693,83 @@ func synth_enum_to_str (lx LX) (modname str) (ename str) (variants {str}) -> uni
     do (push lx.irm.funcs lx.b.fn)
 end
 
+# Sum value -> "(Variant f: <to_str> ...)", nullary "(Variant)" — a tag switch
+# matching the interpreter's SumV display (no sum-type name, just the variant).
+func lts_sum (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (sumq str) (variants {Variant}) -> IVal
+    let resn = (uniq lx "tssres")
+    let res = (ir::add_local lx.b resn (irt (str_ty)))
+    do (ir::emit lx.b (IAssign place: (PLocal name: resn ty: (irt (str_ty))) src: (ImmStr s: "(?)")))
+    let tagv = (ir::fresh_temp lx.b (irt (TInt name: "i32")))
+    do (ir::emit lx.b (ISumTag dst: tagv sum: iv sum_qual: sumq))
+    let i = 0u64
+    while (< i (len variants))
+        let vr = variants[i]
+        let c = (ir::fresh_temp lx.b (irt (bool_ty)))
+        do (ir::emit lx.b (IBin dst: c op: "==" lhs: tagv rhs: (ImmInt val: (as i i64) ty: (irt (TInt name: "i32"))) ty: (irt (TInt name: "i32")) chk: false))
+        let yes = (ir::fresh_label lx.b "sv_y")
+        let no = (ir::fresh_label lx.b "sv_n")
+        do (ir::emit lx.b (ICondBr cond: c then_l: yes else_l: no))
+        do (ir::new_block lx.b yes)
+        let accn = (uniq lx "svacc")
+        let acc = (ir::add_local lx.b accn (irt (str_ty)))
+        do (ir::emit lx.b (IAssign place: (PLocal name: accn ty: (irt (str_ty))) src: (ImmStr s: (strings::concat "(" vr.name))))
+        let vq = (variant_qual sumq vr.name)
+        let defs = (variant_fields lx sumq vr.name)
+        let j = 0u64
+        while (< j (len defs))
+            do (ts_app lx accn acc (ImmStr s: (strings::concat " " (strings::concat defs[j].name ": "))))
+            let fv = (ir::fresh_temp lx.b (irt defs[j].ty))
+            do (ir::emit lx.b (ISumField dst: fv sum: iv variant_qual: vq field: defs[j].name ty: (irt defs[j].ty)))
+            let fs = (lower_to_str lx vs ts fv defs[j].ty)
+            do (ts_app lx accn acc fs)
+            set j = (+ j 1)
+        end
+        do (ts_app lx accn acc (ImmStr s: ")"))
+        do (ir::emit lx.b (IAssign place: (PLocal name: resn ty: (irt (str_ty))) src: acc))
+        do (ir::emit lx.b (IBr target: no))
+        do (ir::new_block lx.b no)
+        set i = (+ i 1)
+    end
+    return res
+end
+
+# Synthesize `func <Name>_to_str (self S) -> str` for a sum type (tag switch).
+func synth_sum_to_str (lx LX) (modname str) (sname str) (variants {Variant}) -> unit
+    let sty = (TSum name: (qual modname sname))
+    let params {IRParam} = (vec IRParam)
+    do (push params (IRParam name: "self" ty: (irt sty)))
+    set lx.b = (ir::new_builder (mangle modname (strings::concat sname "_to_str")) params (irt (str_ty)))
+    set lx.uq[0] = 0i64
+    set lx.captured = (map str bool)
+    let pv = (Local name: "self" ty: (irt sty))
+    let evs {str IVal} = (map str IVal)
+    let ets {str Binding} = (map str Binding)
+    let s = (lts_sum lx evs ets pv (qual modname sname) variants)
+    do (ir::emit lx.b (IRet has_val: true val: s))
+    do (push lx.irm.funcs lx.b.fn)
+end
+
+# Lower a sum-variant constructor literal `(Variant f: v ...)` to a tagged heap
+# object. Nullary variants are constructed via lower_name (bare name).
+func lower_sum_lit (lx LX) (vs {str IVal}) (ts {str Binding}) (st Type) (vname str) (fields {Field}) -> IVal
+    let sumq = (t_sum_name st)
+    let tag = (sum_tag lx sumq vname)
+    let defs = (variant_fields lx sumq vname)
+    let vq = (variant_qual sumq vname)
+    let fnames {str} = (vec str)
+    let fvals {IVal} = (vec IVal)
+    let i = 0u64
+    while (< i (len defs))
+        let fv = (find_and_lower lx vs ts fields defs[i].name defs[i].ty)
+        do (push fnames defs[i].name)
+        do (push fvals fv)
+        set i = (+ i 1)
+    end
+    let dst = (ir::fresh_temp lx.b (irt st))
+    do (ir::emit lx.b (ISumNew dst: dst variant_qual: vq tag: tag fnames: fnames fvals: fvals))
+    return dst
+end
+
 # Lower the value for struct field `fname` (declared type `fty`) from the
 # literal's provided fields. The checker has already validated presence/types.
 func find_and_lower (lx LX) (vs {str IVal}) (ts {str Binding}) (fields {Field}) (fname str) (fty Type) -> IVal
@@ -1634,9 +1786,19 @@ end
 
 func lower_struct_lit (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (fields {Field}) -> IVal
     let st = (checker::check_expr lx.ctx e ts TNone)
+    if (t_is_sum st)
+        # the head resolved to a sum variant, not a struct: build a tagged object.
+        let vname = ""
+        match e
+            case (EStruct typ fs)
+                set vname = (head_name typ)
+            else
+                pass
+        end
+        return (lower_sum_lit lx vs ts st vname fields)
+    end
     if (not (t_is_struct st))
-        # head resolved to a sum variant, not a struct — sum types are stage 4.
-        do (panic "lower: sum variant literal (stage 4)")
+        do (panic "lower: construction literal of a non-aggregate type")
     end
     let qn = (t_struct_name st)
     let sl = (checker::struct_fields lx.ctx qn)
@@ -1808,7 +1970,7 @@ func lower_stmt (lx LX) (vs {str IVal}) (ts {str Binding}) (s Stmt) -> unit
             do (lower_block lx vs ts body)
             set lx.chk[0] = old
         case (SMatch scrut arms orelse has_else)
-            do (panic "lower: match/sum types (stage 4)")
+            do (lower_match lx vs ts scrut arms orelse has_else)
     end
 end
 
@@ -1840,6 +2002,75 @@ func lower_set (lx LX) (vs {str IVal}) (ts {str Binding}) (target Expr) (expr Ex
             let v = (lower_expr lx vs ts expr pr.ty)
             do (ir::emit lx.b (IAssign place: pr.place src: v))
     end
+end
+
+# Lower `match scrut ... end`: read the scrutinee's variant tag once, then an
+# if-chain testing each arm's variant index, binding payload fields into the arm
+# scope. The checker has already verified exhaustiveness + binding arity, so the
+# fall-through after the last arm is unreachable for a non-`else` match (a trap
+# guards it, matching the interpreter's no-match runtime error).
+func lower_match (lx LX) (vs {str IVal}) (ts {str Binding}) (scrut Expr) (arms {Arm}) (orelse {Stmt}) (has_else bool) -> unit
+    let st = (checker::check_expr lx.ctx scrut ts TNone)
+    if (not (t_is_sum st))
+        do (panic "lower: match scrutinee is not a sum type")
+    end
+    let sumq = (t_sum_name st)
+    let sv = (lower_expr lx vs ts scrut TNone)
+    let tagv = (ir::fresh_temp lx.b (irt (TInt name: "i32")))
+    do (ir::emit lx.b (ISumTag dst: tagv sum: sv sum_qual: sumq))
+    let endl = (ir::fresh_label lx.b "match_end")
+    let i = 0u64
+    while (< i (len arms))
+        let arm = arms[i]
+        let tag = (sum_tag lx sumq arm.variant)
+        let c = (ir::fresh_temp lx.b (irt (bool_ty)))
+        do (ir::emit lx.b (IBin dst: c op: "==" lhs: tagv rhs: (ImmInt val: tag ty: (irt (TInt name: "i32"))) ty: (irt (TInt name: "i32")) chk: false))
+        let thenl = (ir::fresh_label lx.b "arm")
+        let nextl = (ir::fresh_label lx.b "arm_n")
+        do (ir::emit lx.b (ICondBr cond: c then_l: thenl else_l: nextl))
+        do (ir::new_block lx.b thenl)
+        let vs2 = (copy_iv vs)
+        let ts2 = (copy_bind ts)
+        let defs = (variant_fields lx sumq arm.variant)
+        let vq = (variant_qual sumq arm.variant)
+        let j = 0u64
+        while (< j (len arm.bindings))
+            let bname = arm.bindings[j]
+            let fdef = defs[j]
+            let fv = (ir::fresh_temp lx.b (irt fdef.ty))
+            do (ir::emit lx.b (ISumField dst: fv sum: sv variant_qual: vq field: fdef.name ty: (irt fdef.ty)))
+            # the binding may itself be captured by a closure in the arm body
+            if (map_has lx.captured bname)
+                let box = (make_box lx (irt fdef.ty) fv true)
+                set vs2[bname] = box
+            else
+                let un = (uniq lx bname)
+                let loc = (ir::add_local lx.b un (irt fdef.ty))
+                do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt fdef.ty)) src: fv))
+                set vs2[bname] = loc
+            end
+            set ts2[bname] = (Binding ty: fdef.ty mutable: true)
+            set j = (+ j 1)
+        end
+        do (lower_block lx vs2 ts2 arm.body)
+        if (not (ir::cur_terminated lx.b))
+            do (ir::emit lx.b (IBr target: endl))
+        end
+        do (ir::new_block lx.b nextl)
+        set i = (+ i 1)
+    end
+    if has_else
+        do (lower_block lx vs ts orelse)
+    end
+    if (not (ir::cur_terminated lx.b))
+        if has_else
+            do (ir::emit lx.b (IBr target: endl))
+        else
+            set lx.irm.externs["cl_panic"] = true
+            do (ir::emit lx.b (IPanic msg: (ImmStr s: "no matching case in match")))
+        end
+    end
+    do (ir::new_block lx.b endl)
 end
 
 func lower_if (lx LX) (vs {str IVal}) (ts {str Binding}) (branches {Branch}) (orelse {Stmt}) (has_else bool) -> unit
@@ -2176,6 +2407,29 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
                             do (push irfields (IRParam name: pf.name ty: (irt (checker::resolve lx.ctx pf.ty))))
                         end
                         do (push lx.irm.structs (IRStruct name: (qual ssig.name sname) fields: irfields))
+                    case (DSum sname variants exported)
+                        # A sum is a tag-only header struct plus one {tag; payload}
+                        # struct per variant; a sum value is a handle to one of the
+                        # variant objects (DESIGN §5.3).
+                        let sumq = (qual ssig.name sname)
+                        let hdr {IRParam} = (vec IRParam)
+                        do (push hdr (IRParam name: "cl_tag" ty: (irt (TInt name: "i32"))))
+                        do (push lx.irm.structs (IRStruct name: sumq fields: hdr))
+                        for vr in variants
+                            let vf {IRParam} = (vec IRParam)
+                            do (push vf (IRParam name: "cl_tag" ty: (irt (TInt name: "i32"))))
+                            for pf in vr.fields
+                                # `cl_tag` is the discriminant field name; the `cl_`
+                                # prefix is the compiler's reserved C-symbol prefix, so
+                                # a user payload may freely be named `tag` (parity with
+                                # the interpreter) and only `cl_tag` itself is reserved.
+                                if (strings::eq pf.name "cl_tag")
+                                    do (panic "lower: a sum variant payload field named 'cl_tag' is unsupported (reserved for the discriminant)")
+                                end
+                                do (push vf (IRParam name: pf.name ty: (irt (checker::resolve lx.ctx pf.ty))))
+                            end
+                            do (push lx.irm.structs (IRStruct name: (variant_qual sumq vr.name) fields: vf))
+                        end
                     else
                         pass
                 end
@@ -2230,6 +2484,10 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
                     case (DEnum ename variants exported)
                         if (not (map_has userfns (strings::concat ename "_to_str")))
                             do (synth_enum_to_str lx tsig.name ename variants)
+                        end
+                    case (DSum sname variants exported)
+                        if (not (map_has userfns (strings::concat sname "_to_str")))
+                            do (synth_sum_to_str lx tsig.name sname variants)
                         end
                     else
                         pass
