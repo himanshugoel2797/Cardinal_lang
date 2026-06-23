@@ -33,7 +33,7 @@ errfile="$(mktemp /tmp/cardinal_XXXXXX.err)"
 # emit C via the Cardinal compiler pipeline. The driver type-checks first and
 # refuses to emit (non-zero exit) on a type error; surface diagnostics instead
 # of feeding them to cc. Type errors land on stdout (cfile), panics on stderr.
-if ! ( cd "$root/compiler" && python3 "$root/bootstrap/cardinal.py" emitir.cardinal "$abssrc" ) > "$cfile" 2>"$errfile"; then
+if ! ( cd "$root/compiler" && python3 "$root/bootstrap/cardinal.py" emitir.cardinal "$abssrc" "$root/lib" ) > "$cfile" 2>"$errfile"; then
   echo "cardinal: compilation failed:" >&2
   cat "$cfile" "$errfile" >&2
   rm -f "$cfile" "$errfile"

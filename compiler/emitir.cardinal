@@ -35,6 +35,12 @@ func main () -> i32
     let dirs {str} = (vec str)
     do (push dirs (dirname a[0]))
     do (push dirs ".")
+    # argv[1:] are additional module search dirs (e.g. the stdlib `lib`).
+    let di = 1u64
+    while (< di (len a))
+        do (push dirs a[di])
+        set di = (+ di 1)
+    end
     let src = (fs::read_file a[0])
     # Type-error gate: never lower/emit a program the checker rejects. Errors go
     # to stdout (the driver emits no C and exits non-zero); ccrun surfaces them.
