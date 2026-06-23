@@ -1967,6 +1967,7 @@ def _display(interp, v):
     if isinstance(v, str): return v
     if v is NULL: return "null"
     if v is UNIT: return "unit"
+    if isinstance(v, (Closure, Builtin)): return "<closure>"   # DESIGN §5.5
     if isinstance(v, EnumV):
         fn = _to_str_override(interp, v.defmod, v.enum)
         if fn is not None:

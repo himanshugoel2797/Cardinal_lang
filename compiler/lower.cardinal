@@ -37,6 +37,8 @@ struct LX
     uq {i64}            # uniquifier counter (cell)
     callmap {str str}   # local/imported function name -> mangled symbol
     ret Type            # current function's return type
+    captured {str bool} # names captured by a direct lambda (=> boxed); per-function
+    lamn {i64}          # lifted-lambda counter (cell), module-global monotonic
 end
 
 # --------------------------------------------------------------------------- #
@@ -363,6 +365,376 @@ func is_cmp (op str) -> bool
 end
 
 # --------------------------------------------------------------------------- #
+# Closure support: pointer-typed IR values, boxing, free-variable analysis.
+#
+# A captured local is BOXED: its `vs` entry is a Ptr-typed IVal (a cl_handle to a
+# 1-slot heap cell). Reads deref it, writes store through it, and a closure
+# captures the cell (not a copy) so mutations are shared (DESIGN §9.2 "by
+# reference"). A variable is boxed iff its `vs` IVal has IRType `Ptr` — so no
+# separate per-scope marker is needed (source types are never Ptr).
+# --------------------------------------------------------------------------- #
+
+# Pointer-to-void IR type used for environments and box handles (both compile to
+# cl_handle, both managed => GC-rooted).
+func env_ty () -> IRType
+    return (Ptr p: VoidPtr)
+end
+
+func irt_is_ptr (t IRType) -> bool
+    match t
+        case (Ptr p)
+            return true
+        else
+            return false
+    end
+    return false
+end
+
+func irt_ptr_inner (t IRType) -> IRType
+    match t
+        case (Ptr p)
+            return p
+        else
+            return VoidPtr
+    end
+    return VoidPtr
+end
+
+# The IRType carried by an IVal (operands always carry one once lowered).
+func iv_irtype (v IVal) -> IRType
+    match v
+        case (Temp id ty)
+            return ty
+        case (Local name ty)
+            return ty
+        case (ImmInt vv ty)
+            return ty
+        case (ImmFloat text ty)
+            return ty
+        case (ImmNull ty)
+            return ty
+        case (ImmBool b)
+            return (irt (bool_ty))
+        case (ImmChar cp)
+            return (irt (TPrim name: "char"))
+        case (ImmStr s)
+            return (irt (str_ty))
+        case ImmUnit
+            return (irt (unit_ty))
+    end
+    return (irt (unit_ty))
+end
+
+func iv_is_boxed (v IVal) -> bool
+    return (irt_is_ptr (iv_irtype v))
+end
+
+# Allocate a 1-slot heap box holding a value of `vty`; store `init` into it (when
+# has_init). Returns the box handle (a Ptr-typed temp).
+func make_box (lx LX) (vty IRType) (init IVal) (has_init bool) -> IVal
+    let ptr = (ir::fresh_temp lx.b (Ptr p: vty))
+    do (ir::emit lx.b (IAlloc dst: ptr ty: vty))
+    if has_init
+        do (ir::emit lx.b (IAssign place: (PDeref ptr: ptr ty: vty) src: init))
+    end
+    return ptr
+end
+
+# --- free-variable analysis (for closure conversion) --- #
+
+func copy_set (m {str bool}) -> {str bool}
+    let out {str bool} = (map str bool)
+    for k in (map_keys m)
+        set out[k] = true
+    end
+    return out
+end
+
+func fv_stmts (stmts {Stmt}) (bound {str bool}) (out {str bool}) -> unit
+    let b = (copy_set bound)
+    for s in stmts
+        do (fv_stmt s b out)
+    end
+end
+
+func fv_stmt (s Stmt) (bound {str bool}) (out {str bool}) -> unit
+    match s
+        case (SLet name ty has_ty expr mutable)
+            do (fv_expr expr bound out)
+            set bound[name] = true
+        case (SSet target expr)
+            do (fv_expr target bound out)
+            do (fv_expr expr bound out)
+        case (SDo call)
+            do (fv_expr call bound out)
+        case (SIf branches orelse has_else)
+            let i = 0u64
+            while (< i (len branches))
+                do (fv_expr branches[i].cond bound out)
+                do (fv_stmts branches[i].body bound out)
+                set i = (+ i 1)
+            end
+            if has_else
+                do (fv_stmts orelse bound out)
+            end
+        case (SWhile cond body)
+            do (fv_expr cond bound out)
+            do (fv_stmts body bound out)
+        case (SForNum var start stop stride has_step body)
+            do (fv_expr start bound out)
+            do (fv_expr stop bound out)
+            if has_step
+                do (fv_expr stride bound out)
+            end
+            let b2 = (copy_set bound)
+            set b2[var] = true
+            do (fv_stmts body b2 out)
+        case (SForIn var iter body)
+            do (fv_expr iter bound out)
+            let b2 = (copy_set bound)
+            set b2[var] = true
+            do (fv_stmts body b2 out)
+        case (SLoop body)
+            do (fv_stmts body bound out)
+        case (SReturn expr has_expr)
+            if has_expr
+                do (fv_expr expr bound out)
+            end
+        case (SChecked body)
+            do (fv_stmts body bound out)
+        case (SMatch scrut arms orelse has_else)
+            do (fv_expr scrut bound out)
+            let i = 0u64
+            while (< i (len arms))
+                let b2 = (copy_set bound)
+                let j = 0u64
+                while (< j (len arms[i].bindings))
+                    set b2[arms[i].bindings[j]] = true
+                    set j = (+ j 1)
+                end
+                do (fv_stmts arms[i].body b2 out)
+                set i = (+ i 1)
+            end
+            if has_else
+                do (fv_stmts orelse bound out)
+            end
+        else
+            pass
+    end
+end
+
+func fv_expr (e Expr) (bound {str bool}) (out {str bool}) -> unit
+    match e
+        case (EName ident)
+            if (not (map_has bound ident))
+                set out[ident] = true
+            end
+        case (EOp op args)
+            let i = 0u64
+            while (< i (len args))
+                do (fv_expr args[i] bound out)
+                set i = (+ i 1)
+            end
+        case (ECall callee args)
+            do (fv_expr callee bound out)
+            let i = 0u64
+            while (< i (len args))
+                do (fv_expr args[i] bound out)
+                set i = (+ i 1)
+            end
+        case (EField obj field)
+            do (fv_expr obj bound out)
+        case (EIndex obj index)
+            do (fv_expr obj bound out)
+            do (fv_expr index bound out)
+        case (EStruct typ fields)
+            let i = 0u64
+            while (< i (len fields))
+                do (fv_expr fields[i].value bound out)
+                set i = (+ i 1)
+            end
+        case (EArr elems)
+            let i = 0u64
+            while (< i (len elems))
+                do (fv_expr elems[i] bound out)
+                set i = (+ i 1)
+            end
+        case (EVec elems)
+            let i = 0u64
+            while (< i (len elems))
+                do (fv_expr elems[i] bound out)
+                set i = (+ i 1)
+            end
+        case (EArrNew elem count)
+            do (fv_expr count bound out)
+        case (ECast ex ty)
+            do (fv_expr ex bound out)
+        case (ERef place)
+            do (fv_expr place bound out)
+        case (EFunc params ret has_ret body)
+            let inner = (lambda_free e)
+            for nm in (map_keys inner)
+                if (not (map_has bound nm))
+                    set out[nm] = true
+                end
+            end
+        else
+            pass
+    end
+end
+
+# Names referenced in a funclit but bound outside it (its captures).
+func lambda_free (fl Expr) -> {str bool}
+    let out {str bool} = (map str bool)
+    match fl
+        case (EFunc params ret has_ret body)
+            let bound {str bool} = (map str bool)
+            let i = 0u64
+            while (< i (len params))
+                set bound[params[i].name] = true
+                set i = (+ i 1)
+            end
+            do (fv_stmts body bound out)
+        else
+            pass
+    end
+    return out
+end
+
+# FuncLits lexically inside these statements but not nested in another FuncLit
+# (the direct lambda children of the current function).
+func collect_funclits_stmts (stmts {Stmt}) (out {Expr}) -> unit
+    let i = 0u64
+    while (< i (len stmts))
+        do (collect_funclits_stmt stmts[i] out)
+        set i = (+ i 1)
+    end
+end
+
+func collect_funclits_stmt (s Stmt) (out {Expr}) -> unit
+    match s
+        case (SLet name ty has_ty expr mutable)
+            do (collect_funclits_expr expr out)
+        case (SSet target expr)
+            do (collect_funclits_expr target out)
+            do (collect_funclits_expr expr out)
+        case (SDo call)
+            do (collect_funclits_expr call out)
+        case (SIf branches orelse has_else)
+            let i = 0u64
+            while (< i (len branches))
+                do (collect_funclits_expr branches[i].cond out)
+                do (collect_funclits_stmts branches[i].body out)
+                set i = (+ i 1)
+            end
+            if has_else
+                do (collect_funclits_stmts orelse out)
+            end
+        case (SWhile cond body)
+            do (collect_funclits_expr cond out)
+            do (collect_funclits_stmts body out)
+        case (SForNum var start stop stride has_step body)
+            do (collect_funclits_expr start out)
+            do (collect_funclits_expr stop out)
+            if has_step
+                do (collect_funclits_expr stride out)
+            end
+            do (collect_funclits_stmts body out)
+        case (SForIn var iter body)
+            do (collect_funclits_expr iter out)
+            do (collect_funclits_stmts body out)
+        case (SLoop body)
+            do (collect_funclits_stmts body out)
+        case (SReturn expr has_expr)
+            if has_expr
+                do (collect_funclits_expr expr out)
+            end
+        case (SChecked body)
+            do (collect_funclits_stmts body out)
+        case (SMatch scrut arms orelse has_else)
+            do (collect_funclits_expr scrut out)
+            let i = 0u64
+            while (< i (len arms))
+                do (collect_funclits_stmts arms[i].body out)
+                set i = (+ i 1)
+            end
+            if has_else
+                do (collect_funclits_stmts orelse out)
+            end
+        else
+            pass
+    end
+end
+
+func collect_funclits_expr (e Expr) (out {Expr}) -> unit
+    match e
+        case (EFunc params ret has_ret body)
+            do (push out e)
+        case (EOp op args)
+            let i = 0u64
+            while (< i (len args))
+                do (collect_funclits_expr args[i] out)
+                set i = (+ i 1)
+            end
+        case (ECall callee args)
+            do (collect_funclits_expr callee out)
+            let i = 0u64
+            while (< i (len args))
+                do (collect_funclits_expr args[i] out)
+                set i = (+ i 1)
+            end
+        case (EField obj field)
+            do (collect_funclits_expr obj out)
+        case (EIndex obj index)
+            do (collect_funclits_expr obj out)
+            do (collect_funclits_expr index out)
+        case (EStruct typ fields)
+            let i = 0u64
+            while (< i (len fields))
+                do (collect_funclits_expr fields[i].value out)
+                set i = (+ i 1)
+            end
+        case (EArr elems)
+            let i = 0u64
+            while (< i (len elems))
+                do (collect_funclits_expr elems[i] out)
+                set i = (+ i 1)
+            end
+        case (EVec elems)
+            let i = 0u64
+            while (< i (len elems))
+                do (collect_funclits_expr elems[i] out)
+                set i = (+ i 1)
+            end
+        case (EArrNew elem count)
+            do (collect_funclits_expr count out)
+        case (ECast ex ty)
+            do (collect_funclits_expr ex out)
+        case (ERef place)
+            do (collect_funclits_expr place out)
+        else
+            pass
+    end
+end
+
+# The captured-name set for a function body = union of free vars of its direct
+# (non-nested) lambdas. Reset per function/lambda in lower_func/lower_lambda_body.
+func compute_captured (body {Stmt}) -> {str bool}
+    let fls {Expr} = (vec Expr)
+    do (collect_funclits_stmts body fls)
+    let cap {str bool} = (map str bool)
+    let i = 0u64
+    while (< i (len fls))
+        let fr = (lambda_free fls[i])
+        for nm in (map_keys fr)
+            set cap[nm] = true
+        end
+        set i = (+ i 1)
+    end
+    return cap
+end
+
+# --------------------------------------------------------------------------- #
 # Expressions
 # --------------------------------------------------------------------------- #
 
@@ -381,9 +753,9 @@ func lower_expr (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (expected Ty
         case ENull
             do (panic "lower: null/handles not supported yet")
         case (EName ident)
-            return (lower_name lx vs ident)
+            return (lower_name lx vs ts ident)
         case (EPath parts)
-            return (lower_path lx parts)
+            return (lower_path lx ts parts)
         case (EOp op args)
             return (lower_op lx vs ts e op args expected)
         case (ECast ex ty)
@@ -448,20 +820,41 @@ func lower_expr (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (expected Ty
         case (ERef place)
             do (panic "lower: (ref ...) not supported yet")
         case (EFunc params ret has_ret body)
-            do (panic "lower: closures (stage 4)")
+            return (lower_funclit lx vs ts e params ret has_ret body)
     end
     return ImmUnit
 end
 
-func lower_name (lx LX) (vs {str IVal}) (id str) -> IVal
+func lower_name (lx LX) (vs {str IVal}) (ts {str Binding}) (id str) -> IVal
     if (map_has vs id)
-        return vs[id]
+        let v = vs[id]
+        if (iv_is_boxed v)
+            let vty = (irt_ptr_inner (iv_irtype v))
+            let dst = (ir::fresh_temp lx.b vty)
+            do (ir::emit lx.b (ILoad dst: dst ptr: v ty: vty))
+            return dst
+        end
+        return v
+    end
+    # a top-level function used as a value -> a closure wrapping a thunk
+    let ft = (checker::check_expr lx.ctx (EName ident: id) ts TNone)
+    if (t_is_func ft)
+        return (func_value lx (callee_mangle lx (EName ident: id)) ft)
     end
     do (panic (strings::concat "lower: cannot use as a value: " id))
     return ImmUnit
 end
 
-func lower_path (lx LX) (parts {str}) -> IVal
+# A top-level/imported function used as a value: a closure whose code pointer is
+# a generated thunk (drops the env arg) and whose env is null.
+func func_value (lx LX) (mname str) (ft Type) -> IVal
+    set lx.irm.thunks[mname] = ft
+    let dst = (ir::fresh_temp lx.b (irt ft))
+    do (ir::emit lx.b (IMakeClosure dst: dst fn: (strings::concat mname "__thunk") env: (ImmNull ty: (env_ty))))
+    return dst
+end
+
+func lower_path (lx LX) (ts {str Binding}) (parts {str}) -> IVal
     if (== (len parts) 2u64)
         let e0 = parts[0]
         let e1 = parts[1]
@@ -486,8 +879,162 @@ func lower_path (lx LX) (parts {str}) -> IVal
             end
         end
     end
-    do (panic "lower: cannot lower path as a value (stage 4)")
+    # a module function used as a value -> a closure wrapping a thunk
+    let ft = (checker::check_expr lx.ctx (EPath parts: parts) ts TNone)
+    if (and (== (len parts) 2u64) (t_is_func ft))
+        return (func_value lx (mangle parts[0] parts[1]) ft)
+    end
+    do (panic "lower: cannot lower path as a value")
     return ImmUnit
+end
+
+# The source Type carried by a TyOf IRType (closure box values are always TyOf).
+func irt_source_ty (t IRType) -> Type
+    match t
+        case (TyOf st)
+            return st
+        else
+            return (unit_ty)
+    end
+    return (unit_ty)
+end
+
+# Sort a vec of strings lexicographically (deterministic env layout, §11).
+func sorted_strs (xs {str}) -> {str}
+    let ks {str} = (vec str)
+    for k in xs
+        do (push ks k)
+    end
+    let i = 1u64
+    while (< i (len ks))
+        let j = i
+        while (and (> j 0u64) (str_lt ks[j] ks[(- j 1u64)]))
+            let tmp = ks[j]
+            set ks[j] = ks[(- j 1u64)]
+            set ks[(- j 1u64)] = tmp
+            set j = (- j 1u64)
+        end
+        set i = (+ i 1)
+    end
+    return ks
+end
+
+# Lower an anonymous-function literal to a closure value (closure conversion):
+# captured boxed locals go into a heap environment, the body is lifted to a
+# top-level function taking that environment, and the value is a {fn, env} pair.
+func lower_funclit (lx LX) (vs {str IVal}) (ts {str Binding}) (e Expr) (params {Param}) (ret Ty) (has_ret bool) (body {Stmt}) -> IVal
+    # captures = the lambda's free vars that are bound in the enclosing scope,
+    # in a deterministic (sorted) order so the env layout is stable.
+    let fr = (lambda_free e)
+    let rawcaps {str} = (vec str)
+    for nm in (map_keys fr)
+        if (map_has vs nm)
+            do (push rawcaps nm)
+        end
+    end
+    let caps = (sorted_strs rawcaps)
+    # every captured local must be boxed (its vs entry is a Ptr). A non-boxed
+    # capture is a for-loop variable, whose per-iteration binding closure
+    # conversion can't share through a single cell.
+    let cap_tys {IRType} = (vec IRType)
+    let i = 0u64
+    while (< i (len caps))
+        let cv = vs[caps[i]]
+        if (not (iv_is_boxed cv))
+            do (panic (strings::concat "lower: cannot capture a for-loop variable in a closure: " caps[i]))
+        end
+        do (push cap_tys (irt_ptr_inner (iv_irtype cv)))
+        set i = (+ i 1)
+    end
+    # build the environment (array of box handles), or null when there are none
+    let env = (ImmNull ty: (env_ty))
+    if (> (len caps) 0u64)
+        let envt = (ir::fresh_temp lx.b (env_ty))
+        do (ir::emit lx.b (IEnvNew dst: envt n: (as (len caps) i64)))
+        set i = 0u64
+        while (< i (len caps))
+            do (ir::emit lx.b (IEnvStore env: envt idx: (as i i64) ptr: vs[caps[i]]))
+            set i = (+ i 1)
+        end
+        set env = envt
+    end
+    # resolved closure function type
+    let ptys {Type} = (vec Type)
+    set i = 0u64
+    while (< i (len params))
+        do (push ptys (checker::resolve lx.ctx params[i].ty))
+        set i = (+ i 1)
+    end
+    let rty = (unit_ty)
+    if has_ret
+        set rty = (checker::resolve lx.ctx ret)
+    end
+    let ft = (TFunc params: ptys ret: rty)
+    set lx.lamn[0] = (+ lx.lamn[0] 1)
+    let lname = (mangle lx.ctx.cur.name (strings::concat "lambda" (convert::int_to_str lx.lamn[0])))
+    let dst = (ir::fresh_temp lx.b (irt ft))
+    do (ir::emit lx.b (IMakeClosure dst: dst fn: lname env: env))
+    do (lower_lambda_body lx lname params body caps cap_tys ptys rty)
+    return dst
+end
+
+# Lower a lifted lambda body into its own IRFunc (first param = the env handle).
+func lower_lambda_body (lx LX) (lname str) (params {Param}) (body {Stmt}) (caps {str}) (cap_tys {IRType}) (ptys {Type}) (rty Type) -> unit
+    let saved_b = lx.b
+    let saved_ret = lx.ret
+    let saved_cap = lx.captured
+    let saved_uq = lx.uq[0]
+    let irparams {IRParam} = (vec IRParam)
+    do (push irparams (IRParam name: "__env" ty: (env_ty)))
+    let i = 0u64
+    while (< i (len params))
+        do (push irparams (IRParam name: params[i].name ty: (irt ptys[i])))
+        set i = (+ i 1)
+    end
+    set lx.b = (ir::new_builder lname irparams (irt rty))
+    set lx.ret = rty
+    set lx.uq[0] = 0i64
+    set lx.captured = (compute_captured body)
+    let vscope {str IVal} = (map str IVal)
+    let tscope {str Binding} = (map str Binding)
+    # captured outer vars: load each box handle out of the env (stays boxed)
+    set i = 0u64
+    while (< i (len caps))
+        let vty = cap_tys[i]
+        let ptr = (ir::fresh_temp lx.b (Ptr p: vty))
+        do (ir::emit lx.b (IEnvLoad dst: ptr env: (Local name: "__env" ty: (env_ty)) idx: (as i i64) ty: vty))
+        set vscope[caps[i]] = ptr
+        set tscope[caps[i]] = (Binding ty: (irt_source_ty vty) mutable: true)
+        set i = (+ i 1)
+    end
+    # the lambda's own params (boxed if captured by a nested lambda)
+    set i = 0u64
+    while (< i (len params))
+        let pname = params[i].name
+        let pty = ptys[i]
+        if (map_has lx.captured pname)
+            let box = (make_box lx (irt pty) (Local name: pname ty: (irt pty)) true)
+            set vscope[pname] = box
+        else
+            set vscope[pname] = (Local name: pname ty: (irt pty))
+        end
+        set tscope[pname] = (Binding ty: pty mutable: true)
+        set i = (+ i 1)
+    end
+    do (lower_block lx vscope tscope body)
+    if (not (ir::cur_terminated lx.b))
+        if (t_is_unit rty)
+            do (ir::emit lx.b (IRet has_val: false val: ImmUnit))
+        else
+            set lx.irm.externs["cl_panic"] = true
+            do (ir::emit lx.b (IPanic msg: (ImmStr s: "fell off the end of a value-returning function")))
+        end
+    end
+    do (push lx.irm.funcs lx.b.fn)
+    set lx.b = saved_b
+    set lx.ret = saved_ret
+    set lx.captured = saved_cap
+    set lx.uq[0] = saved_uq
 end
 
 func operand_ty (lx LX) (ts {str Binding}) (args {Expr}) -> Type
@@ -682,14 +1229,51 @@ func lower_call (lx LX) (vs {str IVal}) (ts {str Binding}) (callee Expr) (args {
         else
             pass
     end
-    # direct call to a named top-level function
+    # Direct call to a named top-level function vs. indirect call through a
+    # closure value. A bare name in scope (a local) or any computed expression is
+    # a closure value; a top-level name or a module path is a direct call.
+    let direct = false
+    match callee
+        case (EName id)
+            if (not (map_has vs id))
+                set direct = true
+            end
+        case (EPath parts)
+            set direct = true
+        else
+            pass
+    end
     let ft = (checker::check_expr lx.ctx callee ts TNone)
     if (not (t_is_func ft))
-        do (panic "lower: indirect/closure call (stage 4)")
+        do (panic "lower: call of a non-function value")
     end
     let params = (t_func_params ft)
     let rty = (t_func_ret ft)
+    if direct
+        let argvals {IVal} = (vec IVal)
+        let i = 0u64
+        while (< i (len args))
+            let pexp = TNone
+            if (< i (len params))
+                set pexp = params[i]
+            end
+            do (push argvals (lower_expr lx vs ts args[i] pexp))
+            set i = (+ i 1)
+        end
+        let mname = (callee_mangle lx callee)
+        if (t_is_unit rty)
+            do (ir::emit lx.b (ICall has_dst: false dst: ImmUnit callee: mname args: argvals ty: (irt rty)))
+            return ImmUnit
+        end
+        let dst = (ir::fresh_temp lx.b (irt rty))
+        do (ir::emit lx.b (ICall has_dst: true dst: dst callee: mname args: argvals ty: (irt rty)))
+        return dst
+    end
+    # indirect: evaluate the callee to a closure value first (left-to-right), then
+    # the args, then call through the closure's {fn, env} pair.
+    let clos = (lower_expr lx vs ts callee TNone)
     let argvals {IVal} = (vec IVal)
+    let irptys {IRType} = (vec IRType)
     let i = 0u64
     while (< i (len args))
         let pexp = TNone
@@ -699,14 +1283,18 @@ func lower_call (lx LX) (vs {str IVal}) (ts {str Binding}) (callee Expr) (args {
         do (push argvals (lower_expr lx vs ts args[i] pexp))
         set i = (+ i 1)
     end
-    let mname = (callee_mangle lx callee)
+    set i = 0u64
+    while (< i (len params))
+        do (push irptys (irt params[i]))
+        set i = (+ i 1)
+    end
     if (t_is_unit rty)
-        do (ir::emit lx.b (ICall has_dst: false dst: ImmUnit callee: mname args: argvals ty: (irt rty)))
+        do (ir::emit lx.b (ICallClosure has_dst: false dst: ImmUnit clos: clos args: argvals ret: (irt rty) ptys: irptys))
         return ImmUnit
     end
-    let dst = (ir::fresh_temp lx.b (irt rty))
-    do (ir::emit lx.b (ICall has_dst: true dst: dst callee: mname args: argvals ty: (irt rty)))
-    return dst
+    let cdst = (ir::fresh_temp lx.b (irt rty))
+    do (ir::emit lx.b (ICallClosure has_dst: true dst: cdst clos: clos args: argvals ret: (irt rty) ptys: irptys))
+    return cdst
 end
 
 func callee_mangle (lx LX) (callee Expr) -> str
@@ -827,6 +1415,9 @@ func lower_to_str (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) 
             return (lts_map lx vs ts iv t)
         case (TEnum nm)
             return (ts_call1 lx (to_str_sym nm) iv)
+        case (TFunc p r)
+            # DESIGN §5.5: a closure renders as the opaque token "<closure>".
+            return (ImmStr s: "<closure>")
         else
             do (panic "lower: to_str of this type unsupported")
     end
@@ -1004,6 +1595,7 @@ func synth_struct_to_str (lx LX) (modname str) (sname str) -> unit
     do (push params (IRParam name: "self" ty: (irt pty)))
     set lx.b = (ir::new_builder (mangle modname (strings::concat sname "_to_str")) params (irt (str_ty)))
     set lx.uq[0] = 0i64
+    set lx.captured = (map str bool)
     let pv = (Local name: "self" ty: (irt pty))
     let evs {str IVal} = (map str IVal)
     let ets {str Binding} = (map str Binding)
@@ -1019,6 +1611,7 @@ func synth_enum_to_str (lx LX) (modname str) (ename str) (variants {str}) -> uni
     do (push params (IRParam name: "self" ty: (irt ety)))
     set lx.b = (ir::new_builder (mangle modname (strings::concat ename "_to_str")) params (irt (str_ty)))
     set lx.uq[0] = 0i64
+    set lx.captured = (map str bool)
     let pv = (Local name: "self" ty: (irt ety))
     let s = (lts_enum lx pv ety ename variants)
     do (ir::emit lx.b (IRet has_val: true val: s))
@@ -1115,6 +1708,9 @@ func lower_place (lx LX) (vs {str IVal}) (ts {str Binding}) (node Expr) -> Place
         case (EName id)
             let loc = vs[id]
             let pty = ts[id].ty
+            if (iv_is_boxed loc)
+                return (PlaceR place: (PDeref ptr: loc ty: (irt pty)) ty: pty)
+            end
             return (PlaceR place: (PLocal name: (ival_name loc) ty: (irt pty)) ty: pty)
         case (EField obj field)
             let base = (lower_place lx vs ts obj)
@@ -1168,10 +1764,15 @@ func lower_stmt (lx LX) (vs {str IVal}) (ts {str Binding}) (s Stmt) -> unit
                 set vty = (concrete_ty lx ts expr)
             end
             let val = (lower_expr lx vs ts expr vty)
-            let un = (uniq lx name)
-            let loc = (ir::add_local lx.b un (irt vty))
-            do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt vty)) src: val))
-            set vs[name] = loc
+            if (map_has lx.captured name)
+                let box = (make_box lx (irt vty) val true)
+                set vs[name] = box
+            else
+                let un = (uniq lx name)
+                let loc = (ir::add_local lx.b un (irt vty))
+                do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt vty)) src: val))
+                set vs[name] = loc
+            end
             set ts[name] = (Binding ty: vty mutable: mutable)
         case (SSet target expr)
             do (lower_set lx vs ts target expr)
@@ -1332,7 +1933,14 @@ func lower_fornum (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (startE E
     do (ir::new_block lx.b bodyl)
     let vs2 = (copy_iv vs)
     let ts2 = (copy_bind ts)
-    set vs2[var] = loc
+    # A loop variable captured by a closure gets a FRESH per-iteration box (the
+    # interpreter rebinds it each iteration), so each closure sees its own value.
+    if (map_has lx.captured var)
+        let box = (make_box lx (irt ity) loc true)
+        set vs2[var] = box
+    else
+        set vs2[var] = loc
+    end
     set ts2[var] = (Binding ty: ity mutable: true)
     do (push lx.brk fin)
     do (push lx.cont post)
@@ -1388,7 +1996,13 @@ func lower_forin (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (iter Expr
     do (ir::emit lx.b (IAssign place: (PLocal name: varn ty: (irt elem)) src: elemv))
     let vs2 = (copy_iv vs)
     let ts2 = (copy_bind ts)
-    set vs2[var] = varloc
+    # A captured loop variable gets a FRESH per-iteration box (interpreter parity).
+    if (map_has lx.captured var)
+        let box = (make_box lx (irt elem) varloc true)
+        set vs2[var] = box
+    else
+        set vs2[var] = varloc
+    end
     set ts2[var] = (Binding ty: elem mutable: true)
     do (push lx.brk fin)
     do (push lx.cont post)
@@ -1412,13 +2026,11 @@ end
 
 func lower_func (lx LX) (name str) (params {Param}) (ret Ty) (has_ret bool) (body {Stmt}) -> unit
     let irparams {IRParam} = (vec IRParam)
-    let vscope {str IVal} = (map str IVal)
-    let tscope {str Binding} = (map str Binding)
+    let ptys {Type} = (vec Type)
     for pf in params
         let pty = (checker::resolve lx.ctx pf.ty)
         do (push irparams (IRParam name: pf.name ty: (irt pty)))
-        set vscope[pf.name] = (Local name: pf.name ty: (irt pty))
-        set tscope[pf.name] = (Binding ty: pty mutable: true)
+        do (push ptys pty)
     end
     let rty = (unit_ty)
     if has_ret
@@ -1427,6 +2039,24 @@ func lower_func (lx LX) (name str) (params {Param}) (ret Ty) (has_ret bool) (bod
     set lx.b = (ir::new_builder (mangle lx.ctx.cur.name name) irparams (irt rty))
     set lx.ret = rty
     set lx.uq[0] = 0i64
+    set lx.captured = (compute_captured body)
+    # Bind params: a param captured by a nested lambda is boxed (so the closure
+    # shares the cell); others are referenced directly as the C parameter.
+    let vscope {str IVal} = (map str IVal)
+    let tscope {str Binding} = (map str Binding)
+    let pi = 0u64
+    while (< pi (len params))
+        let pname = params[pi].name
+        let pty = ptys[pi]
+        if (map_has lx.captured pname)
+            let box = (make_box lx (irt pty) (Local name: pname ty: (irt pty)) true)
+            set vscope[pname] = box
+        else
+            set vscope[pname] = (Local name: pname ty: (irt pty))
+        end
+        set tscope[pname] = (Binding ty: pty mutable: true)
+        set pi = (+ pi 1)
+    end
     do (lower_block lx vscope tscope body)
     # Synthetic tail terminator for a block that falls through. For a unit
     # function that is a bare `return;`. For a value-returning function the tail
@@ -1445,7 +2075,7 @@ func lower_func (lx LX) (name str) (params {Param}) (ret Ty) (has_ret bool) (bod
     do (push lx.irm.funcs lx.b.fn)
 end
 
-func build_callmap (sig Sig) -> {str str}
+func build_callmap (ctx Ctx) (sig Sig) -> {str str}
     let m {str str} = (map str str)
     for d in sig.decls
         match d
@@ -1453,6 +2083,20 @@ func build_callmap (sig Sig) -> {str str}
                 set m[name] = (mangle sig.name name)
             else
                 pass
+        end
+    end
+    # Selectively-imported functions (`import mod (f)`) are callable / usable as a
+    # value by bare name and must mangle to their DEFINING module, not the current
+    # one (mirrors bootstrap/lower.py). The Sig keeps selective value names but not
+    # their source module, so resolve each via the import registry's function sets.
+    for nm in (map_keys sig.selective)
+        for alias in (map_keys sig.imported)
+            let mod = sig.imported[alias]
+            if (map_has ctx.sigs mod)
+                if (map_has ctx.sigs[mod].funcs nm)
+                    set m[nm] = (mangle mod nm)
+                end
+            end
         end
     end
     return m
@@ -1511,7 +2155,9 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
     do (push chk false)
     let uq {i64} = (vec i64)
     do (push uq 0i64)
-    let lx = (LX ctx: ctx irm: m b: (ir::new_builder "__init" (vec IRParam) (irt (unit_ty))) chk: chk brk: (vec str) cont: (vec str) uq: uq callmap: (map str str) ret: (unit_ty))
+    let lamn {i64} = (vec i64)
+    do (push lamn 0i64)
+    let lx = (LX ctx: ctx irm: m b: (ir::new_builder "__init" (vec IRParam) (irt (unit_ty))) chk: chk brk: (vec str) cont: (vec str) uq: uq callmap: (map str str) ret: (unit_ty) captured: (map str bool) lamn: lamn)
     let names = (sorted_sig_names ctx.sigs)
     # Pass 1: collect value-struct typedefs (sorted module order = deterministic).
     # Struct identity is module-qualified ("mod::Name"); the C backend mangles it
@@ -1543,7 +2189,7 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
         let sig = ctx.sigs[names[ni]]
         if sig.has_module
             set lx.ctx.cur = sig
-            set lx.callmap = (build_callmap sig)
+            set lx.callmap = (build_callmap lx.ctx sig)
             for d in sig.decls
                 match d
                     case (DFunc fname params ret has_ret body exported)

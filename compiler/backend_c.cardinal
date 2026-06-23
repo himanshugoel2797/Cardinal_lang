@@ -409,6 +409,142 @@ func join_args (args {IVal}) -> str
     return out
 end
 
+# --------------------------------------------------------------------------- #
+# Closure thunks (function-as-value) + fn-pointer cast
+# --------------------------------------------------------------------------- #
+
+func tfunc_params (t Type) -> {Type}
+    match t
+        case (TFunc p r)
+            return p
+        else
+            return (vec Type)
+    end
+    return (vec Type)
+end
+
+func tfunc_ret (t Type) -> Type
+    match t
+        case (TFunc p r)
+            return r
+        else
+            return (TPrim name: "unit")
+    end
+    return (TPrim name: "unit")
+end
+
+func t_is_unit_src (t Type) -> bool
+    match t
+        case (TPrim n)
+            return (strings::eq n "unit")
+        else
+            return false
+    end
+    return false
+end
+
+# The C function-pointer type a closure's code pointer is cast to before a call:
+# RET(*)(cl_handle env, PTYS...).
+func fnptr_cast (ret IRType) (ptys {IRType}) -> str
+    let p {str} = (vec str)
+    do (push p (ctype ret))
+    do (push p "(*)(cl_handle")
+    let i = 0u64
+    while (< i (len ptys))
+        do (push p ", ")
+        do (push p (ctype ptys[i]))
+        set i = (+ i 1)
+    end
+    do (push p ")")
+    return (cat p)
+end
+
+func thunk_proto (name str) (ft Type) -> str
+    let ps = (tfunc_params ft)
+    let p {str} = (vec str)
+    do (push p (ctype_t (tfunc_ret ft)))
+    do (push p " ")
+    do (push p name)
+    do (push p "__thunk(cl_handle env")
+    let i = 0u64
+    while (< i (len ps))
+        do (push p ", ")
+        do (push p (ctype_t ps[i]))
+        do (push p " p")
+        do (push p (convert::int_to_str (as i i64)))
+        set i = (+ i 1)
+    end
+    do (push p ")")
+    return (cat p)
+end
+
+func thunk_def (name str) (ft Type) -> str
+    let ps = (tfunc_params ft)
+    let call {str} = (vec str)
+    do (push call name)
+    do (push call "(")
+    let i = 0u64
+    while (< i (len ps))
+        if (> i 0u64)
+            do (push call ", ")
+        end
+        do (push call "p")
+        do (push call (convert::int_to_str (as i i64)))
+        set i = (+ i 1)
+    end
+    do (push call ")")
+    let callstr = (cat call)
+    let out = (strings::concat (thunk_proto name ft) " {\n")
+    if (t_is_unit_src (tfunc_ret ft))
+        set out = (strings::concat out (strings::concat "    (void)env; " (strings::concat callstr "; return;\n")))
+    else
+        set out = (strings::concat out (strings::concat "    (void)env; return " (strings::concat callstr ";\n")))
+    end
+    return (strings::concat out "}\n")
+end
+
+# Lexicographic key order so thunk emission is deterministic (§11).
+func bc_str_lt (a str) (b str) -> bool
+    let ca = (strings::chars a)
+    let cb = (strings::chars b)
+    let n = (len ca)
+    if (< (len cb) n)
+        set n = (len cb)
+    end
+    let i = 0u64
+    while (< i n)
+        let xa = (convert::ord ca[i])
+        let xb = (convert::ord cb[i])
+        if (< xa xb)
+            return true
+        end
+        if (> xa xb)
+            return false
+        end
+        set i = (+ i 1)
+    end
+    return (< (len ca) (len cb))
+end
+
+func sorted_thunk_names (m {str Type}) -> {str}
+    let ks {str} = (vec str)
+    for k in (map_keys m)
+        do (push ks k)
+    end
+    let i = 1u64
+    while (< i (len ks))
+        let j = i
+        while (and (> j 0u64) (bc_str_lt ks[j] ks[(- j 1u64)]))
+            let tmp = ks[j]
+            set ks[j] = ks[(- j 1u64)]
+            set ks[(- j 1u64)] = tmp
+            set j = (- j 1u64)
+        end
+        set i = (+ i 1)
+    end
+    return ks
+end
+
 func emit_bin (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk bool) -> {str}
     let d = (val dst)
     let a = (val lhs)
@@ -717,6 +853,80 @@ func emit_instr (ins Instr) (nroots i64) -> {str}
             return (line1 (cat p))
         case (IMapKeys dst mp)
             return (line1 (strings::concat (val dst) (strings::concat " = cl_map_keys(" (strings::concat (val mp) ");"))))
+        case (IAlloc dst ty)
+            let p {str} = (vec str)
+            do (push p (val dst))
+            do (push p " = cl_gc_alloc(sizeof(")
+            do (push p (ctype ty))
+            do (push p "));")
+            return (line1 (cat p))
+        case (ILoad dst ptr ty)
+            let p {str} = (vec str)
+            do (push p (val dst))
+            do (push p " = *(")
+            do (push p (ctype ty))
+            do (push p "*)cl_gc_deref(")
+            do (push p (val ptr))
+            do (push p ");")
+            return (line1 (cat p))
+        case (IEnvNew dst n)
+            let p {str} = (vec str)
+            do (push p (val dst))
+            do (push p " = cl_gc_alloc(")
+            do (push p (convert::int_to_str n))
+            do (push p " * sizeof(cl_handle));")
+            return (line1 (cat p))
+        case (IEnvStore env idx ptr)
+            let p {str} = (vec str)
+            do (push p "((cl_handle*)cl_gc_deref(")
+            do (push p (val env))
+            do (push p "))[")
+            do (push p (convert::int_to_str idx))
+            do (push p "] = (cl_handle)(")
+            do (push p (val ptr))
+            do (push p ");")
+            return (line1 (cat p))
+        case (IEnvLoad dst env idx ty)
+            let p {str} = (vec str)
+            do (push p (val dst))
+            do (push p " = ((cl_handle*)cl_gc_deref(")
+            do (push p (val env))
+            do (push p "))[")
+            do (push p (convert::int_to_str idx))
+            do (push p "];")
+            return (line1 (cat p))
+        case (IMakeClosure dst fn env)
+            let p {str} = (vec str)
+            do (push p (val dst))
+            do (push p " = (cl_closure){(void*)&")
+            do (push p fn)
+            do (push p ", (cl_handle)(")
+            do (push p (val env))
+            do (push p ")};")
+            return (line1 (cat p))
+        case (ICallClosure has_dst dst clos args ret ptys)
+            let cast = (fnptr_cast ret ptys)
+            let c = (val clos)
+            let p {str} = (vec str)
+            if has_dst
+                do (push p (val dst))
+                do (push p " = ")
+            end
+            do (push p "((")
+            do (push p cast)
+            do (push p ")(")
+            do (push p c)
+            do (push p ").fn)((")
+            do (push p c)
+            do (push p ").env")
+            let i = 0u64
+            while (< i (len args))
+                do (push p ", ")
+                do (push p (val args[i]))
+                set i = (+ i 1)
+            end
+            do (push p ");")
+            return (line1 (cat p))
         else
             do (panic "backend_c: unsupported instruction (later stage)")
     end
@@ -976,7 +1186,21 @@ export func emit (m IRModule) -> str
         set out = (strings::concat out (strings::concat (proto m.funcs[i]) ";\n"))
         set i = (+ i 1)
     end
+    # function-as-value thunk prototypes (sorted = deterministic)
+    let tnames = (sorted_thunk_names m.thunks)
+    let ti = 0u64
+    while (< ti (len tnames))
+        set out = (strings::concat out (strings::concat (thunk_proto tnames[ti] m.thunks[tnames[ti]]) ";\n"))
+        set ti = (+ ti 1)
+    end
     set out = (strings::concat out "\n")
+    # function-as-value thunk definitions
+    set ti = 0u64
+    while (< ti (len tnames))
+        set out = (strings::concat out (thunk_def tnames[ti] m.thunks[tnames[ti]]))
+        set out = (strings::concat out "\n")
+        set ti = (+ ti 1)
+    end
     # definitions
     set i = 0u64
     while (< i (len m.funcs))

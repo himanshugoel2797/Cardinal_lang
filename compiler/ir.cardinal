@@ -103,7 +103,7 @@ type Instr
     IEnvStore  (env IVal) (idx i64) (ptr IVal)
     IEnvLoad   (dst IVal) (env IVal) (idx i64) (ty IRType)
     IMakeClosure (dst IVal) (fn str) (env IVal)
-    ICallClosure (has_dst bool) (dst IVal) (clos IVal) (args {IVal}) (ret IRType)
+    ICallClosure (has_dst bool) (dst IVal) (clos IVal) (args {IVal}) (ret IRType) (ptys {IRType})
     # terminators
     IBr        (target str)
     ICondBr    (cond IVal) (then_l str) (else_l str)
