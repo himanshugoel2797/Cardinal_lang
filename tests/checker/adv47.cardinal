@@ -1,0 +1,6 @@
+module adv47
+# ADVERSARIAL: set m[k] = v where v has wrong type
+func f () -> unit
+    let m {str i32} = (map str i32)
+    set m["key"] = true
+end

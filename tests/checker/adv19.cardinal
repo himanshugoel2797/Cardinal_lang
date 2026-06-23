@@ -1,0 +1,5 @@
+module adv19
+# ADVERSARIAL: returning null from a function that returns i32 (null is not i32)
+func f () -> i32
+    return null
+end

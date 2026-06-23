@@ -1,0 +1,34 @@
+module t07_single_variant
+
+import io
+import strings
+
+# Single-variant sum type (edge case)
+type Wrapper
+    Wrap (value i32) (label str)
+end
+
+func unwrap_value (w Wrapper) -> i32
+    match w
+        case (Wrap v l)
+            return v
+    end
+    return 0
+end
+
+func unwrap_label (w Wrapper) -> str
+    match w
+        case (Wrap v l)
+            return l
+    end
+    return ""
+end
+
+func main () -> i32
+    let w = (Wrap value: 42 label: "hello")
+    do (io::println (unwrap_value w))   # 42
+    do (io::println (unwrap_label w))   # hello
+    let w2 = (Wrap value: 0 label: "empty")
+    do (io::println (unwrap_value w2))  # 0
+    return 0i32
+end

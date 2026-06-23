@@ -1,0 +1,28 @@
+module str_utf8_concat
+
+import io
+import strings
+
+# Concat multi-byte UTF-8 strings, check result codepoint count and content
+func main () -> i32
+    let a = "日本"
+    let b = "語"
+    let c = (strings::concat a b)
+    let cs = (strings::chars c)
+    do (io::println (len cs))        # 3
+    do (io::println c)               # 日本語
+
+    # Concat emoji
+    let x = "a😀"
+    let y = "b😀c"
+    let z = (strings::concat x y)
+    let csz = (strings::chars z)
+    do (io::println (len csz))       # 5
+    do (io::println z)               # a😀b😀c
+
+    # Substr on concatenated multi-byte string
+    do (io::println (strings::substr c 0 2))    # 日本
+    do (io::println (strings::substr z 1 3))    # 😀b😀
+
+    return 0i32
+end

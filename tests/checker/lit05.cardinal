@@ -1,0 +1,7 @@
+module lit05
+# ILLEGAL: unsuffixed literal used in expression with no other context
+func f () -> i32
+    let x i32 = 0i32
+    let y = (+ 5 x)
+    return y
+end

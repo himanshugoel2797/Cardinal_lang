@@ -1,0 +1,48 @@
+module c16_vec_of_closures
+
+import io
+
+# Store closures in a vec and call them through the vec
+func make_ops () -> i32
+    let ops = (vec func(i32 -> i32))
+    let f1 = func (x i32) -> i32
+        return (+ x 1)
+    end
+    let f2 = func (x i32) -> i32
+        return (* x 2)
+    end
+    let f3 = func (x i32) -> i32
+        return (- x 3)
+    end
+    do (push ops f1)
+    do (push ops f2)
+    do (push ops f3)
+
+    let result = 10i32
+    # Apply each op in sequence
+    for i = 0 to 3
+        set result = (ops[i] result)
+    end
+    return result
+    # 10 -> +1=11 -> *2=22 -> -3=19
+end
+
+func main () -> i32
+    do (io::println (make_ops))   # 19
+
+    # Vec of closures with captured state (use explicit typed multipliers)
+    let counters = (vec func(-> i32))
+    for i = 0 to 3
+        let start = (* i 10i32)   # explicit i32 literal to avoid inference issues
+        let f = func () -> i32
+            return start
+        end
+        do (push counters f)
+    end
+
+    for i = 0 to 3
+        do (io::println (counters[i]))   # 0, 10, 20
+    end
+
+    return 0i32
+end

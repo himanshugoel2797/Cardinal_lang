@@ -1,0 +1,17 @@
+module adv26
+# ADVERSARIAL: match arm body type mismatch in a value context
+# (this is checking that match arms are not required to type-agree since match is statement-only)
+type T
+    A
+    B
+end
+func f (t T) -> i32
+    let result = 0i32
+    match t
+        case A
+            set result = 1i32
+        case B
+            set result = true
+    end
+    return result
+end

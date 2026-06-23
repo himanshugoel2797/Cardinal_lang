@@ -1,0 +1,77 @@
+module t43_sum_multiword_struct_payload
+
+import io
+
+# Sum type with large struct payload (>16 bytes for SysV ABI)
+# This stresses multi-word value-struct load/store through a box (x86 bug area)
+struct BigPoint
+    x i32
+    y i32
+    z i32
+    w i32
+end
+
+struct SmallPoint
+    x i32
+    y i32
+end
+
+type Shape3D
+    Sphere (center BigPoint) (radius i32)
+    Box3D (min_pt BigPoint) (max_pt BigPoint)
+    Dot (pt SmallPoint)
+    Nothing
+end
+
+func volume_approx (s Shape3D) -> i32
+    match s
+        case (Sphere c r)
+            # approx 4/3 * 3 * r^3 = 4 * r^3
+            return (* 4 (* r (* r r)))
+        case (Box3D mn mx)
+            let dx = (- mx.x mn.x)
+            let dy = (- mx.y mn.y)
+            let dz = (- mx.z mn.z)
+            return (* dx (* dy dz))
+        case (Dot pt)
+            return 0
+        case Nothing
+            return 0
+    end
+    return 0
+end
+
+func center_x (s Shape3D) -> i32
+    match s
+        case (Sphere c r)
+            return c.x
+        case (Box3D mn mx)
+            return (/ (+ mn.x mx.x) 2)
+        case (Dot pt)
+            return pt.x
+        case Nothing
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    let bp = (BigPoint x: 1 y: 2 z: 3 w: 4)
+    let s = (Sphere center: bp radius: 3)
+    do (io::println (volume_approx s))   # 4 * 27 = 108
+    do (io::println (center_x s))        # 1
+
+    let mn = (BigPoint x: 0 y: 0 z: 0 w: 0)
+    let mx = (BigPoint x: 3 y: 4 z: 5 w: 0)
+    let b = (Box3D min_pt: mn max_pt: mx)
+    do (io::println (volume_approx b))   # 3*4*5 = 60
+    do (io::println (center_x b))        # (0+3)/2 = 1
+
+    let sp = (SmallPoint x: 7 y: 8)
+    let d = (Dot pt: sp)
+    do (io::println (volume_approx d))   # 0
+    do (io::println (center_x d))        # 7
+
+    do (io::println (volume_approx Nothing))  # 0
+    return 0i32
+end

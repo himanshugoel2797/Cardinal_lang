@@ -1,0 +1,31 @@
+module str_substr
+
+import io
+import strings
+
+# Test substr: codepoint indices, edge cases
+func main () -> i32
+    let s = "hello"
+
+    # Normal slice
+    do (io::println (strings::substr s 0 3))     # hel
+    do (io::println (strings::substr s 1 3))     # ell
+    do (io::println (strings::substr s 4 1))     # o
+
+    # Empty result
+    do (io::println (strings::substr s 2 0))     # (empty)
+
+    # Full string
+    do (io::println (strings::substr s 0 5))     # hello
+
+    # Start at end (empty)
+    do (io::println (strings::substr s 5 0))     # (empty)
+
+    # Count goes past end (clamp, no panic)
+    do (io::println (strings::substr s 3 100))   # lo
+
+    # Start past end (empty, no panic)
+    do (io::println (strings::substr s 100 1))   # (empty)
+
+    return 0i32
+end

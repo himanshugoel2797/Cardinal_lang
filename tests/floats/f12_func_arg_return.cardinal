@@ -1,0 +1,34 @@
+module f12_func_arg_return
+
+import io
+
+func add_floats (a f64) (b f64) -> f64
+    return (+ a b)
+end
+
+func scale (x f32) (factor f32) -> f32
+    return (* x factor)
+end
+
+func reciprocal (x f64) -> f64
+    return (/ 1.0 x)
+end
+
+func avg (a f64) (b f64) -> f64
+    return (/ (+ a b) 2.0)
+end
+
+func main () -> i32
+    do (io::println (add_floats 1.5 2.5))
+    do (io::println (add_floats (- 1.0) 3.0))
+    do (io::println (scale 2.0 3.14))
+    do (io::println (reciprocal 4.0))
+    do (io::println (reciprocal 0.5))
+    do (io::println (avg 1.0 3.0))
+    do (io::println (avg 0.1 0.9))
+
+    # Nested calls
+    do (io::println (add_floats (reciprocal 2.0) (reciprocal 4.0)))
+
+    return 0i32
+end

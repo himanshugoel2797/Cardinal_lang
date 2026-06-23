@@ -1,0 +1,6 @@
+module adv29
+# ADVERSARIAL: shr/shl on float (should be illegal)
+func f () -> f64
+    let x = 1.0f64
+    return (shl x 1i64)
+end

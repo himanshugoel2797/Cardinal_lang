@@ -1,0 +1,6 @@
+module lit02
+# LEGAL: unsuffixed literal inferred from annotated binding
+func f () -> i32
+    let x i32 = 5
+    return x
+end

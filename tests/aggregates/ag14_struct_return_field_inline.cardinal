@@ -1,0 +1,37 @@
+module ag14_struct_return_field_inline
+
+import io
+
+# Return struct from function and access field inline without binding
+struct Pair
+    first i64
+    second i64
+end
+
+func make_pair (a i64) (b i64) -> Pair
+    return (Pair first: a second: b)
+end
+
+func larger (p Pair) -> i64
+    if (>= p.first p.second)
+        return p.first
+    end
+    return p.second
+end
+
+func main () -> i32
+    # Access field inline on returned struct
+    do (io::println (make_pair 10i64 20i64).first)   # 10
+    do (io::println (make_pair 10i64 20i64).second)  # 20
+
+    # Pass returned struct to another function
+    do (io::println (larger (make_pair 10i64 20i64)))    # 20
+    do (io::println (larger (make_pair 99i64 1i64)))     # 99
+
+    # Nested: return struct, pass as arg, get i64 back
+    let p = (make_pair 5i64 (larger (make_pair 3i64 7i64)))
+    do (io::println p.first)    # 5
+    do (io::println p.second)   # 7
+
+    return 0i32
+end

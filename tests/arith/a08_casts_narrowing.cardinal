@@ -1,0 +1,37 @@
+module a08_casts_narrowing
+
+import io
+
+func main () -> i32
+    # i32 -> u8 truncation: 300 mod 256 = 44
+    do (io::println (as 300i32 u8))
+
+    # i32 -> i8 truncation: 128 mod 256 = 128 unsigned = -128 signed
+    do (io::println (as 128i32 i8))
+
+    # i32 -> i8: 255 mod 256 = 255 unsigned = -1 signed
+    do (io::println (as 255i32 i8))
+
+    # i32 -> i8: 127 stays 127
+    do (io::println (as 127i32 i8))
+
+    # i32 -> u8: -1 mod 256 = 255
+    do (io::println (as (- 1i32) u8))
+
+    # i64 -> i32 narrowing: large value truncates
+    do (io::println (as 4294967297i64 i32))
+
+    # i64 -> u32: large value truncates
+    do (io::println (as 4294967297i64 u32))
+
+    # i32 -> i16: 65536 mod 65536 = 0
+    do (io::println (as 65536i32 i16))
+
+    # i32 -> i16: 32768 = -32768 as i16
+    do (io::println (as 32768i32 i16))
+
+    # u32 -> i32: value above INT32_MAX becomes negative
+    do (io::println (as 2147483648u32 i32))
+
+    return 0i32
+end

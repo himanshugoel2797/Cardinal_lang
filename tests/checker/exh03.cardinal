@@ -1,0 +1,16 @@
+module exh03
+# LEGAL: non-exhaustive match with else clause
+type T
+    A
+    B
+    C
+end
+func f (t T) -> i32
+    match t
+        case A
+            return 1
+        else
+            return 99
+    end
+    return 0
+end

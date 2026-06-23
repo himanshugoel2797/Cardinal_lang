@@ -1,0 +1,67 @@
+module t44_sum_tree_balance
+
+import io
+
+# Build a significantly imbalanced tree (all left or all right)
+# and test traversal -- stresses non-balanced recursion patterns
+type Tree
+    Leaf
+    Node (value i32) (left Tree) (right Tree)
+end
+
+func right_chain (n i32) -> Tree
+    if (<= n 0)
+        return Leaf
+    end
+    return (Node value: n left: Leaf right: (right_chain (- n 1)))
+end
+
+func left_chain (n i32) -> Tree
+    if (<= n 0)
+        return Leaf
+    end
+    return (Node value: n left: (left_chain (- n 1)) right: Leaf)
+end
+
+func sum_tree (t Tree) -> i32
+    match t
+        case Leaf
+            return 0
+        case (Node v l r)
+            return (+ v (+ (sum_tree l) (sum_tree r)))
+    end
+    return 0
+end
+
+func min_tree (t Tree) -> i32
+    match t
+        case Leaf
+            return 2147483647
+        case (Node v l r)
+            let lmin = (min_tree l)
+            let rmin = (min_tree r)
+            let m = v
+            if (< lmin m)
+                set m = lmin
+            end
+            if (< rmin m)
+                set m = rmin
+            end
+            return m
+    end
+    return 2147483647
+end
+
+func main () -> i32
+    # Right-skewed: 30 -> 29 -> 28 -> ... -> 1 -> Leaf
+    # sum = 1+2+...+30 = 465
+    let rt = (right_chain 30)
+    do (io::println (sum_tree rt))    # 465
+    do (io::println (min_tree rt))    # 1
+
+    # Left-skewed
+    let lt = (left_chain 20)
+    do (io::println (sum_tree lt))    # 210
+    do (io::println (min_tree lt))    # 1
+    return 0i32
+end

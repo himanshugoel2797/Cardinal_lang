@@ -1,0 +1,13 @@
+module adv11
+# ADVERSARIAL: comparing two different enum types with ==
+enum A
+    X
+    Y
+end
+enum B
+    X
+    Y
+end
+func f () -> bool
+    return (== A::X B::X)
+end

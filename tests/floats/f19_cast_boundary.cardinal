@@ -1,0 +1,32 @@
+module f19_cast_boundary
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func main () -> i32
+    # i32 max and min to f32 (precision loss — both are beyond 2^24)
+    let i32max = 2147483647i32
+    let i32min = (- 2147483648i32)
+    do (io::println (as i32max f32))
+    do (io::println (as i32min f32))
+
+    # i32 max to f64 (exact — within 2^53)
+    do (io::println (as i32max f64))
+    do (io::println (as i32min f64))
+
+    # Large i64 to f64 (precision loss — above 2^53)
+    let big = 9007199254740993i64
+    do (io::println (as big f64))
+
+    # f64 within range to i64
+    do (io::println (as (p64 1000000.0) i64))
+    do (io::println (as (- (p64 1000000.0)) i64))
+
+    # f32 to i32
+    do (io::println (as 256.5f32 i32))
+
+    return 0i32
+end

@@ -1,0 +1,59 @@
+module t16_transform_variant
+
+import io
+
+# Match a variant and rebuild a NEW variant from its payload (transform)
+type Tree
+    Leaf
+    Node (value i32) (left Tree) (right Tree)
+end
+
+# Double every node value
+func double_tree (t Tree) -> Tree
+    match t
+        case Leaf
+            return Leaf
+        case (Node v l r)
+            return (Node value: (* v 2) left: (double_tree l) right: (double_tree r))
+    end
+    return Leaf
+end
+
+# Replace values > threshold with 0
+func clamp_tree (t Tree) (threshold i32) -> Tree
+    match t
+        case Leaf
+            return Leaf
+        case (Node v l r)
+            let new_v = v
+            if (> v threshold)
+                set new_v = 0
+            end
+            return (Node value: new_v left: (clamp_tree l threshold) right: (clamp_tree r threshold))
+    end
+    return Leaf
+end
+
+func sum_tree (t Tree) -> i32
+    match t
+        case Leaf
+            return 0
+        case (Node v l r)
+            return (+ v (+ (sum_tree l) (sum_tree r)))
+    end
+    return 0
+end
+
+func main () -> i32
+    let t = (Node value: 5
+                  left: (Node value: 3 left: Leaf right: Leaf)
+                  right: (Node value: 8 left: Leaf right: Leaf))
+
+    do (io::println (sum_tree t))              # 16
+    let dt = (double_tree t)
+    do (io::println (sum_tree dt))             # 32 (doubled)
+
+    let ct = (clamp_tree t 4)
+    do (io::println (sum_tree ct))             # 3  (only 3 survives, 5 and 8 become 0)
+    return 0i32
+end

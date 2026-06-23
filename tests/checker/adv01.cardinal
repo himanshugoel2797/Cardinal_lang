@@ -1,0 +1,6 @@
+module adv01
+# ADVERSARIAL: unsuffixed literal in a return where context is ambiguous
+# The function returns i32 — literal 0 should be inferable. LEGAL.
+func f () -> i32
+    return 0
+end

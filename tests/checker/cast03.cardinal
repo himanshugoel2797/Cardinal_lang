@@ -1,0 +1,6 @@
+module cast03
+# LEGAL: int to float cast
+func f () -> f64
+    let x = 42i32
+    return (as x f64)
+end

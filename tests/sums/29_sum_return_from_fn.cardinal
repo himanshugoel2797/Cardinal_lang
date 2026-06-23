@@ -1,0 +1,62 @@
+module t29_sum_return_from_fn
+
+import io
+
+# Sum values passed to fn, returned from fn, used in complex chains
+type Result
+    Ok (value i32)
+    Err (code i32) (msg str)
+end
+
+func safe_sqrt (x i32) -> Result
+    if (< x 0)
+        return (Err code: 1 msg: "negative")
+    end
+    # Newton's approximation: for small values, just use crude integer sqrt
+    if (== x 0)
+        return (Ok value: 0)
+    end
+    let guess = 1i32
+    let g2 = 0i32
+    while (< guess x)
+        set g2 = (* guess guess)
+        if (>= g2 x)
+            return (Ok value: guess)
+        end
+        set guess = (+ guess 1)
+    end
+    return (Ok value: guess)
+end
+
+func chain_sqrt (x i32) -> Result
+    let r = (safe_sqrt x)
+    match r
+        case (Ok v)
+            return (safe_sqrt v)
+        case (Err code msg)
+            return r
+    end
+    return (Err code: 99 msg: "unreachable")
+end
+
+func result_value (r Result) -> i32
+    match r
+        case (Ok v)
+            return v
+        case (Err code msg)
+            return (- 0i32 code)
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (result_value (safe_sqrt 0)))     # 0
+    do (io::println (result_value (safe_sqrt 4)))     # 2
+    do (io::println (result_value (safe_sqrt 9)))     # 3
+    do (io::println (result_value (safe_sqrt 16)))    # 4
+    do (io::println (result_value (safe_sqrt (- 0i32 1i32))))   # -1 (error code 1)
+
+    # Chain: sqrt(sqrt(16)) = sqrt(4) = 2
+    do (io::println (result_value (chain_sqrt 16)))   # 2
+    return 0i32
+end

@@ -1,0 +1,81 @@
+module t28_nested_sum
+
+import io
+import strings
+
+# Nested sum types: a sum that contains another sum as payload
+type Inner
+    A (x i32)
+    B (y i32)
+    C
+end
+
+type Outer
+    Wrap (inner Inner) (label str)
+    Direct (value i32)
+    Empty
+end
+
+func process_inner (i Inner) -> i32
+    match i
+        case (A x)
+            return x
+        case (B y)
+            return (* y 2)
+        case C
+            return (- 0i32 1i32)
+    end
+    return 0
+end
+
+func process_outer (o Outer) -> i32
+    match o
+        case (Wrap inner lbl)
+            return (process_inner inner)
+        case (Direct v)
+            return v
+        case Empty
+            return 0
+    end
+    return 0
+end
+
+func outer_to_str (o Outer) -> str
+    match o
+        case (Wrap inner lbl)
+            match inner
+                case (A x)
+                    return (strings::concat lbl (strings::concat ":A=" (to_str x)))
+                case (B y)
+                    return (strings::concat lbl (strings::concat ":B=" (to_str y)))
+                case C
+                    return (strings::concat lbl ":C")
+            end
+        case (Direct v)
+            return (strings::concat "direct=" (to_str v))
+        case Empty
+            return "empty"
+    end
+    return ""
+end
+
+func main () -> i32
+    let o1 = (Wrap inner: (A x: 10) label: "w1")
+    let o2 = (Wrap inner: (B y: 7) label: "w2")
+    let o3 = (Wrap inner: C label: "w3")
+    let o4 = (Direct value: 99)
+    let o5 = Empty
+
+    do (io::println (process_outer o1))   # 10
+    do (io::println (process_outer o2))   # 14
+    do (io::println (process_outer o3))   # -1
+    do (io::println (process_outer o4))   # 99
+    do (io::println (process_outer o5))   # 0
+
+    do (io::println (outer_to_str o1))    # w1:A=10
+    do (io::println (outer_to_str o2))    # w2:B=7
+    do (io::println (outer_to_str o3))    # w3:C
+    do (io::println (outer_to_str o4))    # direct=99
+    do (io::println (outer_to_str o5))    # empty
+    return 0i32
+end

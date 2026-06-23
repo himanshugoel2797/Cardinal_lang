@@ -1,0 +1,7 @@
+module imm01
+# ILLEGAL: set on a const binding
+func f () -> i32
+    const x = 5i32
+    set x = 6i32
+    return x
+end

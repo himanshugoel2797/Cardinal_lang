@@ -1,0 +1,44 @@
+module c10_counter_closure
+
+import io
+
+# Two closures sharing ONE captured cell (capture-by-reference)
+func make_pair () -> func(-> i32)
+    let count = 0i32
+    let inc = func () -> i32
+        set count = (+ count 1)
+        return count
+    end
+    let dec = func () -> i32
+        set count = (- count 1)
+        return count
+    end
+    # Call both through the inc closure and return it
+    # But we want to verify shared state — use inc and observe dec
+    do (io::println (inc))   # 1
+    do (io::println (inc))   # 2
+    do (io::println (dec))   # 1 (dec sees inc's mutations)
+    return inc
+end
+
+# Counter that escapes its defining function
+func make_counter () -> func(-> i32)
+    let n = 0i32
+    return func () -> i32
+        set n = (+ n 1)
+        return n
+    end
+end
+
+func main () -> i32
+    let inc = (make_pair)  # prints 1, 2, 1
+    do (io::println (inc))  # 2 (inc resumes from 1+1)
+    do (io::println (inc))  # 3
+
+    let c = (make_counter)
+    do (io::println (c))    # 1
+    do (io::println (c))    # 2
+    do (io::println (c))    # 3
+
+    return 0i32
+end

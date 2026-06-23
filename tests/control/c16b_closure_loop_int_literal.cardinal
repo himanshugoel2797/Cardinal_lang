@@ -1,0 +1,22 @@
+module c16b_closure_loop_int_literal
+
+import io
+
+# Minimal repro for BUG: interpreter fails to infer type of a literal
+# in a closure body when the literal is part of an arithmetic expression
+# involving the loop variable (i32). C and x86 succeed.
+
+func main () -> i32
+    let fns = (vec func(-> i32))
+    for i = 0 to 3
+        let start = (* i 10)   # 10 should be inferred as i32 from context
+        let f = func () -> i32
+            return start
+        end
+        do (push fns f)
+    end
+    for i = 0 to 3
+        do (io::println (fns[i]))  # 0, 10, 20
+    end
+    return 0i32
+end

@@ -1,0 +1,10 @@
+module adv45
+# ADVERSARIAL: let binding with type annotation vs inferred type from complex RHS
+# Annotation says i32 but the computation produces i64 due to cast
+func g () -> i64
+    return 1i64
+end
+func f () -> i32
+    let x i32 = (g)
+    return x
+end

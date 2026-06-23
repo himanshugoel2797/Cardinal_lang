@@ -1,0 +1,27 @@
+module f04_large_small_magnitudes
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func main () -> i32
+    # Very large magnitudes — %g switches to scientific notation after 1e6
+    do (io::println (p64 1.0e15))
+    do (io::println (p64 1.0e16))
+    do (io::println (p64 1.0e100))
+
+    # Very small magnitudes
+    do (io::println (p64 1.0e-5))
+    do (io::println (p64 1.0e-10))
+    do (io::println (p64 1.0e-100))
+
+    # Boundary around %g switch point (6 significant digits)
+    do (io::println (p64 123456.0))
+    do (io::println (p64 1234567.0))
+    do (io::println (p64 0.0001))
+    do (io::println (p64 0.00001))
+
+    return 0i32
+end

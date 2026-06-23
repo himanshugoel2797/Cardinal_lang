@@ -1,0 +1,35 @@
+module f23_mixed_cast_chain
+
+import io
+
+func main () -> i32
+    # Chain: i32 -> f32 -> f64 -> i64 -> f64
+    let a = 12345i32
+    let b = (as a f32)
+    let c = (as b f64)
+    let d = (as c i64)
+    let e = (as d f64)
+    do (io::println b)
+    do (io::println c)
+    do (io::println d)
+    do (io::println e)
+
+    # Chain: f64 -> i32 -> f64
+    let p = (as 9i32 f64)
+    let q = (+ p (as 0i32 f64))
+    let r = (as (+ q (as 90i32 f64)) f64)
+    let s = (as (as r i32) f64)
+    do (io::println q)
+    do (io::println s)
+
+    # u8 -> f64
+    do (io::println (as 255u8 f64))
+
+    # i8 -> f32 (signed)
+    do (io::println (as (- 128i8) f32))
+
+    # u32 -> f32 (large, loses bits)
+    do (io::println (as 4294967295u32 f32))
+
+    return 0i32
+end

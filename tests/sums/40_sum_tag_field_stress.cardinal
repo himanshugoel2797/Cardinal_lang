@@ -1,0 +1,64 @@
+module t40_sum_tag_field_stress
+
+import io
+import strings
+
+# Stress test: a user field named `tag` in multiple variants
+# HANDOFF: discriminant was renamed cl_tag so user `tag` field must work
+# Here: all three variants have a `tag` payload field of different types
+type Multi
+    Alpha (tag i32) (data i32)
+    Beta (tag str) (flag bool)
+    Gamma (tag i32) (x i32) (y i32)
+    Delta
+end
+
+func describe (m Multi) -> str
+    match m
+        case (Alpha t d)
+            return (strings::concat "alpha:tag=" (strings::concat (to_str t) (strings::concat ",data=" (to_str d))))
+        case (Beta t f)
+            if f
+                return (strings::concat "beta:tag=" (strings::concat t ",yes"))
+            else
+                return (strings::concat "beta:tag=" (strings::concat t ",no"))
+            end
+        case (Gamma t x y)
+            return (strings::concat "gamma:tag=" (strings::concat (to_str t) (strings::concat ",x=" (strings::concat (to_str x) (strings::concat ",y=" (to_str y))))))
+        case Delta
+            return "delta"
+    end
+    return ""
+end
+
+func tag_sum (m Multi) -> i32
+    match m
+        case (Alpha t d)
+            return (+ t d)
+        case (Beta t f)
+            return (as (len t) i32)
+        case (Gamma t x y)
+            return (+ t (+ x y))
+        case Delta
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    let a = (Alpha tag: 7 data: 3)
+    let b = (Beta tag: "hello" flag: true)
+    let g = (Gamma tag: 1 x: 10 y: 20)
+    let d = Delta
+
+    do (io::println (describe a))   # alpha:tag=7,data=3
+    do (io::println (describe b))   # beta:tag=hello,yes
+    do (io::println (describe g))   # gamma:tag=1,x=10,y=20
+    do (io::println (describe d))   # delta
+
+    do (io::println (tag_sum a))    # 10
+    do (io::println (tag_sum b))    # 5
+    do (io::println (tag_sum g))    # 31
+    do (io::println (tag_sum d))    # 0
+    return 0i32
+end

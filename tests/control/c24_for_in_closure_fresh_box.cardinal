@@ -1,0 +1,53 @@
+module c24_for_in_closure_fresh_box
+
+import io
+
+# The KEY adversarial test:
+# Build a vec of closures inside a for loop where each captures the loop var.
+# Each closure MUST return its own iteration value (fresh box per iteration).
+# All 3 paths MUST agree: if any path shares the box, all closures return the same final value.
+
+func main () -> i32
+    let size = 8i32
+    let fns = (vec func(-> i32))
+    for i = 0 to size
+        let f = func () -> i32
+            return i
+        end
+        do (push fns f)
+    end
+
+    # Verify each closure returns its own i
+    let ok = true
+    for i = 0 to size
+        let got = (fns[i])
+        if (!= got i)
+            set ok = false
+        end
+        do (io::println got)
+    end
+    do (io::println ok)  # true if all agree
+
+    # Mutating variant: each closure also increments the captured var
+    # After calling, the captured var in each box becomes i+1 (only for that box)
+    let gs = (vec func(-> i32))
+    for i = 0 to 4
+        let g = func () -> i32
+            set i = (+ i 1)
+            return i
+        end
+        do (push gs g)
+    end
+
+    # First call: each returns i+1 = 1, 2, 3, 4
+    for i = 0 to 4
+        do (io::println (gs[i]))
+    end
+
+    # Second call: each returns i+2 = 2, 3, 4, 5
+    for i = 0 to 4
+        do (io::println (gs[i]))
+    end
+
+    return 0i32
+end

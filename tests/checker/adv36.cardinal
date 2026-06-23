@@ -1,0 +1,14 @@
+module adv36
+# ADVERSARIAL: to_str_override with wrong signature type
+# A function named P_to_str but with wrong signature (returns i32 instead of str)
+# DESIGN §5.6: "Wrong-signature hook = error"
+struct P
+    x i32
+end
+func P_to_str (p P) -> i32
+    return p.x
+end
+func f () -> i32
+    let p = (P x: 5)
+    return P_to_str(p)
+end

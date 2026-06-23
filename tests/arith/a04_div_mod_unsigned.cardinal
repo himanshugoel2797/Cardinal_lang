@@ -1,0 +1,31 @@
+module a04_div_mod_unsigned
+
+import io
+
+func main () -> i32
+    # u32 division
+    do (io::println (/ 4294967295u32 2u32))
+
+    # u32 modulo
+    do (io::println (% 4294967295u32 3u32))
+
+    # u64 division of large value
+    do (io::println (/ 18446744073709551615u64 3u64))
+
+    # u64 modulo
+    do (io::println (% 18446744073709551615u64 7u64))
+
+    # u8 division
+    do (io::println (/ 255u8 7u8))
+
+    # u8 modulo
+    do (io::println (% 255u8 7u8))
+
+    # u16 division
+    do (io::println (/ 65535u16 256u16))
+
+    # u16 modulo
+    do (io::println (% 65535u16 256u16))
+
+    return 0i32
+end

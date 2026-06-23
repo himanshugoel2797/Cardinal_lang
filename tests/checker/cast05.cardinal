@@ -1,0 +1,6 @@
+module cast05
+# ILLEGAL: cast str to int
+func f () -> i32
+    let s = "hello"
+    return (as s i32)
+end

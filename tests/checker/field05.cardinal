@@ -1,0 +1,6 @@
+module field05
+# ILLEGAL: constructing an unknown struct type
+func f () -> i32
+    let p = (Nonexistent x: 1 y: 2)
+    return 0i32
+end

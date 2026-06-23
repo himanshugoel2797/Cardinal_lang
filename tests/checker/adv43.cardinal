@@ -1,0 +1,10 @@
+module adv43
+# ADVERSARIAL: set on const via nested struct field
+struct P
+    x i32
+end
+func f () -> i32
+    const p = (P x: 1)
+    set p.x = 99i32
+    return p.x
+end

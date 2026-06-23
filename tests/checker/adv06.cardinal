@@ -1,0 +1,11 @@
+module adv06
+# ADVERSARIAL: two functions with same name (duplicate definition)
+func g () -> i32
+    return 1i32
+end
+func g () -> i32
+    return 2i32
+end
+func f () -> i32
+    return (g)
+end

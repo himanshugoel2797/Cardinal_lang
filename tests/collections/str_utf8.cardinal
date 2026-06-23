@@ -1,0 +1,42 @@
+module str_utf8
+
+import io
+import strings
+
+# Test multi-byte UTF-8: len must be codepoint count, substr must slice on codepoints
+func main () -> i32
+    # 2-byte codepoints: é = U+00E9 (2 bytes), so "héllo" = 5 codepoints, 6 bytes
+    let s1 = "héllo"
+    let cs1 = (strings::chars s1)
+    do (io::println (len cs1))                    # 5 (codepoints, not bytes)
+    do (io::println (strings::substr s1 0 1))     # h
+    do (io::println (strings::substr s1 1 1))     # é
+    do (io::println (strings::substr s1 0 2))     # hé
+    do (io::println (strings::substr s1 1 4))     # éllo
+
+    # CJK: "日本語" = 3 codepoints, 9 bytes
+    let s2 = "日本語"
+    let cs2 = (strings::chars s2)
+    do (io::println (len cs2))                    # 3
+    do (io::println (strings::substr s2 0 1))     # 日
+    do (io::println (strings::substr s2 1 1))     # 本
+    do (io::println (strings::substr s2 2 1))     # 語
+    do (io::println (strings::substr s2 0 3))     # 日本語
+
+    # Emoji: "a😀b" = 3 codepoints (😀 = U+1F600 = 4 bytes)
+    let s3 = "a😀b"
+    let cs3 = (strings::chars s3)
+    do (io::println (len cs3))                    # 3
+    do (io::println (strings::substr s3 0 1))     # a
+    do (io::println (strings::substr s3 1 1))     # 😀
+    do (io::println (strings::substr s3 2 1))     # b
+    do (io::println (strings::substr s3 0 3))     # a😀b
+
+    # Mixed: "h日é" = 3 codepoints
+    let s4 = "h日é"
+    let cs4 = (strings::chars s4)
+    do (io::println (len cs4))                    # 3
+    do (io::println (strings::substr s4 1 2))     # 日é
+
+    return 0i32
+end

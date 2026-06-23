@@ -1,0 +1,29 @@
+module ag30_array_i32_i64_struct
+
+import io
+
+# struct {i32, i64} — size depends on alignment: 4 + 4pad + 8 = 16 bytes (multiple of 8)
+# This one SHOULD work. Verify correct field values are preserved.
+struct Aligned
+    small i32
+    big i64
+end
+
+func main () -> i32
+    let arr = [(Aligned small: 1i32 big: 100i64) (Aligned small: 2i32 big: 200i64)]
+
+    do (io::println arr[0].small)  # 1
+    do (io::println arr[0].big)    # 100
+    do (io::println arr[1].small)  # 2
+    do (io::println arr[1].big)    # 200
+
+    set arr[0].small = 99i32
+    do (io::println arr[0].small)  # 99
+    do (io::println arr[0].big)    # 100 (unchanged)
+
+    set arr[1] = (Aligned small: 7i32 big: 777i64)
+    do (io::println arr[1].small)  # 7
+    do (io::println arr[1].big)    # 777
+
+    return 0i32
+end

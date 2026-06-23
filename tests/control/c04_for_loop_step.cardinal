@@ -1,0 +1,38 @@
+module c04_for_loop_step
+
+import io
+
+func main () -> i32
+    # Normal for loop
+    for i = 0 to 5
+        do (io::println i)
+    end
+
+    # Step > 1: 0, 2, 4 (half-open: does it include 6? No, stops at 4)
+    for i = 0 to 6 step 2
+        do (io::println i)
+    end
+
+    # Step that overshoots: 0, 3 (next would be 6 which is >= 5, so stops)
+    for i = 0 to 5 step 3
+        do (io::println i)
+    end
+
+    # Step 5, range 0..10: prints 0, 5
+    for i = 0 to 10 step 5
+        do (io::println i)
+    end
+
+    # Empty range: lo == hi → no iterations
+    for i = 5 to 5
+        do (io::println i)
+    end
+
+    # Empty range: lo > hi → no iterations
+    for i = 10 to 5
+        do (io::println i)
+    end
+
+    do (io::println "done")
+    return 0i32
+end

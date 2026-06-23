@@ -1,0 +1,27 @@
+module f06_int_to_float_cast
+
+import io
+
+func main () -> i32
+    # i32 -> f64
+    do (io::println (as 256i32 f64))
+    do (io::println (as (- 256i32) f64))
+
+    # Large i32 -> f32 (precision loss: 16777217 loses last bit)
+    do (io::println (as 16777217i32 f32))
+
+    # u32 -> f64
+    do (io::println (as 3000000000u32 f64))
+
+    # Large i64 -> f64 (precision loss above 2^53)
+    do (io::println (as 9007199254740993i64 f64))
+
+    # i32 -> f32 exact
+    do (io::println (as 1024i32 f32))
+    do (io::println (as (- 1024i32) f32))
+
+    # i64 -> f32 (large)
+    do (io::println (as 1000000000i64 f32))
+
+    return 0i32
+end

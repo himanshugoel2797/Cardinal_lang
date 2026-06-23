@@ -1,0 +1,36 @@
+module t18_sum_to_str
+
+import io
+
+# Sum to_str (autogen) - test that to_str works on sum types
+# and nested sum to_str
+type Color
+    Red
+    Green (shade i32)
+    Blue
+end
+
+type Shape
+    Circle (r i32) (fill Color)
+    Square (side i32)
+end
+
+func main () -> i32
+    let c1 = Red
+    let c2 = (Green shade: 128)
+    let c3 = Blue
+
+    # to_str on nullary variant
+    do (io::println (to_str c1))   # Red
+    do (io::println (to_str c3))   # Blue
+
+    # to_str on payload variant
+    do (io::println (to_str c2))   # Green(128) or similar autogen
+
+    # to_str on nested sum
+    let s1 = (Circle r: 5 fill: Red)
+    let s2 = (Square side: 10)
+    do (io::println (to_str s2))   # Square(10) or similar
+
+    return 0i32
+end

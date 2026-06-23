@@ -1,0 +1,47 @@
+module t09_sum_in_vec
+
+import io
+
+# Sum values stored in a vec; iterate + match
+type Token
+    Num (value i32)
+    Plus
+    Minus
+    Star
+end
+
+func token_str (t Token) -> i32
+    match t
+        case (Num v)
+            do (io::println v)
+            return 1
+        case Plus
+            do (io::println 10)
+            return 0
+        case Minus
+            do (io::println 20)
+            return 0
+        case Star
+            do (io::println 30)
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    let tokens {Token} = (vec Token)
+    do (push tokens (Num value: 5))
+    do (push tokens Plus)
+    do (push tokens (Num value: 3))
+    do (push tokens Star)
+    do (push tokens (Num value: 2))
+    do (push tokens Minus)
+
+    for t in tokens
+        do (token_str t)
+    end
+    # 5, 10, 3, 30, 2, 20
+
+    do (io::println (len tokens))   # 6
+    return 0i32
+end

@@ -1,0 +1,10 @@
+module vec_pop_empty_panic
+
+import io
+
+# pop on empty vector should panic
+func main () -> i32
+    let v {i32} = (vec i32)
+    do (io::println (pop v))
+    return 0i32
+end

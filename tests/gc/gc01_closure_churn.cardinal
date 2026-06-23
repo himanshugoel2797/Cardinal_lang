@@ -1,0 +1,25 @@
+module gc01_closure_churn
+
+import io
+
+# Each call allocates a fresh closure + captured cell.  Previous closures become
+# garbage on the next iteration.  GC at threshold-0 must NOT collect the live
+# closure still held in `c`.  Expected checksum: 200000 (each closure returns 1).
+func make_counter () -> func(-> i32)
+    let n = 0i32
+    let f = func () -> i32
+        set n = (+ n 1)
+        return n
+    end
+    return f
+end
+
+func main () -> i32
+    let total = 0i32
+    for i = 0 to 200000
+        let c = (make_counter)
+        set total = (+ total (c))
+    end
+    do (io::println total)
+    return 0i32
+end

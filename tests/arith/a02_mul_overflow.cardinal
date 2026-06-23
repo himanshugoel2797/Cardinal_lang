@@ -1,0 +1,32 @@
+module a02_mul_overflow
+
+import io
+
+func main () -> i32
+    # i8 multiply overflow: 64 * 2 = 128 wraps to -128
+    do (io::println (* 64i8 2i8))
+
+    # i8: -1 * -128 = 128 wraps to -128 (INT8_MIN * -1 = INT8_MIN)
+    let i8min = (- 128i8)
+    do (io::println (* i8min (- 1i8)))
+
+    # u8: 200 * 2 = 400 wraps to 144
+    do (io::println (* 200u8 2u8))
+
+    # i16: 200 * 200 = 40000 wraps to -25536
+    do (io::println (* 200i16 200i16))
+
+    # i32: large multiply that overflows
+    do (io::println (* 2000000000i32 2i32))
+
+    # u32: large multiply overflow
+    do (io::println (* 3000000000u32 2u32))
+
+    # i64: large multiply overflow
+    do (io::println (* 9000000000000000000i64 2i64))
+
+    # u64: large multiply overflow
+    do (io::println (* 10000000000000000000u64 2u64))
+
+    return 0i32
+end

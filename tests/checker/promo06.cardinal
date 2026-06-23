@@ -1,0 +1,7 @@
+module promo06
+# ILLEGAL: mixing u8 and i32 in addition
+func f () -> i32
+    let a = 1u8
+    let b = 2i32
+    return (+ a b)
+end

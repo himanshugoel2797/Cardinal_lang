@@ -1,0 +1,39 @@
+module gc10_map_of_closures
+
+import io
+import strings
+
+# Map from str -> closure.  Tests GC rooting of closures stored as map values.
+# After heavy allocation pressure we look up and invoke stored closures.
+# Expected: 0+1+2+...+199 = 19900
+
+func make_fn (v i32) -> func(-> i32)
+    return func () -> i32
+        return v
+    end
+end
+
+func pressure () -> unit
+    for k = 0 to 20000
+        let s {str} = (vec str)
+        do (push s "hello")
+        do (push s "world")
+    end
+end
+
+func main () -> i32
+    let m {str func(-> i32)} = (map str func(-> i32))
+    for i = 0 to 200
+        let key = (strings::concat "k" (to_str i))
+        set m[key] = (make_fn i)
+    end
+    do (pressure)
+    let total = 0i32
+    for i = 0 to 200
+        let key = (strings::concat "k" (to_str i))
+        let f = m[key]
+        set total = (+ total (f))
+    end
+    do (io::println total)
+    return 0i32
+end

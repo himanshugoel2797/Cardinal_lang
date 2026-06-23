@@ -1,0 +1,45 @@
+module t17_deep_recursion
+
+import io
+
+# Deeply recursive sum type (linked list, depth 50)
+# Tests recursion depth handling
+type List
+    Nil
+    Cons (head i32) (tail List)
+end
+
+func build_list (n i32) -> List
+    if (<= n 0)
+        return Nil
+    end
+    return (Cons head: n tail: (build_list (- n 1)))
+end
+
+func list_sum (xs List) -> i32
+    match xs
+        case Nil
+            return 0
+        case (Cons h t)
+            return (+ h (list_sum t))
+    end
+    return 0
+end
+
+func list_len (xs List) -> i32
+    match xs
+        case Nil
+            return 0
+        case (Cons h t)
+            return (+ 1 (list_len t))
+    end
+    return 0
+end
+
+func main () -> i32
+    # Build a list 1..50, sum = 50*51/2 = 1275
+    let xs = (build_list 50)
+    do (io::println (list_len xs))    # 50
+    do (io::println (list_sum xs))    # 1275
+    return 0i32
+end

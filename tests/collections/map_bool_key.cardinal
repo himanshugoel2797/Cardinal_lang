@@ -1,0 +1,23 @@
+module map_bool_key
+
+import io
+
+# Map with bool keys (only 2 possible keys)
+func main () -> i32
+    let m {bool str} = (map bool str)
+    set m[true] = "yes"
+    set m[false] = "no"
+    do (io::println (len m))           # 2
+    do (io::println m[true])           # yes
+    do (io::println m[false])          # no
+
+    set m[true] = "TRUE"
+    do (io::println m[true])           # TRUE
+    do (io::println (len m))           # 2 (still 2 keys)
+
+    do (map_del m false)
+    do (io::println (len m))           # 1
+    do (io::println (map_has m false)) # false
+
+    return 0i32
+end

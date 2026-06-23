@@ -1,0 +1,6 @@
+module adv22
+# ADVERSARIAL: indexing a non-array/vec/map type
+func f () -> i32
+    let x = 5i32
+    return x[0]
+end

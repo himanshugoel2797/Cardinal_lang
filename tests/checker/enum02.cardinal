@@ -1,0 +1,13 @@
+module enum02
+# ILLEGAL: using a sum variant where an enum variant is expected
+type Shape
+    Circle
+    Square
+end
+enum Color
+    Red
+    Green
+end
+func f () -> Color
+    return Circle
+end

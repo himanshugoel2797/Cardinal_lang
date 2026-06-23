@@ -1,0 +1,32 @@
+module str_mapkey
+
+import io
+import strings
+
+# Test str as map key: content-keyed (two equal-content strings map to same slot)
+func main () -> i32
+    let m {str i32} = (map str i32)
+
+    # Two equal-content string values as keys
+    let k1 = "hello"
+    let k2 = (strings::concat "hel" "lo")    # built string, same content as k1
+    set m[k1] = 42
+    # overwrite via content-equal key
+    set m[k2] = 99
+    do (io::println (len m))                 # 1 (same slot)
+    do (io::println m["hello"])              # 99
+
+    # Different keys
+    set m["world"] = 10
+    do (io::println (len m))                 # 2
+
+    # UTF-8 string key
+    let m2 {str i32} = (map str i32)
+    set m2["日本"] = 1
+    set m2["語"] = 2
+    do (io::println (len m2))               # 2
+    do (io::println m2["日本"])             # 1
+    do (io::println m2["語"])               # 2
+
+    return 0i32
+end

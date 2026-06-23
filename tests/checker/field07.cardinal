@@ -1,0 +1,10 @@
+module field07
+# LEGAL: correct struct construction and field access
+struct P
+    x i32
+    y i32
+end
+func f () -> i32
+    let p = (P x: 10 y: 20)
+    return p.x
+end

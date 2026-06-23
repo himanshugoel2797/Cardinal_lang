@@ -1,0 +1,33 @@
+module map_many_entries
+
+import io
+import convert
+
+# Map with many entries to stress hash collisions / resizing
+func main () -> i32
+    let m {i32 i32} = (map i32 i32)
+    let i = 0i32
+    while (< i 50)
+        set m[i] = (* i i)
+        set i = (+ i 1)
+    end
+    do (io::println (len m))       # 50
+    do (io::println m[0])          # 0
+    do (io::println m[7])          # 49
+    do (io::println m[49])         # 2401
+
+    # Delete even entries
+    let j = 0i32
+    while (< j 50)
+        do (map_del m j)
+        set j = (+ j 2)
+    end
+    do (io::println (len m))       # 25
+
+    # Odd entries still present
+    do (io::println m[1])          # 1
+    do (io::println m[49])         # should panic (49 is odd, still present? 49 is odd, yes)
+    # 49 is odd, so NOT deleted, m[49] = 49*49 = 2401
+
+    return 0i32
+end

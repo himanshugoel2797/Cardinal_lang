@@ -1,0 +1,36 @@
+module a13_chained_arith
+
+import io
+
+func main () -> i32
+    # Chained ops on i32
+    do (io::println (+ (* 3i32 4i32) (- 10i32 7i32)))
+
+    # Cast then operate
+    let a = (as 200u8 i32)
+    let b = (as (- 56i8) i32)
+    do (io::println (+ a b))
+
+    # Nested shifts and bitwise
+    do (io::println (band (shl 1i32 8i32) 0xFFi32))
+
+    # Mixed: compute via cast chain
+    let x = (as (as 257i32 u8) i32)
+    do (io::println x)
+
+    # Overflow chain: each step wraps
+    let v1 = (+ 2147483647i32 1i32)
+    let v2 = (+ v1 1i32)
+    do (io::println v2)
+
+    # Division result used in further arithmetic
+    do (io::println (* (/ 100i32 7i32) 7i32))
+
+    # Modulo in expression
+    do (io::println (+ (% 17i32 5i32) (% 23i32 5i32)))
+
+    # Bitwise xor chain
+    do (io::println (bxor (bxor 0xABCDi32 0x1234i32) 0x1234i32))
+
+    return 0i32
+end

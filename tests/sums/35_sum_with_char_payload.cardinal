@@ -1,0 +1,54 @@
+module t35_sum_with_char_payload
+
+import io
+
+# Sum type with char payload (unusual type for payload)
+type Lexeme
+    Letter (ch char)
+    Digit (ch char) (val i32)
+    Space
+    Other (ch char)
+end
+
+func lex_char (c char) -> Lexeme
+    if (== c 'a')
+        return (Letter ch: 'a')
+    end
+    if (== c 'b')
+        return (Letter ch: 'b')
+    end
+    if (== c '0')
+        return (Digit ch: '0' val: 0)
+    end
+    if (== c '1')
+        return (Digit ch: '1' val: 1)
+    end
+    if (== c ' ')
+        return Space
+    end
+    return (Other ch: c)
+end
+
+func lexeme_val (l Lexeme) -> i32
+    match l
+        case (Letter ch)
+            return 1
+        case (Digit ch v)
+            return v
+        case Space
+            return 0
+        case (Other ch)
+            return (- 0i32 1i32)
+    end
+    return 0
+end
+
+func main () -> i32
+    do (io::println (lexeme_val (lex_char 'a')))    # 1
+    do (io::println (lexeme_val (lex_char 'b')))    # 1
+    do (io::println (lexeme_val (lex_char '0')))    # 0
+    do (io::println (lexeme_val (lex_char '1')))    # 1
+    do (io::println (lexeme_val (lex_char ' ')))    # 0
+    do (io::println (lexeme_val (lex_char 'z')))    # -1
+    return 0i32
+end

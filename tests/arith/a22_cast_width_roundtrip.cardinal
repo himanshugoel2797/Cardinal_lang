@@ -1,0 +1,31 @@
+module a22_cast_width_roundtrip
+
+import io
+
+func main () -> i32
+    # Roundtrip i8 -> i16 -> i8 (sign-extension then truncation)
+    do (io::println (as (as (- 100i8) i16) i8))
+
+    # Roundtrip u8 -> u32 -> u8
+    do (io::println (as (as 200u8 u32) u8))
+
+    # u8 -> i8 -> i32: 200u8 -> -56i8 -> -56i32
+    do (io::println (as (as 200u8 i8) i32))
+
+    # i32 -> u16 -> i32: -1i32 -> 65535u16 -> 65535i32
+    do (io::println (as (as (- 1i32) u16) i32))
+
+    # i32 -> u8 -> u32: -1i32 -> 255u8 -> 255u32
+    do (io::println (as (as (- 1i32) u8) u32))
+
+    # i64 -> i32 -> i64: sign-extension of truncated value
+    do (io::println (as (as 4294967297i64 i32) i64))
+
+    # u64 -> u32 -> u64: zero-extension of truncated value
+    do (io::println (as (as 4294967297u64 u32) u64))
+
+    # i32 -> u64 (via sign extension path): -1i32 -> i64 -> u64
+    do (io::println (as (as (- 1i32) i64) u64))
+
+    return 0i32
+end

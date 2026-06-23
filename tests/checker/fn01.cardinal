@@ -1,0 +1,8 @@
+module fn01
+# ILLEGAL: wrong arg count — too many
+func g (a i32) -> i32
+    return a
+end
+func f () -> i32
+    return (g 1 2)
+end

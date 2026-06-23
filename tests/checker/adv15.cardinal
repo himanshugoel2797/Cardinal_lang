@@ -1,0 +1,5 @@
+module adv15
+# ADVERSARIAL: arithmetic on bool (should be illegal)
+func f () -> bool
+    return (+ true false)
+end

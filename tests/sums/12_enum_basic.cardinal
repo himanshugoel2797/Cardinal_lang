@@ -1,0 +1,61 @@
+module t12_enum_basic
+
+import io
+
+# Enums: equality, in if, passed/returned/stored, to_str
+enum Direction
+    North
+    South
+    East
+    West
+end
+
+func opposite (d Direction) -> Direction
+    if (== d Direction::North)
+        return Direction::South
+    end
+    if (== d Direction::South)
+        return Direction::North
+    end
+    if (== d Direction::East)
+        return Direction::West
+    end
+    return Direction::East
+end
+
+func dir_value (d Direction) -> i32
+    if (== d Direction::North)
+        return 0
+    end
+    if (== d Direction::South)
+        return 1
+    end
+    if (== d Direction::East)
+        return 2
+    end
+    return 3
+end
+
+func main () -> i32
+    let d = Direction::North
+    do (io::println (== d Direction::North))   # true
+    do (io::println (== d Direction::South))   # false
+
+    let opp = (opposite d)
+    do (io::println (== opp Direction::South)) # true
+
+    do (io::println (dir_value Direction::North))  # 0
+    do (io::println (dir_value Direction::South))  # 1
+    do (io::println (dir_value Direction::East))   # 2
+    do (io::println (dir_value Direction::West))   # 3
+
+    # Enum in if
+    if (== opp Direction::South)
+        do (io::println "going south")   # going south
+    end
+
+    # to_str of enum
+    do (io::println (to_str Direction::East))   # East
+
+    return 0i32
+end

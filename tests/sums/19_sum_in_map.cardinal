@@ -1,0 +1,41 @@
+module t19_sum_in_map
+
+import io
+import strings
+
+# Sum value stored in a map
+type Status
+    Active (since i32)
+    Inactive
+    Pending (reason str)
+end
+
+func status_str (s Status) -> str
+    match s
+        case (Active since)
+            return (strings::concat "active-since=" (to_str since))
+        case Inactive
+            return "inactive"
+        case (Pending reason)
+            return (strings::concat "pending:" reason)
+    end
+    return ""
+end
+
+func main () -> i32
+    let registry {str Status} = (map str Status)
+    set registry["alice"] = (Active since: 2020)
+    set registry["bob"] = Inactive
+    set registry["carol"] = (Pending reason: "review")
+
+    do (io::println (status_str registry["alice"]))   # active-since=2020
+    do (io::println (status_str registry["bob"]))     # inactive
+    do (io::println (status_str registry["carol"]))   # pending:review
+    do (io::println (len registry))                   # 3
+
+    # Overwrite with different variant
+    set registry["bob"] = (Active since: 2024)
+    do (io::println (status_str registry["bob"]))     # active-since=2024
+
+    return 0i32
+end

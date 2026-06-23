@@ -1,0 +1,9 @@
+module adv09
+# ADVERSARIAL: set on array element via map (map value is an array)
+# set m[k][i] = v where map value is an array — should be OK per DESIGN
+func f () -> unit
+    let m {str [i32]} = (map str [i32])
+    let arr [i32] = [1 2 3]
+    set m["key"] = arr
+    set m["key"][0] = 99i32
+end

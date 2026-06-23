@@ -1,0 +1,36 @@
+module gc09_escaping_closure_vec
+
+import io
+
+# Each iteration produces a closure that captures a per-iteration counter.
+# Push it into a vec, then invoke all closures after heavy allocation pressure.
+# The closures' captured environments must survive.
+# Expected: sum = 0+1+2+...+499 = 124750
+
+func make_fn (v i32) -> func(-> i32)
+    let captured = v
+    return func () -> i32
+        return captured
+    end
+end
+
+func burn_heap () -> unit
+    for k = 0 to 10000
+        let v {i32} = (vec i32)
+        do (push v k)
+    end
+end
+
+func main () -> i32
+    let fns {func(-> i32)} = (vec func(-> i32))
+    for i = 0 to 500
+        do (push fns (make_fn i))
+    end
+    do (burn_heap)
+    let total = 0i32
+    for f in fns
+        set total = (+ total (f))
+    end
+    do (io::println total)
+    return 0i32
+end

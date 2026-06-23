@@ -1,0 +1,6 @@
+module adv21
+# ADVERSARIAL: accessing a field of a non-struct type
+func f () -> i32
+    let x = 5i32
+    return x.field
+end

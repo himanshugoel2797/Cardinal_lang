@@ -1,0 +1,41 @@
+module map_basic
+
+import io
+
+# Basic map: insert, read, overwrite, map_has, map_del, len
+func main () -> i32
+    let m {str i32} = (map str i32)
+
+    # Insert
+    set m["a"] = 1
+    set m["b"] = 2
+    set m["c"] = 3
+    do (io::println (len m))           # 3
+
+    # Read
+    do (io::println m["a"])            # 1
+    do (io::println m["b"])            # 2
+    do (io::println m["c"])            # 3
+
+    # Overwrite
+    set m["b"] = 20
+    do (io::println m["b"])            # 20
+    do (io::println (len m))           # 3 (no new entry)
+
+    # map_has
+    do (io::println (map_has m "a"))   # true
+    do (io::println (map_has m "z"))   # false
+
+    # map_del
+    do (map_del m "b")
+    do (io::println (len m))           # 2
+    do (io::println (map_has m "b"))   # false
+
+    # Remaining keys via map_keys
+    for k in (map_keys m)
+        do (io::println k)
+    end
+    # a c (insertion order, b was deleted)
+
+    return 0i32
+end

@@ -1,0 +1,5 @@
+module adv14
+# ADVERSARIAL: bitwise op on bool (should be illegal — bool is not an int)
+func f () -> bool
+    return (band true false)
+end

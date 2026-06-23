@@ -1,0 +1,11 @@
+module adv07
+# ADVERSARIAL: sum variant constructed with wrong field name
+type Expr
+    Num (value i32)
+    Add (lhs Expr) (rhs Expr)
+end
+func f () -> i32
+    # 'x' is not a valid field of Num — should be 'value'
+    let e = (Num x: 5)
+    return 0i32
+end

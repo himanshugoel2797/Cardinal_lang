@@ -1,0 +1,22 @@
+module ag27_array_struct_nonmul8_fieldset
+
+import io
+
+# Variant: does set arr[i].field also trigger the x86 bug with non-mul-8 struct?
+struct S12
+    a i32
+    b i32
+    c i32
+end
+
+func main () -> i32
+    let arr = [(S12 a: 1i32 b: 2i32 c: 3i32) (S12 a: 4i32 b: 5i32 c: 6i32)]
+
+    # Only set a field, not the whole element
+    set arr[0].a = 99i32
+    do (io::println arr[0].a)  # 99
+    do (io::println arr[0].b)  # 2 (unchanged)
+    do (io::println arr[1].a)  # 4 (unchanged)
+
+    return 0i32
+end

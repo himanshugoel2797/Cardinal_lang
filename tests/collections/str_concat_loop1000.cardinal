@@ -1,0 +1,27 @@
+module str_concat_loop1000
+
+import io
+import strings
+import convert
+
+# Build a string by concatenating 100 numbers; check final length via chars
+func main () -> i32
+    # Build "0 1 2 ... 99" separated by spaces
+    let s = ""
+    let i = 0i64
+    while (< i 100i64)
+        if (> i 0i64)
+            set s = (strings::concat s " ")
+        end
+        set s = (strings::concat s (convert::int_to_str i))
+        set i = (+ i 1i64)
+    end
+    # First and last chars
+    let cs = (strings::chars s)
+    let n = (as (len cs) i32)
+    do (io::println n)                  # 289
+    do (io::println (strings::substr s 0 5))  # "0 1 2"
+    let nm2 = (as (- (as (len cs) i32) 2) u64)
+    do (io::println (strings::substr s nm2 2))  # "99"
+    return 0i32
+end

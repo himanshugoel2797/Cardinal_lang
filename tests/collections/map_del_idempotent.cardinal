@@ -1,0 +1,26 @@
+module map_del_idempotent
+
+import io
+
+# map_del on nonexistent / already-deleted key should be no-op
+func main () -> i32
+    let m {str i32} = (map str i32)
+    set m["a"] = 1
+    set m["b"] = 2
+
+    # Delete existing
+    do (map_del m "a")
+    do (io::println (len m))         # 1
+
+    # Delete already-deleted key (should be no-op, not panic)
+    do (map_del m "a")
+    do (io::println (len m))         # 1
+
+    # Delete nonexistent key (should be no-op, not panic)
+    do (map_del m "zzz")
+    do (io::println (len m))         # 1
+
+    do (io::println m["b"])          # 2
+
+    return 0i32
+end

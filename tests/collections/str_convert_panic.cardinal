@@ -1,0 +1,10 @@
+module str_convert_panic
+
+import io
+import convert
+
+# str_to_int with non-numeric input should panic
+func main () -> i32
+    do (io::println (convert::str_to_int "abc"))
+    return 0i32
+end

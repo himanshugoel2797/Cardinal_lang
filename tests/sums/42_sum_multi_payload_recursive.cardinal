@@ -1,0 +1,88 @@
+module t42_sum_multi_payload_recursive
+
+import io
+import strings
+
+# A recursive sum with multiple payload types mixing scalars and self-reference
+# Also tests match on variable holding the result of another match
+type JSON
+    JNull
+    JBool (b bool)
+    JInt (n i32)
+    JStr (s str)
+    JArr (first JSON) (rest JSON) (is_end bool)
+end
+
+func json_to_str (j JSON) -> str
+    match j
+        case JNull
+            return "null"
+        case (JBool b)
+            if b
+                return "true"
+            else
+                return "false"
+            end
+        case (JInt n)
+            return (to_str n)
+        case (JStr s)
+            return (strings::concat "\"" (strings::concat s "\""))
+        case (JArr first rest is_end)
+            let fstr = (json_to_str first)
+            if is_end
+                return (strings::concat "[" (strings::concat fstr "]"))
+            else
+                return (strings::concat "[" (strings::concat fstr (strings::concat "," (strings::concat (json_to_str rest) "]"))))
+            end
+    end
+    return ""
+end
+
+func json_equal (a JSON) (b JSON) -> bool
+    match a
+        case JNull
+            match b
+                case JNull
+                    return true
+                else
+                    return false
+            end
+        case (JBool ba)
+            match b
+                case (JBool bb)
+                    return (== ba bb)
+                else
+                    return false
+            end
+        case (JInt na)
+            match b
+                case (JInt nb)
+                    return (== na nb)
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+func main () -> i32
+    do (io::println (json_to_str JNull))             # null
+    do (io::println (json_to_str (JBool b: true)))   # true
+    do (io::println (json_to_str (JBool b: false)))  # false
+    do (io::println (json_to_str (JInt n: 42)))      # 42
+    do (io::println (json_to_str (JStr s: "hi")))    # "hi"
+
+    # Array: [1, 2] represented as JArr(1, JArr(2, _, true), false)
+    let arr = (JArr first: (JInt n: 1)
+                    rest: (JArr first: (JInt n: 2) rest: JNull is_end: true)
+                    is_end: false)
+    do (io::println (json_to_str arr))   # [1,[2]] (simplified representation)
+
+    do (io::println (json_equal JNull JNull))          # true
+    do (io::println (json_equal JNull (JInt n: 0)))    # false
+    do (io::println (json_equal (JInt n: 5) (JInt n: 5)))   # true
+    do (io::println (json_equal (JInt n: 5) (JInt n: 6)))   # false
+    return 0i32
+end

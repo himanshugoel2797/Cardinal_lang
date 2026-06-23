@@ -1,0 +1,38 @@
+module ag03_struct_16byte
+
+import io
+
+# 16-byte struct (two i64) — fits in two registers (on ABI boundary)
+struct S16
+    a i64
+    b i64
+end
+
+func make_s16 (a i64) (b i64) -> S16
+    return (S16 a: a b: b)
+end
+
+func swap_s16 (s S16) -> S16
+    return (S16 a: s.b b: s.a)
+end
+
+func sum_s16 (s S16) -> i64
+    return (+ s.a s.b)
+end
+
+func main () -> i32
+    let s = (make_s16 100i64 200i64)
+    do (io::println s.a)        # 100
+    do (io::println s.b)        # 200
+
+    let t = (swap_s16 s)
+    do (io::println t.a)        # 200
+    do (io::println t.b)        # 100
+
+    do (io::println (sum_s16 s))    # 300
+
+    # Pass returned struct inline into another fn
+    do (io::println (sum_s16 (make_s16 1i64 2i64)))    # 3
+
+    return 0i32
+end

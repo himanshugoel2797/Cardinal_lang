@@ -1,0 +1,39 @@
+module t05_mixed_payload
+
+import io
+import strings
+
+# Sum type with mixed field types: int + str + bool
+type Event
+    Click (x i32) (y i32)
+    KeyPress (key str) (shift bool)
+    Quit
+    Timer (ms i64)
+end
+
+func describe_event (e Event) -> str
+    match e
+        case (Click cx cy)
+            return (strings::concat "click@" (strings::concat (to_str cx) (strings::concat "," (to_str cy))))
+        case (KeyPress k s)
+            if s
+                return (strings::concat "SHIFT+" k)
+            else
+                return k
+            end
+        case Quit
+            return "quit"
+        case (Timer t)
+            return (strings::concat "timer:" (to_str t))
+    end
+    return ""
+end
+
+func main () -> i32
+    do (io::println (describe_event (Click x: 10 y: 20)))      # click@10,20
+    do (io::println (describe_event (KeyPress key: "a" shift: false)))  # a
+    do (io::println (describe_event (KeyPress key: "a" shift: true)))   # SHIFT+a
+    do (io::println (describe_event Quit))                              # quit
+    do (io::println (describe_event (Timer ms: 1000i64)))              # timer:1000
+    return 0i32
+end

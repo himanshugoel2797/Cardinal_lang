@@ -1,0 +1,50 @@
+module c09_higher_order
+
+import io
+
+# Higher-order: function passed as argument, typed params
+func apply (f func(i32 -> i32)) (x i32) -> i32
+    return (f x)
+end
+
+func double (n i32) -> i32
+    return (* n 2)
+end
+
+func square (n i32) -> i32
+    return (* n n)
+end
+
+# Function returned from another function
+func make_adder (n i32) -> func(i32 -> i32)
+    return func (x i32) -> i32
+        return (+ x n)
+    end
+end
+
+# Apply a function n times
+func apply_n (f func(i32 -> i32)) (x i32) (n i32) -> i32
+    let result = x
+    for i = 0 to n
+        set result = (f result)
+    end
+    return result
+end
+
+func main () -> i32
+    do (io::println (apply double 5))   # 10
+    do (io::println (apply square 4))   # 16
+
+    let add10 = (make_adder 10)
+    do (io::println (add10 5))    # 15
+    do (io::println (add10 90))   # 100
+
+    # Store function in variable and pass it
+    let f = double
+    do (io::println (apply f 7))  # 14
+
+    # Apply double 3 times: 1 -> 2 -> 4 -> 8
+    do (io::println (apply_n double 1 3))  # 8
+
+    return 0i32
+end

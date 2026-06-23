@@ -1,0 +1,64 @@
+module t39_sum_repeated_match
+
+import io
+
+# Match the SAME value multiple times in different contexts
+# (no mutation, ensure re-matching works correctly)
+type Node
+    Val (n i32)
+    Pair (a i32) (b i32)
+    Empty
+end
+
+func extract_a (nd Node) -> i32
+    match nd
+        case (Val n)
+            return n
+        case (Pair a b)
+            return a
+        case Empty
+            return 0
+    end
+    return 0
+end
+
+func extract_b (nd Node) -> i32
+    match nd
+        case (Val n)
+            return n
+        case (Pair a b)
+            return b
+        case Empty
+            return 0
+    end
+    return 0
+end
+
+func sum_node (nd Node) -> i32
+    match nd
+        case (Val n)
+            return n
+        case (Pair a b)
+            return (+ a b)
+        case Empty
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    let p = (Pair a: 10 b: 20)
+    # Match p three separate times
+    do (io::println (extract_a p))   # 10
+    do (io::println (extract_b p))   # 20
+    do (io::println (sum_node p))    # 30
+
+    let v = (Val n: 99)
+    do (io::println (extract_a v))   # 99
+    do (io::println (extract_b v))   # 99
+    do (io::println (sum_node v))    # 99
+
+    let e = Empty
+    do (io::println (sum_node e))    # 0
+    return 0i32
+end

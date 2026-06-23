@@ -1,0 +1,9 @@
+module cond02
+# ILLEGAL: while condition is not bool (i32)
+func f () -> i32
+    let x = 0i32
+    while 1i32
+        set x = (+ x 1)
+    end
+    return x
+end

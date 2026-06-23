@@ -1,0 +1,25 @@
+module map_overwrite_many
+
+import io
+
+# Overwrite same key repeatedly; check len stays same
+func main () -> i32
+    let m {i32 i32} = (map i32 i32)
+    set m[42] = 1
+
+    let i = 0i32
+    while (< i 100)
+        set m[42] = i
+        set i = (+ i 1)
+    end
+    do (io::println (len m))     # 1 (still just one key)
+    do (io::println m[42])       # 99 (last written value)
+
+    # Insertion order: just key 42
+    for k in (map_keys m)
+        do (io::println k)
+    end
+    # 42
+
+    return 0i32
+end

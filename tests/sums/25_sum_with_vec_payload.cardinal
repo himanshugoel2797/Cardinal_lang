@@ -1,0 +1,45 @@
+module t25_sum_with_vec_payload
+
+import io
+
+# Sum variant with a vec payload
+type Batch
+    Empty
+    Items (values {i32}) (count i32)
+end
+
+func batch_total (b Batch) -> i32
+    match b
+        case Empty
+            return 0
+        case (Items vs cnt)
+            let total = 0i32
+            for v in vs
+                set total = (+ total v)
+            end
+            return total
+    end
+    return 0
+end
+
+func batch_size (b Batch) -> i32
+    match b
+        case Empty
+            return 0
+        case (Items vs cnt)
+            return cnt
+    end
+    return 0
+end
+
+func main () -> i32
+    let b1 = Empty
+    do (io::println (batch_total b1))   # 0
+    do (io::println (batch_size b1))    # 0
+
+    let vs {i32} = {1 2 3 4 5}
+    let b2 = (Items values: vs count: 5)
+    do (io::println (batch_total b2))   # 15
+    do (io::println (batch_size b2))    # 5
+    return 0i32
+end

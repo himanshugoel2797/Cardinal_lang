@@ -1,0 +1,15 @@
+module exh06
+# ILLEGAL: wrong payload arity in case pattern (Node has 3 fields, pattern gives 2)
+type Tree
+    Leaf
+    Node (value i32) (left Tree) (right Tree)
+end
+func f (t Tree) -> i32
+    match t
+        case Leaf
+            return 0
+        case (Node v l)
+            return v
+    end
+    return 0
+end

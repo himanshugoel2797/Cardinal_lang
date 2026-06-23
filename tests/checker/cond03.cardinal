@@ -1,0 +1,5 @@
+module cond03
+# ILLEGAL: (and a b) where a is not bool
+func f () -> bool
+    return (and 1i32 true)
+end

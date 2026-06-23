@@ -1,0 +1,46 @@
+module ag21_boxed_struct_large
+
+import io
+
+# Test multi-word boxed value-struct load/store (the recently fixed bug)
+# A large struct stored in a box (heap-allocated)
+struct BigStruct
+    a i64
+    b i64
+    c i64
+    d i64
+end
+
+func make_big (a i64) (b i64) (c i64) (d i64) -> BigStruct
+    return (BigStruct a: a b: b c: c d: d)
+end
+
+func sum_big (s BigStruct) -> i64
+    return (+ s.a (+ s.b (+ s.c s.d)))
+end
+
+func main () -> i32
+    let s = (make_big 1i64 2i64 3i64 4i64)
+    do (io::println s.a)    # 1
+    do (io::println s.b)    # 2
+    do (io::println s.c)    # 3
+    do (io::println s.d)    # 4
+    do (io::println (sum_big s))    # 10
+
+    # Mutate fields and verify others unchanged
+    set s.a = 100i64
+    do (io::println s.a)    # 100
+    do (io::println s.b)    # 2
+    do (io::println s.c)    # 3
+    do (io::println s.d)    # 4
+
+    # copy semantics
+    let t = s
+    set t.b = 200i64
+    do (io::println s.b)    # 2 (unchanged)
+    do (io::println t.b)    # 200
+
+    do (io::println (sum_big t))    # 100+200+3+4 = 307
+
+    return 0i32
+end

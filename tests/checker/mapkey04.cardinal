@@ -1,0 +1,8 @@
+module mapkey04
+# LEGAL: str as map key (hashable by content)
+import io
+func f () -> unit
+    let m {str i32} = (map str i32)
+    set m["hello"] = 1i32
+    do (io::println m["hello"])
+end

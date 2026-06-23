@@ -1,0 +1,22 @@
+module a23_bug_u64_div
+
+import io
+
+func main () -> i32
+    # Minimal repro: u64 max / 3 -- interpreter diverges from C/x86
+    # Expected: 6148914691236517205 (unsigned)
+    do (io::println (/ 18446744073709551615u64 3u64))
+
+    # u64 max % 7
+    # Expected: 1
+    do (io::println (% 18446744073709551615u64 7u64))
+
+    # u64 / 2 -- should be unsigned floor div
+    # Expected: 9223372036854775807
+    do (io::println (/ 18446744073709551615u64 2u64))
+
+    # u64 large / small: verify consistent unsigned semantics
+    do (io::println (/ 9223372036854775808u64 2u64))
+
+    return 0i32
+end

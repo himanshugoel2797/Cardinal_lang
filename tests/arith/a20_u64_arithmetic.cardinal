@@ -1,0 +1,36 @@
+module a20_u64_arithmetic
+
+import io
+
+func main () -> i32
+    # u64 specific edge cases
+    let max = 18446744073709551615u64
+
+    # max + 1 = 0 (wrap)
+    do (io::println (+ max 1u64))
+
+    # max - max = 0
+    do (io::println (- max max))
+
+    # 0 - 1 = max (underflow)
+    do (io::println (- 0u64 1u64))
+
+    # Large multiply: 2^32 * 2^32 = 2^64 = 0 (wrap)
+    do (io::println (* 4294967296u64 4294967296u64))
+
+    # (2^32 - 1) * (2^32 - 1) = 2^64 - 2*2^32 + 1 (truncated to 64 bits)
+    # = 18446744065119617025
+    do (io::println (* 4294967295u64 4294967295u64))
+
+    # u64 / u64
+    do (io::println (/ max 2u64))
+
+    # u64 % small value
+    do (io::println (% max 1000000007u64))
+
+    # Large shifts
+    do (io::println (shl 1u64 63u64))
+    do (io::println (shr max 63u64))
+
+    return 0i32
+end

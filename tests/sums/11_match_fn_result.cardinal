@@ -1,0 +1,53 @@
+module t11_match_fn_result
+
+import io
+
+# Match on the result of a function call
+type Option
+    Some (value i32)
+    None
+end
+
+func safe_div (a i32) (b i32) -> Option
+    if (== b 0)
+        return None
+    end
+    return (Some value: (/ a b))
+end
+
+func main () -> i32
+    # Match directly on function call result
+    match (safe_div 10 2)
+        case (Some v)
+            do (io::println v)    # 5
+        case None
+            do (io::println (- 0i32 1i32))
+    end
+
+    match (safe_div 7 0)
+        case (Some v)
+            do (io::println v)
+        case None
+            do (io::println (- 0i32 1i32))   # -1
+    end
+
+    # Chain: match result used in another expression
+    let r1 = (safe_div 100 4)
+    let r2 = (safe_div 50 0)
+
+    match r1
+        case (Some v)
+            do (io::println v)    # 25
+        case None
+            do (io::println 0i32)
+    end
+
+    match r2
+        case (Some v)
+            do (io::println v)
+        case None
+            do (io::println 0i32)    # 0
+    end
+
+    return 0i32
+end

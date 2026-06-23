@@ -1,0 +1,5 @@
+module cond04
+# ILLEGAL: (not x) where x is i32
+func f () -> bool
+    return (not 1i32)
+end

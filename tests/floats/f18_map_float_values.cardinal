@@ -1,0 +1,31 @@
+module f18_map_float_values
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func main () -> i32
+    # Map with f64 values
+    let m = (map str f64)
+    set m["pi"] = (p64 3.14159265358979)
+    set m["e"] = (p64 2.71828182845905)
+    set m["phi"] = (p64 1.61803398874989)
+
+    do (io::println m["pi"])
+    do (io::println m["e"])
+    do (io::println m["phi"])
+
+    # Map with f32 values
+    let m32 = (map str f32)
+    set m32["a"] = 1.0f32
+    set m32["b"] = 2.5f32
+    do (io::println m32["a"])
+    do (io::println m32["b"])
+
+    # Arithmetic on map values
+    do (io::println (+ m["pi"] m["e"]))
+
+    return 0i32
+end

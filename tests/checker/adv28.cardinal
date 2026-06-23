@@ -1,0 +1,8 @@
+module adv28
+# ADVERSARIAL: bitwise shift with wrong operand types (shift amount should match?)
+# Testing whether (shl i32 i64) is rejected
+func f () -> i32
+    let x = 1i32
+    let n = 4i64
+    return (shl x n)
+end

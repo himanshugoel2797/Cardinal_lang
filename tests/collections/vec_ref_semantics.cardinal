@@ -1,0 +1,26 @@
+module vec_ref_semantics
+
+import io
+
+# Vectors have reference semantics: mutation inside fn visible outside
+func push_items (v {i32}) -> unit
+    do (push v 100)
+    do (push v 200)
+end
+
+func set_first (v {i32}) -> unit
+    set v[0] = 999
+end
+
+func main () -> i32
+    let v {i32} = {1 2 3}
+    do (push_items v)
+    do (io::println (len v))     # 5 (reference: mutation visible)
+    do (io::println v[3])        # 100
+    do (io::println v[4])        # 200
+
+    do (set_first v)
+    do (io::println v[0])        # 999
+
+    return 0i32
+end

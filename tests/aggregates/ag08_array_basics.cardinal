@@ -1,0 +1,31 @@
+module ag08_array_basics
+
+import io
+
+func main () -> i32
+    # Sized array literal
+    let a = [10i32 20i32 30i32 40i32 50i32]
+    do (io::println a[0])   # 10
+    do (io::println a[2])   # 30
+    do (io::println a[4])   # 50
+    do (io::println (len a))  # 5
+
+    # Write to array element
+    set a[1] = 99i32
+    do (io::println a[1])   # 99
+
+    # for-in iteration sum
+    let total = 0i32
+    for x in a
+        set total = (+ total x)
+    end
+    do (io::println total)  # 10+99+30+40+50 = 229
+
+    # i64 array
+    let b = [1i64 2i64 3i64]
+    set b[0] = 100i64
+    do (io::println b[0])   # 100
+    do (io::println b[1])   # 2
+
+    return 0i32
+end

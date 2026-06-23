@@ -1,0 +1,30 @@
+module ag02_struct_8byte
+
+import io
+
+# 8-byte struct (one i64) — fits in one register
+struct S8
+    v i64
+end
+
+func make_s8 (v i64) -> S8
+    return (S8 v: v)
+end
+
+func double_s8 (s S8) -> S8
+    return (S8 v: (* s.v 2i64))
+end
+
+func main () -> i32
+    let a = (make_s8 21i64)
+    do (io::println a.v)        # 21
+
+    let b = (double_s8 a)
+    do (io::println b.v)        # 42
+
+    # chain: pass returned struct directly to another fn
+    let c = (double_s8 (make_s8 5i64))
+    do (io::println c.v)        # 10
+
+    return 0i32
+end

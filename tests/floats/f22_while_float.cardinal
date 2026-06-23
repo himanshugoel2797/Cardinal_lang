@@ -1,0 +1,31 @@
+module f22_while_float
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func main () -> i32
+    # Use float as loop accumulator
+    let i = (p64 0.0)
+    let s = (p64 0.0)
+    while (< i (p64 5.0))
+        set s = (+ s i)
+        set i = (+ i (p64 1.0))
+    end
+    do (io::println s)
+    do (io::println i)
+
+    # Float convergence test (halving until below threshold)
+    let x = (p64 1.0)
+    let count = 0i32
+    while (> x (p64 0.01))
+        set x = (/ x (p64 2.0))
+        set count = (+ count 1i32)
+    end
+    do (io::println count)
+    do (io::println x)
+
+    return 0i32
+end

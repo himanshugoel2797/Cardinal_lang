@@ -1,0 +1,9 @@
+module edge04
+# ILLEGAL: return with value in a function returning unit (with no declared return type means unit)
+func g ()
+    return 1i32
+end
+func f () -> i32
+    do (g)
+    return 0i32
+end

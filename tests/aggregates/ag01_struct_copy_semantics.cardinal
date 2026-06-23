@@ -1,0 +1,37 @@
+module ag01_struct_copy_semantics
+
+import io
+
+# Test: struct value semantics — copy then mutate, original unchanged
+struct Point
+    x i64
+    y i64
+end
+
+func mutate (p Point) -> i32
+    # mutate the local copy
+    set p.x = 999i64
+    set p.y = 999i64
+    return 0i32
+end
+
+func main () -> i32
+    let a = (Point x: 10i64 y: 20i64)
+    let b = a
+    set b.x = 42i64
+    set b.y = 84i64
+
+    # a must be unchanged
+    do (io::println a.x)    # 10
+    do (io::println a.y)    # 20
+    do (io::println b.x)    # 42
+    do (io::println b.y)    # 84
+
+    # pass by value: caller's copy must be unchanged
+    let c = (Point x: 7i64 y: 13i64)
+    do (mutate c)
+    do (io::println c.x)    # 7
+    do (io::println c.y)    # 13
+
+    return 0i32
+end

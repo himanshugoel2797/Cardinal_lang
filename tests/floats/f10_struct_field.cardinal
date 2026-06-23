@@ -1,0 +1,39 @@
+module f10_struct_field
+
+import io
+
+struct Point
+    x f64
+    y f64
+end
+
+struct FPair
+    a f32
+    b f32
+end
+
+func make_point (x f64) (y f64) -> Point
+    return (Point x: x y: y)
+end
+
+func main () -> i32
+    # Float fields in struct
+    let p = (make_point 1.5 2.5)
+    do (io::println p.x)
+    do (io::println p.y)
+    do (io::println (+ p.x p.y))
+
+    # f32 fields in struct
+    let fp = (FPair a: 3.14f32 b: 2.71f32)
+    do (io::println fp.a)
+    do (io::println fp.b)
+
+    # Zero struct
+    let p2 = (make_point 0.0 0.0)
+    do (io::println p2.x)
+
+    # to_str of struct with float fields
+    do (io::println (to_str p))
+
+    return 0i32
+end

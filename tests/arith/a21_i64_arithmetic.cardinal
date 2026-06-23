@@ -1,0 +1,36 @@
+module a21_i64_arithmetic
+
+import io
+
+func main () -> i32
+    let i64max = 9223372036854775807i64
+    let i64min = (- 9223372036854775808i64)
+
+    # max + 1 wraps to min
+    do (io::println (+ i64max 1i64))
+
+    # min - 1 wraps to max
+    do (io::println (- i64min 1i64))
+
+    # min * -1 wraps to min (overflow)
+    do (io::println (* i64min (- 1i64)))
+
+    # Large product: half-max * 2 wraps
+    do (io::println (* 4611686018427387904i64 2i64))
+
+    # Division that produces max
+    do (io::println (/ i64max 1i64))
+
+    # Modulo at boundary
+    do (io::println (% i64max 7i64))
+    do (io::println (% i64min 7i64))
+
+    # Subtraction of max - min: max - min = -1 (wraps)
+    do (io::println (- i64max i64min))
+
+    # Band/bor at extremes
+    do (io::println (band i64min i64max))
+    do (io::println (bor i64min i64max))
+
+    return 0i32
+end

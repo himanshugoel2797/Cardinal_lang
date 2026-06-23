@@ -1,0 +1,24 @@
+module str_escape
+
+import io
+import strings
+
+# Test escape sequences in string literals
+func main () -> i32
+    # Newline
+    do (io::print "line1\nline2\n")      # two lines
+    # Tab
+    do (io::print "a\tb\n")             # a<tab>b
+    # Backslash
+    do (io::println "a\\b")             # a\b
+    # Quote
+    do (io::println "say \"hi\"")       # say "hi"
+    # Concat with escaped content
+    let s = (strings::concat "foo\n" "bar\n")
+    do (io::print s)                    # foo\nbar\n (two lines)
+    # len of string with escaped char (newline = 1 codepoint)
+    let nl = "\n"
+    let cs = (strings::chars nl)
+    do (io::println (len cs))           # 1
+    return 0i32
+end

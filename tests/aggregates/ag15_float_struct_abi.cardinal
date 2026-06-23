@@ -1,0 +1,51 @@
+module ag15_float_struct_abi
+
+import io
+
+# Float fields in structs straddling the boundary
+# Classic ABI bug: floats go in xmm regs, ints in GP regs
+
+# 16-byte struct: f64 + i64 (one float xmm0, one int rdi — ABI boundary case)
+struct FloatInt
+    x f64
+    y i64
+end
+
+# 16-byte struct: two f32s + one i64
+struct TwoFloatInt
+    a f32
+    b f32
+    c i64
+end
+
+func make_fi (x f64) (y i64) -> FloatInt
+    return (FloatInt x: x y: y)
+end
+
+func sum_fi (f FloatInt) -> f64
+    return (+ f.x (as f.y f64))
+end
+
+func make_tfi (a f32) (b f32) (c i64) -> TwoFloatInt
+    return (TwoFloatInt a: a b: b c: c)
+end
+
+func main () -> i32
+    let fi = (make_fi 1.5 42i64)
+    do (io::println fi.x)           # 1.5
+    do (io::println fi.y)           # 42
+    do (io::println (sum_fi fi))    # 43.5
+
+    let tfi = (make_tfi 1.5f32 2.5f32 10i64)
+    do (io::println tfi.a)  # 1.5
+    do (io::println tfi.b)  # 2.5
+    do (io::println tfi.c)  # 10
+
+    # copy semantics
+    let fi2 = fi
+    set fi2.x = 9.9
+    do (io::println fi.x)   # 1.5 (unchanged)
+    do (io::println fi2.x)  # 9.9
+
+    return 0i32
+end

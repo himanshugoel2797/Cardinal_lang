@@ -1,0 +1,52 @@
+module t23_nullary_mixed
+
+import io
+
+# Nullary mixed with payload variants in one type
+# Test that nullary construction without () works
+type Cmd
+    Quit
+    Echo (msg str)
+    Sleep (ms i32)
+    Reset
+    Ping
+end
+
+func run_cmd (c Cmd) -> i32
+    match c
+        case Quit
+            do (io::println "quit")
+            return 1
+        case (Echo msg)
+            do (io::println msg)
+            return 0
+        case (Sleep ms)
+            do (io::println ms)
+            return 0
+        case Reset
+            do (io::println "reset")
+            return 0
+        case Ping
+            do (io::println "pong")
+            return 0
+    end
+    return (- 0 1)
+end
+
+func main () -> i32
+    let cmds {Cmd} = (vec Cmd)
+    do (push cmds (Echo msg: "hello"))
+    do (push cmds Ping)
+    do (push cmds (Sleep ms: 100))
+    do (push cmds Reset)
+    do (push cmds (Echo msg: "world"))
+    do (push cmds Quit)
+
+    let total = 0i32
+    for c in cmds
+        let r = (run_cmd c)
+        set total = (+ total r)
+    end
+    do (io::println total)   # 1 (only Quit returns 1)
+    return 0i32
+end

@@ -1,0 +1,6 @@
+module cast01
+# LEGAL: numeric cast i32 -> i64
+func f () -> i64
+    let x = 42i32
+    return (as x i64)
+end

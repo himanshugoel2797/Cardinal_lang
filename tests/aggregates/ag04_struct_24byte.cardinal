@@ -1,0 +1,45 @@
+module ag04_struct_24byte
+
+import io
+
+# 24-byte struct (three i64) — MEMORY class, passed on stack
+struct S24
+    a i64
+    b i64
+    c i64
+end
+
+func make_s24 (a i64) (b i64) (c i64) -> S24
+    return (S24 a: a b: b c: c)
+end
+
+func rotate_s24 (s S24) -> S24
+    # rotate fields: a->b, b->c, c->a
+    return (S24 a: s.c b: s.a c: s.b)
+end
+
+func sum_s24 (s S24) -> i64
+    return (+ s.a (+ s.b s.c))
+end
+
+func main () -> i32
+    let s = (make_s24 1i64 2i64 3i64)
+    do (io::println s.a)        # 1
+    do (io::println s.b)        # 2
+    do (io::println s.c)        # 3
+
+    let r = (rotate_s24 s)
+    do (io::println r.a)        # 3
+    do (io::println r.b)        # 1
+    do (io::println r.c)        # 2
+
+    do (io::println (sum_s24 s))    # 6
+
+    # copy, mutate, original unchanged
+    let t = s
+    set t.a = 99i64
+    do (io::println s.a)    # 1  (unchanged)
+    do (io::println t.a)    # 99
+
+    return 0i32
+end

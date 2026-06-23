@@ -1,0 +1,7 @@
+module imm04
+# LEGAL: set on a let-bound variable (let is mutable)
+func f () -> i32
+    let x = 5i32
+    set x = 6i32
+    return x
+end

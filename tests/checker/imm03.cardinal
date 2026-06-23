@@ -1,0 +1,10 @@
+module imm03
+# ILLEGAL: set on a for-loop variable
+func f () -> i32
+    let sum = 0i32
+    for i = 0 to 5
+        set i = 99i32
+        set sum = (+ sum i)
+    end
+    return sum
+end

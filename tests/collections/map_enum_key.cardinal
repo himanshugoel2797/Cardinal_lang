@@ -1,0 +1,34 @@
+module map_enum_key
+
+import io
+
+enum Color
+    Red
+    Green
+    Blue
+end
+
+# Map with enum keys
+func main () -> i32
+    let m {Color str} = (map Color str)
+    set m[Color::Red] = "red"
+    set m[Color::Green] = "green"
+    set m[Color::Blue] = "blue"
+
+    do (io::println (len m))                    # 3
+    do (io::println m[Color::Red])              # red
+    do (io::println m[Color::Green])            # green
+    do (io::println m[Color::Blue])             # blue
+
+    do (io::println (map_has m Color::Red))     # true
+    do (map_del m Color::Green)
+    do (io::println (map_has m Color::Green))   # false
+    do (io::println (len m))                    # 2
+
+    for k in (map_keys m)
+        do (io::println m[k])
+    end
+    # red blue
+
+    return 0i32
+end

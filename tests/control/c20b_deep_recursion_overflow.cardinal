@@ -1,0 +1,19 @@
+module c20b_deep_recursion_overflow
+
+import io
+
+# BUG: Python interpreter stack-overflows at depth ~500 (RecursionError)
+# while C and x86 backends succeed. All three paths DISAGREE.
+# This is a structural interpreter limitation (Python call stack).
+
+func sum_to (n i32) -> i32
+    if (<= n 0)
+        return 0i32
+    end
+    return (+ n (sum_to (- n 1)))
+end
+
+func main () -> i32
+    do (io::println (sum_to 500))  # C/x86 print 125250; interp crashes
+    return 0i32
+end

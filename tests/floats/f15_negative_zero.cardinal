@@ -1,0 +1,43 @@
+module f15_negative_zero
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func main () -> i32
+    # Negative zero via negating 0.0
+    let nz = (- (p64 0.0))
+    do (io::println nz)
+
+    # Positive zero
+    let pz = (p64 0.0)
+    do (io::println pz)
+
+    # Negative zero == positive zero should be true per IEEE 754
+    if (== nz pz)
+        do (io::println "neg_zero_eq_pos_zero")
+    else
+        do (io::println "not_eq")
+    end
+
+    # Negative zero < positive zero should be false per IEEE 754
+    if (< nz pz)
+        do (io::println "neg_zero_lt_pos_zero")
+    else
+        do (io::println "not_lt")
+    end
+
+    # f32 negative zero
+    let nz32 = (- 0.0f32)
+    let pz32 = 0.0f32
+    do (io::println nz32)
+    if (== nz32 pz32)
+        do (io::println "f32_neg_zero_eq")
+    else
+        do (io::println "f32_not_eq")
+    end
+
+    return 0i32
+end

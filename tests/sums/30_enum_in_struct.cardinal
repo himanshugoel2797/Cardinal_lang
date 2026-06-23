@@ -1,0 +1,67 @@
+module t30_enum_in_struct
+
+import io
+
+# Enum stored in struct field, inside a sum type
+enum Priority
+    Low
+    Medium
+    High
+end
+
+struct Task
+    name str
+    priority Priority
+    done bool
+end
+
+type Queue
+    Empty
+    Item (task Task) (next Queue)
+end
+
+func priority_num (p Priority) -> i32
+    if (== p Priority::Low)
+        return 1
+    end
+    if (== p Priority::Medium)
+        return 2
+    end
+    return 3
+end
+
+func queue_len (q Queue) -> i32
+    match q
+        case Empty
+            return 0
+        case (Item t rest)
+            return (+ 1 (queue_len rest))
+    end
+    return 0
+end
+
+func queue_priority_sum (q Queue) -> i32
+    match q
+        case Empty
+            return 0
+        case (Item t rest)
+            return (+ (priority_num t.priority) (queue_priority_sum rest))
+    end
+    return 0
+end
+
+func main () -> i32
+    let t1 = (Task name: "fix bug" priority: Priority::High done: false)
+    let t2 = (Task name: "write docs" priority: Priority::Low done: false)
+    let t3 = (Task name: "review" priority: Priority::Medium done: true)
+
+    let q = (Item task: t1 next: (Item task: t2 next: (Item task: t3 next: Empty)))
+
+    do (io::println (queue_len q))                # 3
+    do (io::println (queue_priority_sum q))       # 3+1+2 = 6
+
+    do (io::println (to_str Priority::High))      # High
+    do (io::println (to_str Priority::Medium))    # Medium
+    do (io::println (to_str Priority::Low))       # Low
+    return 0i32
+end

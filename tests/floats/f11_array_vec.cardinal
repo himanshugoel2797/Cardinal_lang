@@ -1,0 +1,43 @@
+module f11_array_vec
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func main () -> i32
+    # Array of f64 — use function calls in parens to force type
+    let a0 = (p64 1.1)
+    let a1 = (p64 2.2)
+    let a2 = (p64 3.3)
+    let arr = [a0 a1 a2]
+    do (io::println arr[0])
+    do (io::println arr[1])
+    do (io::println arr[2])
+
+    # Sum of array elements
+    let s = (+ (+ arr[0] arr[1]) arr[2])
+    do (io::println s)
+
+    # Vector of f32
+    let v = (vec f32)
+    do (push v 1.0f32)
+    do (push v 2.0f32)
+    do (push v 3.14f32)
+    do (io::println v[0])
+    do (io::println v[1])
+    do (io::println v[2])
+    do (io::println (len v))
+
+    # for-in over array of floats
+    let f0 = (p64 10.0)
+    let f1 = (p64 20.0)
+    let f2 = (p64 30.0)
+    let floats = [f0 f1 f2]
+    for fx in floats
+        do (io::println fx)
+    end
+
+    return 0i32
+end

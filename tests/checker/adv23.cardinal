@@ -1,0 +1,15 @@
+module adv23
+# ADVERSARIAL: nested sum type match — wrong payload binding count for nested variant
+type Expr
+    Num (value i32)
+    Add (lhs Expr) (rhs Expr)
+end
+func eval (e Expr) -> i32
+    match e
+        case (Num v extra)
+            return v
+        case (Add l r)
+            return (+ (eval l) (eval r))
+    end
+    return 0
+end

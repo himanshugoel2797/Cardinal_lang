@@ -1,0 +1,40 @@
+module c05_nested_loops_break
+
+import io
+
+func main () -> i32
+    # Nested loops: break exits only the INNER loop
+    let outer_count = 0i32
+    for i = 0 to 3
+        set outer_count = (+ outer_count 1)
+        for j = 0 to 5
+            if (>= j 2)
+                break
+            end
+            do (io::println j)
+        end
+    end
+    do (io::println outer_count)   # 3: outer loop ran 3 times
+
+    # Continue in inner loop
+    for i = 0 to 3
+        for j = 0 to 4
+            if (== j 2)
+                continue
+            end
+            do (io::println j)  # 0,1,3 per outer iteration
+        end
+    end
+
+    # loop + break
+    let k = 0i32
+    loop
+        set k = (+ k 1)
+        if (>= k 5)
+            break
+        end
+    end
+    do (io::println k)   # 5
+
+    return 0i32
+end

@@ -1,0 +1,7 @@
+module lit06
+# LEGAL: unsuffixed literal in arithmetic where other operand has type
+func f () -> i32
+    let x = 5i32
+    let y = (+ x 3)
+    return y
+end

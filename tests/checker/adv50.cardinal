@@ -1,0 +1,17 @@
+module adv50
+# ADVERSARIAL: match returns different types in different arms
+# (match is statement-only, so arm bodies are just statements — but set types must match)
+type T
+    A
+    B
+end
+func f (t T) -> i32
+    let x = 0i32
+    match t
+        case A
+            set x = 1i32
+        case B
+            set x = 2i64
+    end
+    return x
+end

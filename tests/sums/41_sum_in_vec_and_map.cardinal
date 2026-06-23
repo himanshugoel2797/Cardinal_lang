@@ -1,0 +1,50 @@
+module t41_sum_in_vec_and_map
+
+import io
+
+# Sum values stored in both a vec and a map simultaneously
+# Tests sum type in different collection contexts
+type Priority
+    High (level i32)
+    Low
+    Medium (level i32)
+end
+
+func priority_val (p Priority) -> i32
+    match p
+        case (High level)
+            return (+ 100 level)
+        case Low
+            return 0
+        case (Medium level)
+            return (+ 50 level)
+    end
+    return 0
+end
+
+func main () -> i32
+    # In a vec
+    let plist {Priority} = (vec Priority)
+    do (push plist (High level: 10))
+    do (push plist Low)
+    do (push plist (Medium level: 5))
+    do (push plist (High level: 1))
+
+    let vsum = 0i32
+    for p in plist
+        set vsum = (+ vsum (priority_val p))
+    end
+    do (io::println vsum)   # 110 + 0 + 55 + 101 = 266
+
+    # In a map (str -> Priority)
+    let pm {str Priority} = (map str Priority)
+    set pm["task1"] = (High level: 3)
+    set pm["task2"] = Low
+    set pm["task3"] = (Medium level: 7)
+
+    do (io::println (priority_val pm["task1"]))   # 103
+    do (io::println (priority_val pm["task2"]))   # 0
+    do (io::println (priority_val pm["task3"]))   # 57
+    do (io::println (len pm))                      # 3
+    return 0i32
+end

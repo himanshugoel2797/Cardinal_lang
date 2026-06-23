@@ -1,0 +1,59 @@
+module t21_match_binding_collision
+
+import io
+
+# HANDOFF gotcha: binding name could collide with a function name
+# We use "describe" as a binding name and also have a function named "describe_val"
+# to test that shadowing is handled
+type Value
+    Int (n i32)
+    Str (s str)
+    Bool (b bool)
+end
+
+func describe_val (v Value) -> i32
+    match v
+        case (Int n)
+            # binding `n` must not interfere with calling other funcs
+            return n
+        case (Str s)
+            return (as (len s) i32)
+        case (Bool b)
+            if b
+                return 1
+            else
+                return 0
+            end
+    end
+    return 0
+end
+
+# Another function using same binding names in different scopes
+func process (v Value) -> i32
+    let result = 0i32
+    match v
+        case (Int n)
+            set result = (* n 2)
+        case (Str s)
+            set result = (as (len s) i32)
+        case (Bool b)
+            if b
+                set result = 100
+            else
+                set result = (- 0 100)
+            end
+    end
+    return result
+end
+
+func main () -> i32
+    do (io::println (describe_val (Int n: 42)))    # 42
+    do (io::println (describe_val (Str s: "hi")))  # 2
+    do (io::println (describe_val (Bool b: true))) # 1
+    do (io::println (describe_val (Bool b: false)))# 0
+
+    do (io::println (process (Int n: 7)))          # 14
+    do (io::println (process (Str s: "hello")))    # 5
+    do (io::println (process (Bool b: true)))      # 100
+    return 0i32
+end

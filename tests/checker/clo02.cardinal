@@ -1,0 +1,11 @@
+module clo02
+# ILLEGAL: function-typed param called with wrong arg type
+func apply (f func(i32 -> i32)) (x i32) -> i32
+    return (f x)
+end
+func f () -> i32
+    let adder = func (x i32) -> i32
+        return (+ x 1i32)
+    end
+    return (apply adder true)
+end

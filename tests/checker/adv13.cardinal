@@ -1,0 +1,7 @@
+module adv13
+# ADVERSARIAL: mixed f32 and f64 in arithmetic (no implicit promotion)
+func f () -> f64
+    let a = 1.0f32
+    let b = 2.0f64
+    return (+ a b)
+end

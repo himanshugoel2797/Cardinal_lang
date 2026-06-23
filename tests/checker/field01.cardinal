@@ -1,0 +1,10 @@
+module field01
+# ILLEGAL: access to unknown struct field
+struct P
+    x i32
+    y i32
+end
+func f () -> i32
+    let p = (P x: 1 y: 2)
+    return p.z
+end

@@ -1,0 +1,23 @@
+module a30_bug_interp_u64_signed_div
+
+import io
+
+func main () -> i32
+    # The interpreter appears to treat u64 values >= 2^63 as signed i64
+    # when performing division/modulo. Test the boundary.
+
+    # 2^63 - 1 (fits in i64 max): both should give same result
+    do (io::println (/ 9223372036854775807u64 3u64))
+
+    # 2^63 (just over i64 max): interp may diverge
+    do (io::println (/ 9223372036854775808u64 3u64))
+
+    # Confirm: small u64 values work fine
+    do (io::println (/ 100u64 7u64))
+    do (io::println (% 100u64 7u64))
+
+    # Values right around 2^63
+    do (io::println (/ 9223372036854775810u64 3u64))
+
+    return 0i32
+end

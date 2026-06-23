@@ -1,0 +1,17 @@
+module exh07
+# ILLEGAL: duplicate case variant in match
+type T
+    A
+    B
+end
+func f (t T) -> i32
+    match t
+        case A
+            return 1
+        case A
+            return 2
+        case B
+            return 3
+    end
+    return 0
+end

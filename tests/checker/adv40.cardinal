@@ -1,0 +1,10 @@
+module adv40
+# ADVERSARIAL: negative step in for (no bare negative literal, must use unary minus)
+# should be legal syntactically but may not be valid semantics
+func f () -> i32
+    let sum = 0i32
+    for i = 10 to 0 step (- 1)
+        set sum = (+ sum i)
+    end
+    return sum
+end

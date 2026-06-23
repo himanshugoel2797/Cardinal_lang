@@ -1,0 +1,21 @@
+module adv04
+# ADVERSARIAL: sum type variant as enum variant
+enum Color
+    Red
+    Green
+end
+type Shape
+    Circle
+    Square
+end
+func f () -> i32
+    # Match on Color using Shape variant names
+    let c = Color::Red
+    match c
+        case Circle
+            return 1
+        case Square
+            return 2
+    end
+    return 0
+end

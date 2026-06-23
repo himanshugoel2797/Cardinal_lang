@@ -1,0 +1,9 @@
+module adv38
+# ADVERSARIAL: for-numeric with non-integer bounds
+func f () -> f64
+    let sum = 0.0f64
+    for i = 0 to 5
+        set sum = (+ sum (as i f64))
+    end
+    return sum
+end

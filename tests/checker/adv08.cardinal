@@ -1,0 +1,12 @@
+module adv08
+# ADVERSARIAL: return in a for-in loop inside value function — should be legal
+import io
+func f () -> i32
+    let xs [i32] = [1 2 3 4 5]
+    for x in xs
+        if (> x 3)
+            return x
+        end
+    end
+    return 0
+end

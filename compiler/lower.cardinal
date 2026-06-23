@@ -2370,11 +2370,22 @@ func lower_fornum (lx LX) (vs {str IVal}) (ts {str Binding}) (var str) (startE E
     let loc = (ir::add_local lx.b un (irt ity))
     let startv = (lower_expr lx vs ts startE ity)
     do (ir::emit lx.b (IAssign place: (PLocal name: un ty: (irt ity)) src: startv))
-    let stopv = (lower_expr lx vs ts stopE ity)
-    let stepv = (ImmInt val: 1i64 ty: (irt ity))
+    # Snapshot the upper bound and the step into fresh temps at loop entry. The
+    # range `for i = 0 to n` is i = 0,1,…,n-1 (DESIGN §"control flow"), a count
+    # fixed when the loop begins — and the interpreter oracle evaluates the bound
+    # once. Using the bound EXPR's IVal directly (a Local for `n`) would re-read
+    # the live variable each iteration, so mutating `n`/the step inside the body
+    # would change the trip count — a divergence from the oracle. `(+ x 0)`
+    # copies the value into a temp the body cannot alias.
+    let stopv0 = (lower_expr lx vs ts stopE ity)
+    let stopv = (ir::fresh_temp lx.b (irt ity))
+    do (ir::emit lx.b (IBin dst: stopv op: "+" lhs: stopv0 rhs: (ImmInt val: 0i64 ty: (irt ity)) ty: (irt ity) chk: false))
+    let stepv0 = (ImmInt val: 1i64 ty: (irt ity))
     if has_step
-        set stepv = (lower_expr lx vs ts strideE ity)
+        set stepv0 = (lower_expr lx vs ts strideE ity)
     end
+    let stepv = (ir::fresh_temp lx.b (irt ity))
+    do (ir::emit lx.b (IBin dst: stepv op: "+" lhs: stepv0 rhs: (ImmInt val: 0i64 ty: (irt ity)) ty: (irt ity) chk: false))
     let head = (ir::fresh_label lx.b "for_head")
     let bodyl = (ir::fresh_label lx.b "for_body")
     let post = (ir::fresh_label lx.b "for_post")

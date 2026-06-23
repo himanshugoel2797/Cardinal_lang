@@ -1,0 +1,36 @@
+module f01_basic_arith_f64
+
+import io
+
+func add64 (a f64) (b f64) -> f64
+    return (+ a b)
+end
+
+func sub64 (a f64) (b f64) -> f64
+    return (- a b)
+end
+
+func mul64 (a f64) (b f64) -> f64
+    return (* a b)
+end
+
+func div64 (a f64) (b f64) -> f64
+    return (/ a b)
+end
+
+func main () -> i32
+    # Basic f64 arithmetic — pass literals through typed params so type is inferred
+    do (io::println (add64 1.0 3.0))
+    do (io::println (sub64 1.0 3.0))
+    do (io::println (mul64 1.0 3.0))
+    do (io::println (div64 1.0 3.0))
+
+    # 0.1 + 0.2 (classic precision trap) in f64
+    do (io::println (add64 0.1 0.2))
+
+    # Large exponent
+    do (io::println (add64 1.0e9 0.0))
+    do (io::println (add64 1.5e10 0.0))
+
+    return 0i32
+end

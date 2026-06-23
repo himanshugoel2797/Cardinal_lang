@@ -1,0 +1,11 @@
+module enum03
+# LEGAL: enum comparison is valid
+enum Color
+    Red
+    Green
+    Blue
+end
+func f () -> bool
+    let c = Color::Red
+    return (== c Color::Green)
+end

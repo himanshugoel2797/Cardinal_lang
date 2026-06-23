@@ -1,0 +1,32 @@
+module str_substr_zero_count
+
+import io
+import strings
+
+# substr with count=0 at every valid position should return empty string
+func main () -> i32
+    let s = "abc"
+    let cs = (strings::chars s)
+    do (io::println (len cs))        # 3
+
+    # count=0 at pos 0
+    let r0 = (strings::substr s 0 0)
+    let cs0 = (strings::chars r0)
+    do (io::println (len cs0))       # 0
+
+    # count=0 at pos 1
+    let r1 = (strings::substr s 1 0)
+    let cs1 = (strings::chars r1)
+    do (io::println (len cs1))       # 0
+
+    # count=0 at pos 3 (= len)
+    let r3 = (strings::substr s 3 0)
+    let cs3 = (strings::chars r3)
+    do (io::println (len cs3))       # 0
+
+    # Confirm empty string equals ""
+    do (io::println (strings::eq r0 ""))    # true
+    do (io::println (strings::eq r1 ""))    # true
+
+    return 0i32
+end

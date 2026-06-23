@@ -1,0 +1,8 @@
+module fn07
+# ILLEGAL: recursion with wrong return type used
+func fact (n i32) -> i64
+    if (<= n 1i32)
+        return 1i64
+    end
+    return (* n (fact (- n 1i32)))
+end

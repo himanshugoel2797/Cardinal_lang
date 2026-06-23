@@ -1,0 +1,36 @@
+module gc11_sum_churn_loop
+
+import io
+
+# Repeatedly build and immediately fold a small sum tree, generating
+# lots of short-lived sum nodes.  Live result checked against expected.
+# Expected: 200000 (each small tree sums to 2, 100000 trees)
+
+type T2
+    L2
+    N2 (v i32) (l T2) (r T2)
+end
+
+func small_tree (base i32) -> T2
+    return (N2 v: base l: (N2 v: 1 l: L2 r: L2) r: L2)
+end
+
+func fold_t2 (t T2) -> i32
+    match t
+        case L2
+            return 0
+        case (N2 v l r)
+            return (+ v (+ (fold_t2 l) (fold_t2 r)))
+    end
+    return 0
+end
+
+func main () -> i32
+    let total = 0i32
+    for i = 0 to 100000
+        let t = (small_tree 0)
+        set total = (+ total (fold_t2 t))
+    end
+    do (io::println total)
+    return 0i32
+end

@@ -1,0 +1,58 @@
+module t02_linked_list
+
+import io
+
+# Linked list as a sum type
+type List
+    Nil
+    Cons (head i32) (tail List)
+end
+
+func list_sum (xs List) -> i32
+    match xs
+        case Nil
+            return 0
+        case (Cons h t)
+            return (+ h (list_sum t))
+    end
+    return 0
+end
+
+func list_len (xs List) -> i32
+    match xs
+        case Nil
+            return 0
+        case (Cons h t)
+            return (+ 1 (list_len t))
+    end
+    return 0
+end
+
+func list_max (xs List) -> i32
+    match xs
+        case Nil
+            return (- 0 2147483647)
+        case (Cons h t)
+            let rest_max = (list_max t)
+            if (>= h rest_max)
+                return h
+            else
+                return rest_max
+            end
+    end
+    return 0
+end
+
+func main () -> i32
+    # Build: 1 -> 2 -> 3 -> 4 -> 5 -> Nil
+    let xs = (Cons head: 1 tail: (Cons head: 2 tail: (Cons head: 3 tail: (Cons head: 4 tail: (Cons head: 5 tail: Nil)))))
+    do (io::println (list_sum xs))   # 15
+    do (io::println (list_len xs))   # 5
+    do (io::println (list_max xs))   # 5
+
+    # Empty list
+    let empty = Nil
+    do (io::println (list_sum empty))  # 0
+    do (io::println (list_len empty))  # 0
+    return 0i32
+end

@@ -1,0 +1,33 @@
+module ag23_array_pass_return
+
+import io
+
+# Arrays passed to functions and returned
+func sum_arr (a [i32]) -> i32
+    let total = 0i32
+    for x in a
+        set total = (+ total x)
+    end
+    return total
+end
+
+func make_range (n i32) -> [i32]
+    let a [i32] = (array i32 (as n u64))
+    for i = 0 to n
+        set a[(as i u64)] = i
+    end
+    return a
+end
+
+func main () -> i32
+    let a = [1i32 2i32 3i32 4i32 5i32]
+    do (io::println (sum_arr a))    # 15
+
+    let r = (make_range 5i32)
+    do (io::println r[0])   # 0
+    do (io::println r[1])   # 1
+    do (io::println r[4])   # 4
+    do (io::println (sum_arr r))    # 0+1+2+3+4 = 10
+
+    return 0i32
+end

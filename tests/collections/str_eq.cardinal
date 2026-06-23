@@ -1,0 +1,29 @@
+module str_eq
+
+import io
+import strings
+
+# Test string equality (== / != / strings::eq) by content
+func main () -> i32
+    let a = "hello"
+    let b = "hello"
+    let c = "world"
+
+    # Content equality
+    do (io::println (strings::eq a b))      # true
+    do (io::println (strings::eq a c))      # false
+    do (io::println (strings::eq "" ""))    # true
+    do (io::println (strings::eq "" "x"))   # false
+
+    # Multi-byte content equality
+    do (io::println (strings::eq "日本語" "日本語"))   # true
+    do (io::println (strings::eq "日本語" "日本"))     # false
+    do (io::println (strings::eq "😀" "😀"))          # true
+    do (io::println (strings::eq "é" "e"))             # false
+
+    # Built strings compared to literals
+    let built = (strings::concat "hel" "lo")
+    do (io::println (strings::eq built "hello"))       # true
+
+    return 0i32
+end

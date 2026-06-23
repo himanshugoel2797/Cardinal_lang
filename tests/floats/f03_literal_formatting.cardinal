@@ -1,0 +1,36 @@
+module f03_literal_formatting
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func p32 (x f32) -> f32
+    return x
+end
+
+func main () -> i32
+    # Integers-as-floats should print without decimal in %g
+    do (io::println (p64 2.0))
+    do (io::println (p64 100.0))
+    do (io::println (p64 (- 5.0)))
+
+    # Negative float
+    do (io::println (p64 (- 1.5)))
+
+    # Small fractions
+    do (io::println (p64 0.5))
+    do (io::println (p64 0.25))
+    do (io::println (p64 0.125))
+
+    # Numbers near 1
+    do (io::println (p64 1.5))
+    do (io::println (p64 1.25))
+
+    # f32 versions
+    do (io::println (p32 2.0))
+    do (io::println (p32 (- 1.5)))
+
+    return 0i32
+end

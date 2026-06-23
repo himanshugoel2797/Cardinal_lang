@@ -1003,6 +1003,19 @@ func emit_bin (bx BX) (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk
             set fout = (strings::concat fout (line "    movzbq %al, %rax"))
             return (strings::concat fout (store_rax bx dst))
         end
+        if (or (strings::eq op "/") (strings::eq op "%"))
+            # divide/modulo by zero panics (oracle parity) rather than IEEE inf/nan.
+            # ucomi sets PF on an unordered (NaN) compare — skip the panic there
+            # (x / NaN = NaN, not a divide-by-zero); panic only on an ordered ==0.
+            let dok = (lbl bx (strings::concat "fdivok_" (iv_key dst)))
+            set fout = (strings::concat fout (line "    xorps %xmm2, %xmm2"))
+            set fout = (strings::concat fout (line (cat3 "    ucomi" sfx " %xmm2, %xmm1")))
+            set fout = (strings::concat fout (line (cat2 "    jp " dok)))
+            set fout = (strings::concat fout (line (cat2 "    jne " dok)))
+            set fout = (strings::concat fout (line "    leaq .Lcl_fdivzero(%rip), %rdi"))
+            set fout = (strings::concat fout (line "    call cl_panic_cstr"))
+            set fout = (strings::concat fout (line (cat2 dok ":")))
+        end
         set fout = (strings::concat fout (line (cat3 "    " (float_arith_op op sfx) " %xmm1, %xmm0")))
         return (strings::concat fout (store_xmm bx "%xmm0" dst))
     end
@@ -1028,8 +1041,20 @@ func emit_bin (bx BX) (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk
         set out = (strings::concat out (line "    call cl_panic_cstr"))
         set out = (strings::concat out (line (cat2 okl ":")))
         if signed
+            # idivq raises #DE (SIGFPE) on INT_MIN / -1 (quotient doesn't fit).
+            # interp + C (-fwrapv) instead WRAP: quotient = -dividend (== INT_MIN),
+            # remainder = 0. Special-case divisor == -1 to avoid the hardware trap.
+            let dvok = (lbl bx (strings::concat "dvn1_" (iv_key dst)))
+            let dvaf = (lbl bx (strings::concat "dvaf_" (iv_key dst)))
+            set out = (strings::concat out (line "    cmpq $-1, %rcx"))
+            set out = (strings::concat out (line (cat2 "    jne " dvok)))
+            set out = (strings::concat out (line "    negq %rax"))
+            set out = (strings::concat out (line "    xorl %edx, %edx"))
+            set out = (strings::concat out (line (cat2 "    jmp " dvaf)))
+            set out = (strings::concat out (line (cat2 dvok ":")))
             set out = (strings::concat out (line "    cqto"))
             set out = (strings::concat out (line "    idivq %rcx"))
+            set out = (strings::concat out (line (cat2 dvaf ":")))
         else
             set out = (strings::concat out (line "    xorl %edx, %edx"))
             set out = (strings::concat out (line "    divq %rcx"))
@@ -1055,13 +1080,37 @@ func emit_bin (bx BX) (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk
     elsif (strings::eq op "bxor")
         set out = (strings::concat out (line "    xorq %rcx, %rax"))
     elsif (strings::eq op "shl")
+        # x86 shift masks the count to 6 bits (0..63), so a count >= width would
+        # wrap (e.g. shl by 64 -> by 0 -> identity). interp + C shift in wider
+        # precision then truncate, so a count >= width yields 0. Guard it.
+        let sbig = (lbl bx (strings::concat "shb_" (iv_key dst)))
+        let saf = (lbl bx (strings::concat "shaf_" (iv_key dst)))
+        set out = (strings::concat out (line (cat2 "    cmpq $" (cat2 (i2s bits) ", %rcx"))))
+        set out = (strings::concat out (line (cat2 "    jae " sbig)))
         set out = (strings::concat out (line "    shlq %cl, %rax"))
+        set out = (strings::concat out (line (cat2 "    jmp " saf)))
+        set out = (strings::concat out (line (cat2 sbig ":")))
+        set out = (strings::concat out (line "    xorl %eax, %eax"))
+        set out = (strings::concat out (line (cat2 saf ":")))
     elsif (strings::eq op "shr")
+        let sbig = (lbl bx (strings::concat "shb_" (iv_key dst)))
+        let saf = (lbl bx (strings::concat "shaf_" (iv_key dst)))
+        set out = (strings::concat out (line (cat2 "    cmpq $" (cat2 (i2s bits) ", %rcx"))))
+        set out = (strings::concat out (line (cat2 "    jae " sbig)))
         if signed
             set out = (strings::concat out (line "    sarq %cl, %rax"))
         else
             set out = (strings::concat out (line "    shrq %cl, %rax"))
         end
+        set out = (strings::concat out (line (cat2 "    jmp " saf)))
+        set out = (strings::concat out (line (cat2 sbig ":")))
+        if signed
+            # arithmetic shift by >= width = fill with the sign bit (0 or -1).
+            set out = (strings::concat out (line "    sarq $63, %rax"))
+        else
+            set out = (strings::concat out (line "    xorl %eax, %eax"))
+        end
+        set out = (strings::concat out (line (cat2 saf ":")))
     else
         do (panic (strings::concat "x86: unsupported binary op " op))
     end
@@ -1497,25 +1546,75 @@ func emit_array_at (bx BX) (arr IVal) (idx IVal) -> str
     return out
 end
 
+# Copy `sz` bytes from scratch[0..] to (off)(%rax), using full 8-byte words then a
+# 4/2/1-byte tail. Container element stride is the element type's size, which may
+# NOT be a multiple of 8 (e.g. a 12-byte {i32,i32,i32} struct), so copying
+# nwords*8 would overrun the next packed element / the heap buffer end.
+func copy_scratch_to_rax (bx BX) (sz i64) -> str
+    let out = ""
+    let off = 0i64
+    while (<= (+ off 8i64) sz)
+        set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ bx.scratch off)) ", %rcx"))))
+        set out = (strings::concat out (line (cat2 "    movq %rcx, " (cat2 (i2s off) "(%rax)"))))
+        set off = (+ off 8i64)
+    end
+    while (< off sz)
+        let rem = (- sz off)
+        if (>= rem 4i64)
+            set out = (strings::concat out (line (cat2 "    movl " (cat2 (off_mem (+ bx.scratch off)) ", %ecx"))))
+            set out = (strings::concat out (line (cat2 "    movl %ecx, " (cat2 (i2s off) "(%rax)"))))
+            set off = (+ off 4i64)
+        elsif (>= rem 2i64)
+            set out = (strings::concat out (line (cat2 "    movw " (cat2 (off_mem (+ bx.scratch off)) ", %cx"))))
+            set out = (strings::concat out (line (cat2 "    movw %cx, " (cat2 (i2s off) "(%rax)"))))
+            set off = (+ off 2i64)
+        else
+            set out = (strings::concat out (line (cat2 "    movb " (cat2 (off_mem (+ bx.scratch off)) ", %cl"))))
+            set out = (strings::concat out (line (cat2 "    movb %cl, " (cat2 (i2s off) "(%rax)"))))
+            set off = (+ off 1i64)
+        end
+    end
+    return out
+end
+
+# Copy `sz` bytes from (off)(%rax) into dst's frame slot (full words then 4/2/1 tail).
+func copy_rax_to_slot (bx BX) (dst IVal) (sz i64) -> str
+    let base = (slot_off bx (iv_key dst))
+    let out = ""
+    let off = 0i64
+    while (<= (+ off 8i64) sz)
+        set out = (strings::concat out (line (cat2 "    movq " (cat2 (i2s off) "(%rax), %rcx"))))
+        set out = (strings::concat out (line (cat3 "    movq %rcx, " (off_mem (+ base off)) "")))
+        set off = (+ off 8i64)
+    end
+    while (< off sz)
+        let rem = (- sz off)
+        if (>= rem 4i64)
+            set out = (strings::concat out (line (cat2 "    movl " (cat2 (i2s off) "(%rax), %ecx"))))
+            set out = (strings::concat out (line (cat3 "    movl %ecx, " (off_mem (+ base off)) "")))
+            set off = (+ off 4i64)
+        elsif (>= rem 2i64)
+            set out = (strings::concat out (line (cat2 "    movw " (cat2 (i2s off) "(%rax), %cx"))))
+            set out = (strings::concat out (line (cat3 "    movw %cx, " (off_mem (+ base off)) "")))
+            set off = (+ off 2i64)
+        else
+            set out = (strings::concat out (line (cat2 "    movb " (cat2 (i2s off) "(%rax), %cl"))))
+            set out = (strings::concat out (line (cat3 "    movb %cl, " (off_mem (+ base off)) "")))
+            set off = (+ off 1i64)
+        end
+    end
+    return out
+end
+
 # Store a container element (parked in scratch[0..]) into the buffer slot whose
-# address is in %rax. ≤8B: exact sized store; multi-word (8-multiple): full words.
+# address is in %rax. ≤8B: exact sized store; multi-word: byte-accurate copy.
 func store_elem_at_rax (bx BX) (ety IRType) -> str
     let nw = (nwords ety bx.structs)
     if (== nw 1i64)
         let out = (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx")))
         return (strings::concat out (store_sized (type_size ety bx.structs) "c" "(%rax)"))
     end
-    if (not (== (% (type_size ety bx.structs) 8i64) 0i64))
-        do (panic "x86: multi-word container element size not a multiple of 8 (later)")
-    end
-    let out = ""
-    let w = 0i64
-    while (< w nw)
-        set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ bx.scratch (* w 8i64))) ", %rcx"))))
-        set out = (strings::concat out (line (cat2 "    movq %rcx, " (cat2 (i2s (* w 8i64)) "(%rax)"))))
-        set w = (+ w 1i64)
-    end
-    return out
+    return (copy_scratch_to_rax bx (type_size ety bx.structs))
 end
 
 # Load a container element (buffer address in %rax) into dst's slot.
@@ -1525,17 +1624,7 @@ func load_elem_from_rax (bx BX) (dst IVal) (ty IRType) -> str
         let out = (load_sized (type_size ty bx.structs) (irt_signed ty) "(%rax)")
         return (strings::concat out (store_rax bx dst))
     end
-    if (not (== (% (type_size ty bx.structs) 8i64) 0i64))
-        do (panic "x86: multi-word container element size not a multiple of 8 (later)")
-    end
-    let out = ""
-    let w = 0i64
-    while (< w nw)
-        set out = (strings::concat out (line (cat2 "    movq " (cat2 (cat2 (i2s (* w 8i64)) "(%rax)") ", %rcx"))))
-        set out = (strings::concat out (line (cat3 "    movq %rcx, " (off_mem (+ (slot_off bx (iv_key dst)) (* w 8i64))) "")))
-        set w = (+ w 1i64)
-    end
-    return out
+    return (copy_rax_to_slot bx dst (type_size ty bx.structs))
 end
 
 # Load a container element parked in scratch[0..] into dst's slot (for cl_vec_pop,
@@ -2479,30 +2568,100 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ (slot_off bx (iv_key dst)) 8i64)) "")))
             return out
         case (ICallClosure has_dst dst clos args ret ptys)
-            # env (clos+8) is the implicit first arg; the actual args follow. Park
-            # all arg words in scratch slots, load into arg regs, then call through
-            # the closure's fn pointer (clos+0).
+            # env (clos+8) is the implicit first GP arg (%rdi); the actual args
+            # follow under the FULL SysV classification (floats -> xmm0..7, ints/
+            # ≤16B aggregates -> GP regs starting at %rsi, overflow -> stack).
+            # Park reg/xmm args into scratch (word 0 reserved for env), then call
+            # through the closure's fn pointer (clos+0). Mirrors emit_call; the bug
+            # this fixes: floats were loaded into GP regs, so a closure taking a
+            # float arg read garbage from an unset xmm register.
             let out = (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key clos)) 8i64)) ", %rax")))
             set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
-            let nw = 1i64
+            let argcat {i64} = (vec i64)
+            let argscr {i64} = (vec i64)
+            let argoff {i64} = (vec i64)
+            let gpw = 1i64
+            let xmmw = 0i64
+            let pw = 1i64
+            let stackbytes = 0i64
             let i = 0u64
             while (< i (len args))
-                set out = (strings::concat out (emit_park_arg bx args[i] nw))
-                set nw = (+ nw (nwords (iv_ty args[i]) bx.structs))
+                if (irt_is_float (iv_ty args[i]))
+                    if (< xmmw 8i64)
+                        set out = (strings::concat out (emit_park_arg bx args[i] pw))
+                        do (push argcat 1i64)
+                        do (push argscr pw)
+                        do (push argoff 0i64)
+                        set pw = (+ pw 1i64)
+                        set xmmw = (+ xmmw 1i64)
+                    else
+                        do (push argcat 2i64)
+                        do (push argscr 0i64)
+                        do (push argoff stackbytes)
+                        set stackbytes = (+ stackbytes 8i64)
+                    end
+                else
+                    let k = (nwords (iv_ty args[i]) bx.structs)
+                    if (and (<= k 2i64) (<= (+ gpw k) 6i64))
+                        set out = (strings::concat out (emit_park_arg bx args[i] pw))
+                        do (push argcat 0i64)
+                        do (push argscr pw)
+                        do (push argoff 0i64)
+                        set pw = (+ pw k)
+                        set gpw = (+ gpw k)
+                    else
+                        do (push argcat 2i64)
+                        do (push argscr 0i64)
+                        do (push argoff stackbytes)
+                        set stackbytes = (+ stackbytes (* k 8i64))
+                    end
+                end
                 set i = (+ i 1)
             end
-            if (> nw 6i64)
-                do (panic "x86: >6 closure-call argument words (stack args later)")
+            let memtotal = (round16 stackbytes)
+            if (> memtotal 0i64)
+                set out = (strings::concat out (line (cat2 "    subq $" (cat2 (i2s memtotal) ", %rsp"))))
             end
-            let w = 0i64
-            while (< w nw)
-                set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem (+ bx.scratch (* w 8i64))) ", ") (argreg w))))
-                set w = (+ w 1i64)
+            set i = 0u64
+            while (< i (len args))
+                if (== argcat[i] 2i64)
+                    set out = (strings::concat out (emit_store_arg_to_stack bx args[i] argoff[i]))
+                end
+                set i = (+ i 1)
+            end
+            set out = (strings::concat out (line (cat3 "    movq " (off_mem bx.scratch) ", %rdi")))
+            let gpreg = 1i64
+            set i = 0u64
+            while (< i (len args))
+                if (== argcat[i] 0i64)
+                    let k = (nwords (iv_ty args[i]) bx.structs)
+                    let w = 0i64
+                    while (< w k)
+                        set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem (+ bx.scratch (* (+ argscr[i] w) 8i64))) ", ") (argreg gpreg))))
+                        set gpreg = (+ gpreg 1i64)
+                        set w = (+ w 1i64)
+                    end
+                end
+                set i = (+ i 1)
+            end
+            let xreg = 0i64
+            set i = 0u64
+            while (< i (len args))
+                if (== argcat[i] 1i64)
+                    set out = (strings::concat out (line (cat3 (strings::concat "    mov" (sse_sfx (iv_ty args[i]))) " " (cat3 (off_mem (+ bx.scratch (* argscr[i] 8i64))) ", %xmm" (i2s xreg)))))
+                    set xreg = (+ xreg 1i64)
+                end
+                set i = (+ i 1)
             end
             set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (slot_off bx (iv_key clos))) ", %r11"))))
             set out = (strings::concat out (line "    call *%r11"))
+            if (> memtotal 0i64)
+                set out = (strings::concat out (line (cat2 "    addq $" (cat2 (i2s memtotal) ", %rsp"))))
+            end
             if has_dst
-                if (> (nwords ret bx.structs) 1i64)
+                if (irt_is_float ret)
+                    set out = (strings::concat out (store_xmm bx "%xmm0" dst))
+                elsif (> (nwords ret bx.structs) 1i64)
                     set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) "")))
                     set out = (strings::concat out (line (cat3 "    movq %rdx, " (off_mem (+ (slot_off bx (iv_key dst)) 8i64)) "")))
                 else
@@ -2778,6 +2937,8 @@ export func emit (m IRModule) -> str
     set out = (strings::concat out (line "    .asciz \"integer division by zero\""))
     set out = (strings::concat out (line ".Lcl_overflow:"))
     set out = (strings::concat out (line "    .asciz \"integer overflow\""))
+    set out = (strings::concat out (line ".Lcl_fdivzero:"))
+    set out = (strings::concat out (line "    .asciz \"float division by zero\""))
     # string-literal pool (one rodata entry per distinct literal; cl_strlit interns
     # by pointer, so identical literals share a label -> a single interned handle).
     for s in (map_keys strs)

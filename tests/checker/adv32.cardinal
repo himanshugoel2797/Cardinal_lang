@@ -1,0 +1,6 @@
+module adv32
+# ADVERSARIAL: calling len on a non-collection (i32)
+func f () -> u64
+    let x = 5i32
+    return (len x)
+end

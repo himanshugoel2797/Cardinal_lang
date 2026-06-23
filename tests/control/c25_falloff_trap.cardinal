@@ -1,0 +1,21 @@
+module c25_falloff_trap
+
+import io
+
+# A value-returning function that falls off the end (no return statement reached).
+# DESIGN says: emits a trap / runtime error.
+# All 3 paths should panic (status class = 1). This tests agreement on the panic.
+
+func no_return (n i32) -> i32
+    if (> n 1000)
+        return 42i32
+    end
+    # Falls off the end when n <= 1000
+end
+
+func main () -> i32
+    do (io::println "before")
+    let x = (no_return 1)   # should trap
+    do (io::println x)      # should not reach
+    return 0i32
+end

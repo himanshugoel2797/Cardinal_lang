@@ -1,0 +1,6 @@
+module adv34
+# ADVERSARIAL: map_has with wrong key type
+func f () -> bool
+    let m {str i32} = (map str i32)
+    return (map_has m 1i32)
+end

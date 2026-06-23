@@ -1,0 +1,6 @@
+module fn04
+# ILLEGAL: calling a non-function (i32 variable called as function)
+func f () -> i32
+    let x = 5i32
+    return (x 1)
+end

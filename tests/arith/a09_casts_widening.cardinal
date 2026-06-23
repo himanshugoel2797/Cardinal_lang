@@ -1,0 +1,38 @@
+module a09_casts_widening
+
+import io
+
+func main () -> i32
+    # i8 sign-extension to i32: -1 becomes -1
+    do (io::println (as (- 1i8) i32))
+
+    # i8 sign-extension to i64: -128 becomes -128
+    do (io::println (as (- 128i8) i64))
+
+    # u8 zero-extension to i32: 200 becomes 200 (not negative)
+    do (io::println (as 200u8 i32))
+
+    # u8 zero-extension to i32: 255 becomes 255 (not -1)
+    do (io::println (as 255u8 i32))
+
+    # i16 sign-extension to i32: -32768 stays -32768
+    do (io::println (as (- 32768i16) i32))
+
+    # u16 zero-extension to i32: 65535 becomes 65535
+    do (io::println (as 65535u16 i32))
+
+    # i32 sign-extension to i64: -2147483648 stays -2147483648
+    do (io::println (as (- 2147483648i32) i64))
+
+    # u32 zero-extension to i64: 4294967295 becomes 4294967295
+    do (io::println (as 4294967295u32 i64))
+
+    # u32 zero-extension to u64: max u32 stays 4294967295
+    do (io::println (as 4294967295u32 u64))
+
+    # i8 to u64: sign-extend then view as u64 OR zero-extend?
+    # -1i8 -> i64 = -1i64 -> u64 = 18446744073709551615 (reinterpret)
+    do (io::println (as (as (- 1i8) i64) u64))
+
+    return 0i32
+end

@@ -1,0 +1,37 @@
+module str_chars
+
+import io
+import strings
+import convert
+
+# Test strings::chars and strings::from_char
+func main () -> i32
+    # chars of ASCII string
+    let cs = (strings::chars "abc")
+    do (io::println (len cs))               # 3
+    for c in cs
+        do (io::println (convert::ord c))
+    end
+    # Expected: 97 98 99
+
+    # from_char round-trip
+    do (io::println (strings::from_char 'A'))    # A
+    do (io::println (strings::from_char 'z'))    # z
+    do (io::println (strings::from_char '\n'))   # (newline)
+
+    # chars of multi-byte string, from_char each back to str
+    let cs2 = (strings::chars "héllo")
+    do (io::println (len cs2))              # 5
+    # reconstruct string char by char
+    let rebuilt = ""
+    for c in cs2
+        set rebuilt = (strings::concat rebuilt (strings::from_char c))
+    end
+    do (io::println rebuilt)                # héllo
+
+    # from_char of multi-byte codepoint
+    do (io::println (strings::from_char '日'))   # 日
+    do (io::println (strings::from_char '😀'))  # 😀
+
+    return 0i32
+end

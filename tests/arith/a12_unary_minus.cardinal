@@ -1,0 +1,32 @@
+module a12_unary_minus
+
+import io
+
+func main () -> i32
+    # Unary minus of INT_MIN wraps to itself (two's complement)
+    let i8min = (- 128i8)
+    do (io::println (- i8min))
+
+    let i16min = (- 32768i16)
+    do (io::println (- i16min))
+
+    let i32min = (- 2147483648i32)
+    do (io::println (- i32min))
+
+    let i64min = (- 9223372036854775808i64)
+    do (io::println (- i64min))
+
+    # Unary minus of 0 = 0
+    do (io::println (- 0i32))
+
+    # Unary minus of 1 = -1
+    do (io::println (- 1i32))
+
+    # Double negation: -(-x) = x
+    do (io::println (- (- 42i32)))
+
+    # Unary minus applied to expression
+    do (io::println (- (+ 10i32 5i32)))
+
+    return 0i32
+end

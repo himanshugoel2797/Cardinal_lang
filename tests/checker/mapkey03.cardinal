@@ -1,0 +1,5 @@
+module mapkey03
+# ILLEGAL: float as map key (not hashable)
+func f () -> unit
+    let m {f64 i32} = (map f64 i32)
+end

@@ -1,0 +1,11 @@
+module adv49
+# ADVERSARIAL: closure with wrong return type used as func-typed param
+func apply (f func(-> i32)) -> i32
+    return (f)
+end
+func f () -> i32
+    let g = func () -> bool
+        return true
+    end
+    return (apply g)
+end

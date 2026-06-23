@@ -1,0 +1,39 @@
+module ag16_float_struct_24byte
+
+import io
+
+# 24-byte float-containing struct: MEMORY-class (on stack)
+# f64 + f64 + i64 = 24 bytes — must go to memory path
+struct BigFloat
+    px f64
+    py f64
+    tag i64
+end
+
+func make_bf (px f64) (py f64) (tag i64) -> BigFloat
+    return (BigFloat px: px py: py tag: tag)
+end
+
+func scale_bf (b BigFloat) (s f64) -> BigFloat
+    return (BigFloat px: (* b.px s) py: (* b.py s) tag: b.tag)
+end
+
+func main () -> i32
+    let b = (make_bf 3.0 4.0 7i64)
+    do (io::println b.px)       # 3
+    do (io::println b.py)       # 4
+    do (io::println b.tag)      # 7
+
+    let s = (scale_bf b 2.0)
+    do (io::println s.px)       # 6
+    do (io::println s.py)       # 8
+    do (io::println s.tag)      # 7
+
+    # copy semantics on 24-byte struct
+    let c = b
+    set c.px = 99.0
+    do (io::println b.px)       # 3 (unchanged)
+    do (io::println c.px)       # 99
+
+    return 0i32
+end

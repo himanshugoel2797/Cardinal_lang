@@ -1,0 +1,47 @@
+module ag17_nested_struct_large
+
+import io
+
+# Nested struct where outer exceeds 16 bytes (MEMORY-class)
+struct Vec3
+    x f64
+    y f64
+    z f64
+end
+
+func make_vec3 (x f64) (y f64) (z f64) -> Vec3
+    return (Vec3 x: x y: y z: z)
+end
+
+func dot3 (a Vec3) (b Vec3) -> f64
+    return (+ (* a.x b.x) (+ (* a.y b.y) (* a.z b.z)))
+end
+
+func add3 (a Vec3) (b Vec3) -> Vec3
+    return (Vec3 x: (+ a.x b.x) y: (+ a.y b.y) z: (+ a.z b.z))
+end
+
+func main () -> i32
+    let v1 = (make_vec3 1.0 2.0 3.0)
+    let v2 = (make_vec3 4.0 5.0 6.0)
+
+    do (io::println v1.x)   # 1
+    do (io::println v1.y)   # 2
+    do (io::println v1.z)   # 3
+
+    # dot product: 1*4 + 2*5 + 3*6 = 4 + 10 + 18 = 32
+    do (io::println (dot3 v1 v2))  # 32
+
+    let v3 = (add3 v1 v2)
+    do (io::println v3.x)   # 5
+    do (io::println v3.y)   # 7
+    do (io::println v3.z)   # 9
+
+    # copy semantics
+    let v4 = v1
+    set v4.x = 100.0
+    do (io::println v1.x)   # 1 (unchanged)
+    do (io::println v4.x)   # 100
+
+    return 0i32
+end

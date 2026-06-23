@@ -1,0 +1,20 @@
+module map_vec_value
+
+import io
+
+# Map with vector values (str -> {i32})
+func main () -> i32
+    let m {str {i32}} = (map str {i32})
+    let v1 {i32} = {1 2 3}
+    let v2 {i32} = {10 20}
+    set m["odds"] = v1
+    set m["evens"] = v2
+
+    do (io::println (len m))              # 2
+    do (io::println (len m["odds"]))      # 3
+    do (io::println (len m["evens"]))     # 2
+    do (io::println m["odds"][0])         # 1
+    do (io::println m["evens"][1])        # 20
+
+    return 0i32
+end

@@ -1,0 +1,41 @@
+module gc03_vec_of_closures
+
+import io
+
+# Build a vec of closures, each capturing a distinct counter value.
+# Then invoke them all after heavy intervening allocation pressure.
+# Expected: sum = 0+1+2+...+999 = 499500
+
+func make_adder (n i32) -> func(-> i32)
+    let f = func () -> i32
+        return n
+    end
+    return f
+end
+
+func alloc_pressure () -> i32
+    # allocate and discard many strings to trigger GC cycles
+    let dummy = 0i32
+    for k = 0 to 5000
+        let s {i32} = (vec i32)
+        do (push s k)
+        do (push s (+ k 1))
+        set dummy = (+ dummy s[0])
+    end
+    return dummy
+end
+
+func main () -> i32
+    let closures {func(-> i32)} = (vec func(-> i32))
+    for i = 0 to 1000
+        do (push closures (make_adder i))
+    end
+    # allocation pressure between building and reading
+    let p = (alloc_pressure)
+    let total = 0i32
+    for f in closures
+        set total = (+ total (f))
+    end
+    do (io::println total)
+    return 0i32
+end

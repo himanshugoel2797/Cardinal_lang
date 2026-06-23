@@ -1,0 +1,8 @@
+module adv27
+# ADVERSARIAL: closure returning wrong type
+func f () -> i32
+    let g = func () -> i32
+        return true
+    end
+    return (g)
+end

@@ -1,0 +1,10 @@
+module mapkey06
+# ILLEGAL: set m[k].field = v (maps copy — compile error per DESIGN)
+struct P
+    x i32
+end
+func f () -> unit
+    let m {str P} = (map str P)
+    set m["k"] = (P x: 1)
+    set m["k"].x = 99i32
+end

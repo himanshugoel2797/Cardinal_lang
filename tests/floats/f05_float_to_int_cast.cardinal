@@ -1,0 +1,33 @@
+module f05_float_to_int_cast
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func p32 (x f32) -> f32
+    return x
+end
+
+func main () -> i32
+    # Truncation toward zero for positive
+    do (io::println (as (p64 3.9) i32))
+    do (io::println (as (p64 3.1) i32))
+    do (io::println (as (p64 3.0) i32))
+
+    # Truncation toward zero for negative
+    do (io::println (as (p64 (- 3.9)) i32))
+    do (io::println (as (p64 (- 3.1)) i32))
+    do (io::println (as (p64 (- 3.0)) i32))
+
+    # f64 -> i64
+    do (io::println (as (p64 1000000.9) i64))
+    do (io::println (as (p64 (- 1000000.9)) i64))
+
+    # f32 -> i32
+    do (io::println (as 99.9f32 i32))
+    do (io::println (as (- 99.9f32) i32))
+
+    return 0i32
+end

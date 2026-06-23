@@ -1,0 +1,73 @@
+module f08_comparisons
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func main () -> i32
+    let a = (p64 1.0)
+    let b = (p64 2.0)
+    let c = (p64 1.0)
+
+    # == same value
+    if (== a c)
+        do (io::println "eq")
+    else
+        do (io::println "neq")
+    end
+
+    # != different value
+    if (!= a b)
+        do (io::println "neq2")
+    else
+        do (io::println "eq2")
+    end
+
+    # <
+    if (< a b)
+        do (io::println "lt")
+    else
+        do (io::println "notlt")
+    end
+
+    # >
+    if (> b a)
+        do (io::println "gt")
+    else
+        do (io::println "notgt")
+    end
+
+    # <=
+    if (<= a c)
+        do (io::println "le")
+    else
+        do (io::println "notle")
+    end
+
+    # >=
+    if (>= a c)
+        do (io::println "ge")
+    else
+        do (io::println "notge")
+    end
+
+    # 0.1+0.2 != 0.3 (classic float trap)
+    let sum = (+ (p64 0.1) (p64 0.2))
+    let three_tenths = (p64 0.3)
+    if (== sum three_tenths)
+        do (io::println "0.1+0.2==0.3")
+    else
+        do (io::println "0.1+0.2!=0.3")
+    end
+
+    # f32 comparisons
+    if (< 1.0f32 2.0f32)
+        do (io::println "f32_lt")
+    else
+        do (io::println "f32_notlt")
+    end
+
+    return 0i32
+end

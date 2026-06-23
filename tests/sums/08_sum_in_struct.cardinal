@@ -1,0 +1,47 @@
+module t08_sum_in_struct
+
+import io
+
+# Sum value stored in a struct field; passed to fn, returned from fn
+type Color
+    Red
+    Green
+    Blue
+end
+
+struct Pixel
+    x i32
+    y i32
+    color Color
+end
+
+func pixel_value (p Pixel) -> i32
+    match p.color
+        case Red
+            return 1
+        case Green
+            return 2
+        case Blue
+            return 3
+    end
+    return 0
+end
+
+func make_pixel (x i32) (y i32) (c Color) -> Pixel
+    return (Pixel x: x y: y color: c)
+end
+
+func main () -> i32
+    let p1 = (make_pixel 0 0 Red)
+    let p2 = (make_pixel 1 0 Green)
+    let p3 = (make_pixel 0 1 Blue)
+
+    do (io::println (pixel_value p1))   # 1
+    do (io::println (pixel_value p2))   # 2
+    do (io::println (pixel_value p3))   # 3
+
+    # Mutate the color field via struct copy
+    let p4 = p1
+    do (io::println (pixel_value p4))   # 1  (copy)
+    return 0i32
+end

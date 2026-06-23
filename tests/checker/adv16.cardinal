@@ -1,0 +1,6 @@
+module adv16
+# ADVERSARIAL: array literal with mismatched element types
+func f () -> i32
+    let xs [i32] = [1i32 2i64 3i32]
+    return xs[0]
+end

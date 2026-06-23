@@ -1,0 +1,24 @@
+module str_display
+
+import io
+
+# Test how vec and map display via to_str and println
+func main () -> i32
+    # Vec display
+    let v {i32} = {1 2 3}
+    do (io::println v)           # {1 2 3}
+
+    let v2 {str} = (vec str)
+    do (push v2 "a")
+    do (push v2 "b")
+    do (io::println v2)          # {a b}
+
+    let v3 {bool} = {true false true}
+    do (io::println v3)          # {true false true}
+
+    # Empty vec display
+    let ve {i32} = (vec i32)
+    do (io::println ve)          # {}
+
+    return 0i32
+end

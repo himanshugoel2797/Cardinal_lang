@@ -1,0 +1,10 @@
+module str_convert_panic2
+
+import io
+import convert
+
+# str_to_int with empty string should panic
+func main () -> i32
+    do (io::println (convert::str_to_int ""))
+    return 0i32
+end

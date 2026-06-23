@@ -1,0 +1,22 @@
+module str_to_str
+
+import io
+
+# to_str on various types, used in string building
+func main () -> i32
+    do (io::println (to_str 42i32))        # 42
+    do (io::println (to_str (- 7i64)))     # -7
+    do (io::println (to_str true))         # true
+    do (io::println (to_str false))        # false
+    do (io::println (to_str 'A'))          # A
+    do (io::println (to_str '日'))         # 日
+    do (io::println (to_str "hello"))      # hello
+    do (io::println (to_str "日本語"))     # 日本語
+
+    # Concatenate with to_str
+    let n = 42i32
+    let s = (to_str n)
+    do (io::println s)                     # 42
+
+    return 0i32
+end

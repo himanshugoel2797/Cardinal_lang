@@ -1310,6 +1310,14 @@ class Interp:
         end = self.eval(s.end, env, ms)
         step = self.eval(s.step, env, ms) if s.step else None
         sv, ev, ty = self.unify_ints([start, end] + ([step] if step else []))
+        # The numeric for-loop index defaults to i32 when the bounds are
+        # themselves untyped literals (DESIGN §7.2 sanctioned default — same rule
+        # both checkers apply). Without this the index CInt carried ty=None, so an
+        # arithmetic expression over the index (e.g. `(* i 10)`) produced an
+        # untyped result and `let` could not infer it — a divergence from the
+        # backends, which honor the i32 default.
+        if ty is None:
+            ty = "i32"
         stepv = sv[2] if step else 1
         i = sv[0]
         limit = sv[1]
@@ -1646,11 +1654,17 @@ class Interp:
             elif op == "/":
                 if x == 0:
                     raise Panic("integer division by zero")
-                acc = int(acc / x)       # truncate toward zero
+                # truncate toward zero, in EXACT integer arithmetic. (int(acc/x)
+                # routed through a Python float and lost precision for 64-bit
+                # operands near 2^63 — e.g. u64_max/1 came out 0.)
+                q = abs(acc) // abs(x)
+                acc = -q if (acc < 0) != (x < 0) else q
             elif op == "%":
                 if x == 0:
                     raise Panic("integer modulo by zero")
-                acc = acc - int(acc / x) * x
+                q = abs(acc) // abs(x)
+                q = -q if (acc < 0) != (x < 0) else q
+                acc = acc - q * x
         return self.wrap_int(acc, ty)
 
     def bitwise(self, op, vals):

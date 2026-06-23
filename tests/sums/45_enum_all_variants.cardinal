@@ -1,0 +1,77 @@
+module t45_enum_all_variants
+
+import io
+
+# Enum: all-variant iteration via vec; equality; to_str; as map key
+enum Month
+    Jan
+    Feb
+    Mar
+    Apr
+    May
+    Jun
+    Jul
+    Aug
+    Sep
+    Oct
+    Nov
+    Dec
+end
+
+func month_days (m Month) -> i32
+    if (== m Month::Feb)
+        return 28
+    end
+    if (== m Month::Apr)
+        return 30
+    end
+    if (== m Month::Jun)
+        return 30
+    end
+    if (== m Month::Sep)
+        return 30
+    end
+    if (== m Month::Nov)
+        return 30
+    end
+    return 31
+end
+
+func main () -> i32
+    # All months in a vec
+    let months {Month} = (vec Month)
+    do (push months Month::Jan)
+    do (push months Month::Feb)
+    do (push months Month::Mar)
+    do (push months Month::Apr)
+    do (push months Month::May)
+    do (push months Month::Jun)
+    do (push months Month::Jul)
+    do (push months Month::Aug)
+    do (push months Month::Sep)
+    do (push months Month::Oct)
+    do (push months Month::Nov)
+    do (push months Month::Dec)
+
+    # Sum all days (non-leap year: should be 365)
+    let total_days = 0i32
+    for m in months
+        set total_days = (+ total_days (month_days m))
+    end
+    do (io::println total_days)    # 365
+
+    # to_str of each
+    do (io::println (to_str Month::Jan))   # Jan
+    do (io::println (to_str Month::Dec))   # Dec
+
+    # Enum as map key: days -> month name
+    let day_count {Month i32} = (map Month i32)
+    for m in months
+        set day_count[m] = (month_days m)
+    end
+    do (io::println day_count[Month::Feb])   # 28
+    do (io::println day_count[Month::Jan])   # 31
+    do (io::println (len day_count))          # 12
+
+    return 0i32
+end

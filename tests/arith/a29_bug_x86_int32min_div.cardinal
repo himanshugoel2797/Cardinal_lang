@@ -1,0 +1,13 @@
+module a29_bug_x86_int32min_div
+
+import io
+
+func main () -> i32
+    # INT32_MIN / -1: overflows (two's complement wrap)
+    # Expected result: INT32_MIN = -2147483648 (wraps)
+    # All three should agree
+    let i32min = (- 2147483648i32)
+    do (io::println (/ i32min (- 1i32)))
+
+    return 0i32
+end

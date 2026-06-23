@@ -1,0 +1,28 @@
+module str_convert
+
+import io
+import convert
+
+# Test convert::int_to_str, str_to_int edge cases
+func main () -> i32
+    # int_to_str basic
+    do (io::println (convert::int_to_str 0))        # 0
+    do (io::println (convert::int_to_str 42))       # 42
+    do (io::println (convert::int_to_str (- 99i64)))  # -99
+    do (io::println (convert::int_to_str 1000000))  # 1000000
+
+    # str_to_int basic
+    do (io::println (convert::str_to_int "0"))      # 0
+    do (io::println (convert::str_to_int "42"))     # 42
+    do (io::println (convert::str_to_int "-99"))    # -99
+    do (io::println (convert::str_to_int "+5"))     # 5
+
+    # str_to_int with whitespace trimming
+    do (io::println (convert::str_to_int " 7 "))   # 7
+    do (io::println (convert::str_to_int "  -3  ")) # -3
+
+    # round-trip
+    do (io::println (convert::int_to_str (convert::str_to_int "12345")))  # 12345
+
+    return 0i32
+end

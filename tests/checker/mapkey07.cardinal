@@ -1,0 +1,5 @@
+module mapkey07
+# ILLEGAL: map as map key
+func f () -> unit
+    let m {{str i32} i32} = (map {str i32} i32)
+end

@@ -1,0 +1,21 @@
+module ag12_struct_with_array_field
+
+import io
+
+# Struct containing an array field
+struct Matrix2x2
+    rows [[i32]]
+end
+
+func main () -> i32
+    let row0 = [1i32 2i32]
+    let row1 = [3i32 4i32]
+    let m = (Matrix2x2 rows: [row0 row1])
+
+    do (io::println m.rows[0][0])   # 1
+    do (io::println m.rows[0][1])   # 2
+    do (io::println m.rows[1][0])   # 3
+    do (io::println m.rows[1][1])   # 4
+
+    return 0i32
+end

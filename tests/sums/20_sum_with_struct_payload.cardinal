@@ -1,0 +1,54 @@
+module t20_sum_with_struct_payload
+
+import io
+
+# Sum variant with struct in payload
+struct Point
+    x i32
+    y i32
+end
+
+type Shape
+    Circle (center Point) (radius i32)
+    Rect (topleft Point) (width i32) (height i32)
+    Empty
+end
+
+func area (s Shape) -> i32
+    match s
+        case (Circle c r)
+            return (* 3 (* r r))   # approx pi=3
+        case (Rect tl w h)
+            return (* w h)
+        case Empty
+            return 0
+    end
+    return 0
+end
+
+func perimeter (s Shape) -> i32
+    match s
+        case (Circle c r)
+            return (* 6 r)   # approx 2*pi*r with pi=3
+        case (Rect tl w h)
+            return (* 2 (+ w h))
+        case Empty
+            return 0
+    end
+    return 0
+end
+
+func main () -> i32
+    let c = (Circle center: (Point x: 0 y: 0) radius: 5)
+    let r = (Rect topleft: (Point x: 1 y: 1) width: 4 height: 6)
+    let e = Empty
+
+    do (io::println (area c))        # 75
+    do (io::println (area r))        # 24
+    do (io::println (area e))        # 0
+
+    do (io::println (perimeter c))   # 30
+    do (io::println (perimeter r))   # 20
+    do (io::println (perimeter e))   # 0
+    return 0i32
+end

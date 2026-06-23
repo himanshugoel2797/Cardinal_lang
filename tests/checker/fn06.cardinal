@@ -1,0 +1,5 @@
+module fn06
+# ILLEGAL: wrong return type
+func f () -> i32
+    return true
+end

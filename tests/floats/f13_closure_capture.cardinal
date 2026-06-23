@@ -1,0 +1,30 @@
+module f13_closure_capture
+
+import io
+
+func make_adder (offset f64) -> func(f64 -> f64)
+    let fn = func (x f64) -> f64
+        return (+ x offset)
+    end
+    return fn
+end
+
+func main () -> i32
+    # Float captured in closure
+    let add5 = (make_adder 5.0)
+    do (io::println (add5 1.0))
+    do (io::println (add5 2.5))
+    do (io::println (add5 (- 3.0)))
+
+    # Closure modifying a captured f64 accumulator
+    let acc = 0.0f32
+    let adder = func () -> f32
+        set acc = (+ acc 1.5f32)
+        return acc
+    end
+    do (io::println (adder))
+    do (io::println (adder))
+    do (io::println (adder))
+
+    return 0i32
+end

@@ -1,0 +1,42 @@
+module gc07_deep_sum_fold
+
+import io
+
+# Build a deep chain of 100000 Cons nodes, then fold to compute a sum.
+# During build, earlier nodes must not be collected (they're reachable via
+# the accumulator).  Expected: sum 0+1+2+...+99999 = 4999950000
+
+type List
+    Nil
+    Cons (head i32) (tail List)
+end
+
+func build (n i32) -> List
+    let acc List = Nil
+    for i = 0 to n
+        set acc = (Cons head: i tail: acc)
+    end
+    return acc
+end
+
+func fold (lst List) -> i64
+    let total = 0i64
+    let cur List = lst
+    let running = true
+    while running
+        match cur
+            case Nil
+                set running = false
+            case (Cons h t)
+                set total = (+ total (as h i64))
+                set cur = t
+        end
+    end
+    return total
+end
+
+func main () -> i32
+    let lst = (build 100000)
+    do (io::println (fold lst))
+    return 0i32
+end

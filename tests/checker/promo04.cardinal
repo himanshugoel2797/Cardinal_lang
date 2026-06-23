@@ -1,0 +1,5 @@
+module promo04
+# ILLEGAL: returning wrong width from function
+func f () -> i32
+    return 1i64
+end

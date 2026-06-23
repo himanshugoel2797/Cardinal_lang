@@ -1,0 +1,18 @@
+module gc04_string_concat_loop
+
+import io
+import strings
+
+# Tight string-concat loop: at each step the old string becomes garbage.
+# The live string must survive GC triggered by the next alloc.
+# Expected: 10000 (10000 'a' chars, counted via chars array length)
+
+func main () -> i32
+    let s = ""
+    for i = 0 to 10000
+        set s = (strings::concat s "a")
+    end
+    let cs = (strings::chars s)
+    do (io::println (len cs))
+    return 0i32
+end

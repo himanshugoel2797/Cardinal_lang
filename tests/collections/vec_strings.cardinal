@@ -1,0 +1,37 @@
+module vec_strings
+
+import io
+import strings
+
+# Vector of strings: push, index, for-in, pop
+func main () -> i32
+    let v {str} = (vec str)
+    do (push v "alpha")
+    do (push v "beta")
+    do (push v "gamma")
+
+    do (io::println (len v))      # 3
+    do (io::println v[0])         # alpha
+    do (io::println v[2])         # gamma
+
+    for w in v
+        do (io::println w)
+    end
+    # alpha beta gamma
+
+    do (io::println (pop v))      # gamma
+    do (io::println (len v))      # 2
+
+    # Push UTF-8 strings
+    do (push v "日本語")
+    do (push v "a😀b")
+    do (io::println (len v))      # 4
+    do (io::println v[2])         # 日本語
+    do (io::println v[3])         # a😀b
+
+    # Replace element
+    set v[0] = "ALPHA"
+    do (io::println v[0])         # ALPHA
+
+    return 0i32
+end

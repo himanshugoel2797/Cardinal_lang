@@ -1,0 +1,6 @@
+module adv35
+# ADVERSARIAL: map_keys called on non-map type
+func f () -> unit
+    let xs [i32] = [1 2 3]
+    let ks = (map_keys xs)
+end

@@ -1,0 +1,47 @@
+module c21_return_from_loop
+
+import io
+
+# Return from inside a nested loop - should exit all loops and the function
+func search (target i32) -> i32
+    for i = 0 to 10
+        for j = 0 to 10
+            for k = 0 to 10
+                if (== (+ (+ i j) k) target)
+                    return (* (+ i j) k)
+                end
+            end
+        end
+    end
+    return (- 1i32)
+end
+
+# Return from inside while loop
+func first_divisor (n i32) -> i32
+    let d = 2i32
+    while (<= (* d d) n)
+        if (== (% n d) 0)
+            return d
+        end
+        set d = (+ d 1)
+    end
+    return n
+end
+
+func main () -> i32
+    # sum i+j+k = 5 and result = (i+j)*k
+    # first match: i=0,j=0,k=5 -> result=0*5=0
+    do (io::println (search 5))    # 0
+    # first match: i=0,j=1,k=0 -> 1+0=1... i=0,j=0,k=1->0*1=0... wait
+    # search(1): i=0,j=0,k=1 -> (0+0+1)==1 -> (0+0)*1=0
+    do (io::println (search 1))    # 0
+    do (io::println (search 100))  # -1 (max is 9+9+9=27)
+
+    # first_divisor
+    do (io::println (first_divisor 12))   # 2
+    do (io::println (first_divisor 15))   # 3
+    do (io::println (first_divisor 17))   # 17 (prime)
+    do (io::println (first_divisor 49))   # 7
+
+    return 0i32
+end

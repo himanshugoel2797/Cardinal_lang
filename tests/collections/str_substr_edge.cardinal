@@ -1,0 +1,31 @@
+module str_substr_edge
+
+import io
+import strings
+
+# Edge cases for substr with multi-byte chars that test off-by-one in UTF-8 decode
+func main () -> i32
+    # "a😀日é" = codepoints: a(U+61), 😀(U+1F600), 日(U+65E5), é(U+00E9)
+    let s = "a😀日é"
+    let cs = (strings::chars s)
+    do (io::println (len cs))        # 4
+
+    # Each codepoint individually
+    do (io::println (strings::substr s 0 1))   # a
+    do (io::println (strings::substr s 1 1))   # 😀
+    do (io::println (strings::substr s 2 1))   # 日
+    do (io::println (strings::substr s 3 1))   # é
+
+    # Substrings spanning multiple different widths
+    do (io::println (strings::substr s 0 2))   # a😀
+    do (io::println (strings::substr s 1 2))   # 😀日
+    do (io::println (strings::substr s 2 2))   # 日é
+    do (io::println (strings::substr s 0 4))   # a😀日é
+
+    # Start = 1 past last codepoint, count 0 = empty
+    do (io::println (strings::substr s 4 0))   # (empty)
+    # Start > len = empty (no panic)
+    do (io::println (strings::substr s 10 3))  # (empty)
+
+    return 0i32
+end

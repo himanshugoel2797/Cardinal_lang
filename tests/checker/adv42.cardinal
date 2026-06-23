@@ -1,0 +1,8 @@
+module adv42
+# ADVERSARIAL: global const at module level — is this even supported?
+# Testing that a module-level const declaration is accepted
+const LIMIT = 100i32
+
+func f () -> i32
+    return LIMIT
+end

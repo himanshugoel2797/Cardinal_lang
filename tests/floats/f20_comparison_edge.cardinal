@@ -1,0 +1,48 @@
+module f20_comparison_edge
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func main () -> i32
+    # Compare results of two different computation paths that should be equal
+    let a = (* (p64 2.0) (p64 3.0))
+    let b = (+ (p64 3.0) (p64 3.0))
+    if (== a b)
+        do (io::println "6_eq")
+    else
+        do (io::println "6_neq")
+    end
+
+    # Compare after int -> float -> int round-trip
+    let x = 42i32
+    let y = (as (as x f64) i32)
+    if (== x y)
+        do (io::println "roundtrip_eq")
+    else
+        do (io::println "roundtrip_neq")
+    end
+
+    # Compare f32 and f64 after f32->f64 promotion: 1.5 is exact in both
+    let f32val = 1.5f32
+    let promoted = (as f32val f64)
+    let f64val = (p64 1.5)
+    if (== promoted f64val)
+        do (io::println "f32_f64_eq")
+    else
+        do (io::println "f32_f64_neq")
+    end
+
+    # Compare 0.1+0.2 vs 0.3 (classic float trap)
+    let sum = (+ (p64 0.1) (p64 0.2))
+    let three_tenths = (p64 0.3)
+    if (== sum three_tenths)
+        do (io::println "0.1+0.2==0.3")
+    else
+        do (io::println "0.1+0.2!=0.3")
+    end
+
+    return 0i32
+end

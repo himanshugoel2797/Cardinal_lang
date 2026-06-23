@@ -1,0 +1,54 @@
+module t14_sum_closure
+
+import io
+
+# Sum value captured in a closure; returned from closure; closure passed fn
+type Op
+    Add (delta i32)
+    Mul (factor i32)
+    Noop
+end
+
+func make_op_fn (op Op) -> func(i32 -> i32)
+    let f = func (x i32) -> i32
+        match op
+            case (Add d)
+                return (+ x d)
+            case (Mul f2)
+                return (* x f2)
+            case Noop
+                return x
+        end
+        return x
+    end
+    return f
+end
+
+func apply_op (f func(i32 -> i32)) (x i32) -> i32
+    return (f x)
+end
+
+func main () -> i32
+    let add5 = (make_op_fn (Add delta: 5))
+    let mul3 = (make_op_fn (Mul factor: 3))
+    let noop = (make_op_fn Noop)
+
+    do (io::println (apply_op add5 10))   # 15
+    do (io::println (apply_op mul3 10))   # 30
+    do (io::println (apply_op noop 10))   # 10
+
+    # Closure over a changing sum
+    let current_op = (Add delta: 1)
+    let stepper = func (x i32) -> i32
+        match current_op
+            case (Add d)
+                return (+ x d)
+            else
+                return x
+        end
+        return x
+    end
+    do (io::println (stepper 0))   # 1
+    do (io::println (stepper 5))   # 6
+    return 0i32
+end

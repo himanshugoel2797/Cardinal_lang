@@ -1,0 +1,10 @@
+module field03
+# ILLEGAL: extra field in struct constructor
+struct P
+    x i32
+    y i32
+end
+func f () -> i32
+    let p = (P x: 1 y: 2 z: 3)
+    return p.x
+end

@@ -1,0 +1,21 @@
+module adv18
+# ADVERSARIAL: using a sum type variant as a value without construction
+# (nullary variant used as if it has a payload)
+type Shape
+    Circle
+    Square (size i32)
+end
+func area (s Shape) -> i32
+    match s
+        case Circle
+            return 0
+        case (Square sz)
+            return (* sz sz)
+    end
+    return 0
+end
+func f () -> i32
+    # Square is a payload variant - constructing without payload should error
+    let s = Square
+    return (area s)
+end

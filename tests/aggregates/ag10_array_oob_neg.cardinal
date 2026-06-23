@@ -1,0 +1,11 @@
+module ag10_array_oob_neg
+
+import io
+
+# OOB: negative index (cast to u64 = huge positive) must PANIC in all three backends
+func main () -> i32
+    let a = [1i32 2i32 3i32]
+    let neg_idx = (as (- 1i64) u64)
+    do (io::println a[neg_idx])   # OOB: huge index must panic
+    return 0i32
+end

@@ -1,0 +1,30 @@
+module str_chars_iter_utf8
+
+import io
+import strings
+import convert
+
+# Iterate chars of multi-byte string; verify each codepoint value
+func main () -> i32
+    # "h日é😀" = 4 codepoints: U+68, U+65E5, U+E9, U+1F600
+    let s = "h日é😀"
+    let cs = (strings::chars s)
+    do (io::println (len cs))            # 4
+
+    let i = 0i32
+    for c in cs
+        do (io::println (convert::ord c))
+        set i = (+ i 1)
+    end
+    # Expected: 104, 26085, 233, 128512
+
+    # Rebuild from chars
+    let rebuilt = ""
+    for c in cs
+        set rebuilt = (strings::concat rebuilt (strings::from_char c))
+    end
+    do (io::println (strings::eq rebuilt s))    # true
+    do (io::println rebuilt)                    # h日é😀
+
+    return 0i32
+end

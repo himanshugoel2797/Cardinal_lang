@@ -1,0 +1,27 @@
+module ag28_array_struct_4byte
+
+import io
+
+# struct with one i32 = 4 bytes — also not a multiple of 8
+# Does the same x86 bug occur?
+struct Tiny
+    v i32
+end
+
+func main () -> i32
+    let arr = [(Tiny v: 1i32) (Tiny v: 2i32) (Tiny v: 3i32)]
+
+    do (io::println arr[0].v)   # 1
+    do (io::println arr[2].v)   # 3
+
+    # Set whole element
+    set arr[1] = (Tiny v: 99i32)
+    do (io::println arr[1].v)   # 99
+    do (io::println arr[0].v)   # 1 (unchanged)
+
+    # Set field
+    set arr[2].v = 42i32
+    do (io::println arr[2].v)   # 42
+
+    return 0i32
+end

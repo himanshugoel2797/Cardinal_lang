@@ -1,0 +1,44 @@
+module c14_closure_multi_type_capture
+
+import io
+import strings
+
+struct Point
+    x i32
+    y i32
+end
+
+# Closure capturing multiple variables of different types (int + str + bool)
+func make_describer (name str) (val i32) (flag bool) -> func(-> str)
+    return func () -> str
+        if flag
+            return (strings::concat name " pos")
+        else
+            return (strings::concat name " neg")
+        end
+    end
+end
+
+# Closure capturing a struct (value semantics: captured by copy)
+func make_point_printer (p Point) -> func(-> i32)
+    return func () -> i32
+        return (+ p.x p.y)
+    end
+end
+
+func main () -> i32
+    let d1 = (make_describer "hello" 42 true)
+    let d2 = (make_describer "world" 0 false)
+    do (io::println (d1))   # hello pos
+    do (io::println (d2))   # world neg
+
+    let p = (Point x: 3 y: 7)
+    let pp = (make_point_printer p)
+    do (io::println (pp))   # 10
+
+    let p2 = (Point x: 100 y: 200)
+    let pp2 = (make_point_printer p2)
+    do (io::println (pp2))  # 300
+
+    return 0i32
+end

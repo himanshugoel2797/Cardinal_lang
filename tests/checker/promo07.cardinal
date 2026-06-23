@@ -1,0 +1,6 @@
+module promo07
+# ILLEGAL: assigning i64 into a let binding annotated i32
+func f () -> i32
+    let x i32 = 1i64
+    return x
+end

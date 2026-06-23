@@ -1,0 +1,13 @@
+module mapkey05
+# LEGAL: enum as map key
+enum Color
+    Red
+    Green
+    Blue
+end
+import io
+func f () -> unit
+    let m {Color i32} = (map Color i32)
+    set m[Color::Red] = 1i32
+    do (io::println m[Color::Red])
+end

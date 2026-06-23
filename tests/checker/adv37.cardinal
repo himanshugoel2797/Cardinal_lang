@@ -1,0 +1,13 @@
+module adv37
+# ADVERSARIAL: to_str_override with correct signature (should be LEGAL)
+struct P
+    x i32
+end
+import strings
+func P_to_str (p P) -> str
+    return "P"
+end
+func f () -> i32
+    let p = (P x: 5)
+    return 0i32
+end

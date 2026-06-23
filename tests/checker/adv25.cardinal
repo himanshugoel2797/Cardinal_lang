@@ -1,0 +1,11 @@
+module adv25
+# ADVERSARIAL: sum variant constructed with payload for nullary variant
+type Shape
+    Circle
+    Square (size i32)
+end
+func f () -> i32
+    # Circle has no payload — should error if we try to give it one
+    let s = (Circle size: 5)
+    return 0i32
+end

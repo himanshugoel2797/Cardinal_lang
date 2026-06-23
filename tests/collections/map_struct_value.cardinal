@@ -1,0 +1,31 @@
+module map_struct_value
+
+import io
+
+struct Pair
+    a i32
+    b i32
+end
+
+# Map with struct values; note: set m[k].field is COMPILE ERROR
+# Must read the struct, mutate, write back
+func main () -> i32
+    let m {str Pair} = (map str Pair)
+    set m["x"] = (Pair a: 1 b: 2)
+    set m["y"] = (Pair a: 10 b: 20)
+
+    do (io::println m["x"].a)        # 1
+    do (io::println m["x"].b)        # 2
+    do (io::println m["y"].a)        # 10
+
+    # Read, modify, write back
+    let p = m["x"]
+    set p.a = 99
+    set m["x"] = p
+    do (io::println m["x"].a)        # 99
+    do (io::println m["x"].b)        # 2 (unchanged)
+
+    do (io::println (len m))         # 2
+
+    return 0i32
+end

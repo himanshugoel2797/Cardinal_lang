@@ -1,0 +1,10 @@
+module field04
+# ILLEGAL: wrong field type in struct constructor
+struct P
+    x i32
+    y i32
+end
+func f () -> i32
+    let p = (P x: 1i64 y: 2)
+    return p.x
+end

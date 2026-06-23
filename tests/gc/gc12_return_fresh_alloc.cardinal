@@ -1,0 +1,31 @@
+module gc12_return_fresh_alloc
+
+import io
+
+# Function returns a freshly-allocated vec; caller uses it.
+# Between the return and the use, GC may run (next alloc).
+# This tests that a return value (which might only be in a register,
+# not on the shadow stack) is not collected before the caller roots it.
+# Expected: 100000
+
+func make_vec (v i32) -> {i32}
+    let w {i32} = (vec i32)
+    do (push w v)
+    do (push w (+ v 1))
+    return w
+end
+
+func main () -> i32
+    let total = 0i32
+    for i = 0 to 50000
+        let a = (make_vec i)
+        let b = (make_vec (+ i 1))   # alloc between getting a and using it
+        set total = (+ total a[0])
+        set total = (+ total b[0])
+    end
+    # sum = sum of i for i in 0..49999 + sum of (i+1) for i in 0..49999
+    # = 49999*50000/2 + (1+2+...+50000) = 1249975000 + 1250025000 = 2500000000
+    # This overflows i32, print as i64
+    do (io::println (as total i64))
+    return 0i32
+end

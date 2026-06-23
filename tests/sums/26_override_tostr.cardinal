@@ -1,0 +1,31 @@
+module t26_override_tostr
+
+import io
+import strings
+
+# Test OVERRIDE to_str via func <Type>_to_str
+# The module-local naming convention: `func Tree_to_str (x Tree) -> str`
+type Tree
+    Leaf
+    Node (value i32) (left Tree) (right Tree)
+end
+
+func Tree_to_str (x Tree) -> str
+    match x
+        case Leaf
+            return "."
+        case (Node v l r)
+            return (strings::concat "[" (strings::concat (Tree_to_str l) (strings::concat "|" (strings::concat (to_str v) (strings::concat "|" (strings::concat (Tree_to_str r) "]"))))))
+    end
+    return "?"
+end
+
+func main () -> i32
+    let t = (Node value: 1
+                  left: (Node value: 2 left: Leaf right: Leaf)
+                  right: Leaf)
+    # override should be called by to_str
+    do (io::println (to_str t))    # [[ .|2|.]|1|.]  -> [[.|2|.]|1|.]
+    do (io::println (Tree_to_str t))  # same
+    return 0i32
+end

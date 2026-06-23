@@ -1,0 +1,47 @@
+module c07_if_chain
+
+import io
+
+func classify (n i32) -> i32
+    if (< n 0)
+        return (- 1i32)
+    elsif (== n 0)
+        return 0i32
+    elsif (< n 10)
+        return 1i32
+    elsif (< n 100)
+        return 2i32
+    else
+        return 3i32
+    end
+end
+
+func main () -> i32
+    do (io::println (classify (- 5i32)))  # -1
+    do (io::println (classify 0))         # 0
+    do (io::println (classify 5))         # 1
+    do (io::println (classify 50))        # 2
+    do (io::println (classify 100))       # 3
+
+    # Deeply nested if
+    let x = 5i32
+    if (> x 0)
+        if (> x 2)
+            if (> x 4)
+                if (> x 6)
+                    do (io::println "gt6")
+                else
+                    do (io::println "gt4 le6")
+                end
+            else
+                do (io::println "gt2 le4")
+            end
+        else
+            do (io::println "gt0 le2")
+        end
+    else
+        do (io::println "le0")
+    end
+
+    return 0i32
+end

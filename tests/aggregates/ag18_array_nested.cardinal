@@ -1,0 +1,31 @@
+module ag18_array_nested
+
+import io
+
+# Array of arrays (2D), set arr[i][j]
+func main () -> i32
+    let r0 [i32] = [1i32 2i32 3i32]
+    let r1 [i32] = [4i32 5i32 6i32]
+    let r2 [i32] = [7i32 8i32 9i32]
+    let mat [[i32]] = [r0 r1 r2]
+
+    do (io::println mat[0][0])  # 1
+    do (io::println mat[1][1])  # 5
+    do (io::println mat[2][2])  # 9
+
+    set mat[1][2] = 99i32
+    do (io::println mat[1][2])  # 99
+    do (io::println mat[1][1])  # 5 (unchanged sibling)
+
+    # sum all elements
+    let total = 0i32
+    for row in mat
+        for v in row
+            set total = (+ total v)
+        end
+    end
+    # 1+2+3 + 4+5+99 + 7+8+9 = 6 + 108 + 24 = 138
+    do (io::println total)  # 138
+
+    return 0i32
+end

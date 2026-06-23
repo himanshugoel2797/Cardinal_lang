@@ -1,0 +1,6 @@
+module imm02
+# ILLEGAL: set on a function parameter (params are immutable)
+func f (x i32) -> i32
+    set x = 99i32
+    return x
+end

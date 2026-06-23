@@ -1,0 +1,15 @@
+module adv48
+# ADVERSARIAL: deep nested type mismatch — struct field that is a sum type, wrong variant arg type
+type Color
+    RGB (r i32) (g i32) (b i32)
+    Named (name str)
+end
+struct Pixel
+    c Color
+    alpha u8
+end
+func f () -> i32
+    # b should be i32 but passing bool
+    let p = (Pixel c: (RGB r: 255 g: 0 b: true) alpha: 255u8)
+    return 0i32
+end

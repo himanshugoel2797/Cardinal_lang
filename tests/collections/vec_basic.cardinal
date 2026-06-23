@@ -1,0 +1,39 @@
+module vec_basic
+
+import io
+
+# Test basic vector operations: push, pop, index, len, set
+func main () -> i32
+    let v {i32} = (vec i32)
+    do (io::println (len v))         # 0
+
+    do (push v 10)
+    do (push v 20)
+    do (push v 30)
+    do (io::println (len v))         # 3
+    do (io::println v[0])            # 10
+    do (io::println v[1])            # 20
+    do (io::println v[2])            # 30
+
+    # set element
+    set v[1] = 99
+    do (io::println v[1])            # 99
+
+    # pop
+    do (io::println (pop v))         # 30
+    do (io::println (len v))         # 2
+
+    do (io::println (pop v))         # 99
+    do (io::println (pop v))         # 10
+    do (io::println (len v))         # 0
+
+    # for-in
+    let vs {i32} = {1 2 3 4 5}
+    let total = 0i32
+    for x in vs
+        set total = (+ total x)
+    end
+    do (io::println total)           # 15
+
+    return 0i32
+end

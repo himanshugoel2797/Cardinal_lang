@@ -56,5 +56,26 @@ def main(argv):
         return 101
 
 
+def _run_with_big_stack(argv):
+    # The interpreter recurses on the Python call stack (one Cardinal call =
+    # several Python frames), so deep Cardinal recursion would hit Python's
+    # default limit (~1000) and RecursionError long before the compiled
+    # backends, which run on the native C stack, do. Raise the recursion
+    # limit AND run on a thread with a large stack so the higher limit does
+    # not just trade a clean RecursionError for a C-stack segfault.
+    import threading
+    sys.setrecursionlimit(200000)
+    result = {}
+
+    def target():
+        result["code"] = main(argv)
+
+    threading.stack_size(512 * 1024 * 1024)
+    t = threading.Thread(target=target)
+    t.start()
+    t.join()
+    return result.get("code", 1)
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(_run_with_big_stack(sys.argv))

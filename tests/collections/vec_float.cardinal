@@ -1,0 +1,29 @@
+module vec_float
+
+import io
+
+# Vector of floats
+func main () -> i32
+    let v {f64} = (vec f64)
+    do (push v 1.0)
+    do (push v 2.5)
+    do (push v (- 3.14))
+    do (push v 0.0)
+
+    do (io::println (len v))     # 4
+    do (io::println v[0])        # 1
+    do (io::println v[1])        # 2.5
+    do (io::println v[2])        # -3.14
+    do (io::println v[3])        # 0
+
+    let total = 0.0f64
+    for x in v
+        set total = (+ total x)
+    end
+    do (io::println total)       # 1+2.5-3.14+0 = 0.36
+
+    do (io::println (pop v))     # 0
+    do (io::println (len v))     # 3
+
+    return 0i32
+end

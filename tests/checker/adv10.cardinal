@@ -1,0 +1,11 @@
+module adv10
+# ADVERSARIAL: recursive sum type with wrong payload types in construction
+type Tree
+    Leaf
+    Node (value i32) (left Tree) (right Tree)
+end
+func f () -> i32
+    # left and right should be Tree, but we pass i32
+    let t = (Node value: 1 left: 5 right: 10)
+    return 0i32
+end

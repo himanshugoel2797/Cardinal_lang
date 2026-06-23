@@ -1,0 +1,38 @@
+module vec_closures
+
+import io
+
+# Vector of closures: store, iterate and call each
+func make_adder (x i32) -> func(i32 -> i32)
+    let f = func (y i32) -> i32
+        return (+ x y)
+    end
+    return f
+end
+
+func call_fn (f func(i32 -> i32)) (x i32) -> i32
+    return (f x)
+end
+
+func main () -> i32
+    let fns {func(i32 -> i32)} = (vec func(i32 -> i32))
+    do (push fns (make_adder 10))
+    do (push fns (make_adder 20))
+    do (push fns (make_adder 30))
+
+    do (io::println (len fns))         # 3
+
+    # Call each via helper (can't call fns[i](x) directly)
+    let total = 0i32
+    for f in fns
+        set total = (+ total (call_fn f 1))
+    end
+    do (io::println total)             # 63 (11+21+31)
+
+    # pop
+    let last = (pop fns)
+    do (io::println (call_fn last 5))  # 35
+    do (io::println (len fns))         # 2
+
+    return 0i32
+end

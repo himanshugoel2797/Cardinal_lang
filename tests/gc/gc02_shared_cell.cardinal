@@ -1,0 +1,31 @@
+module gc02_shared_cell
+
+import io
+
+# Two closures share one captured cell.  Both are kept alive while the other
+# is invoked.  After many increments via `inc`, `get` must see the same count.
+# Tests that the shared cell is not collected while either closure is live.
+# Expected: 100000
+
+func make_pair () -> func(-> i32)
+    let count = 0i32
+    let inc_cl = func () -> i32
+        set count = (+ count 1)
+        return count
+    end
+    let get_cl = func () -> i32
+        return count
+    end
+    # exercise both so neither is dropped before we're done
+    let ignore = 0i32
+    for j = 0 to 50000
+        set ignore = (+ ignore (inc_cl))
+    end
+    return get_cl
+end
+
+func main () -> i32
+    let get = (make_pair)
+    do (io::println (get))
+    return 0i32
+end

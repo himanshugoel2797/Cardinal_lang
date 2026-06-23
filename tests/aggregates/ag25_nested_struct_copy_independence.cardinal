@@ -1,0 +1,42 @@
+module ag25_nested_struct_copy_independence
+
+import io
+
+# Deeply nested struct copy independence
+struct Leaf
+    val i64
+end
+
+struct Mid
+    left Leaf
+    right Leaf
+end
+
+struct Root
+    mid Mid
+    extra i64
+end
+
+func main () -> i32
+    let r1 = (Root mid: (Mid left: (Leaf val: 10i64) right: (Leaf val: 20i64)) extra: 100i64)
+
+    # Deep copy
+    let r2 = r1
+
+    # Mutate r2 at all levels
+    set r2.extra = 999i64
+    set r2.mid.left.val = 888i64
+    set r2.mid.right.val = 777i64
+
+    # r1 must be completely unchanged
+    do (io::println r1.extra)           # 100
+    do (io::println r1.mid.left.val)    # 10
+    do (io::println r1.mid.right.val)   # 20
+
+    # r2 must have the new values
+    do (io::println r2.extra)           # 999
+    do (io::println r2.mid.left.val)    # 888
+    do (io::println r2.mid.right.val)   # 777
+
+    return 0i32
+end

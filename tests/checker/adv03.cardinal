@@ -1,0 +1,7 @@
+module adv03
+# ADVERSARIAL: comparing values of different types with ==
+func f () -> bool
+    let a = 1i32
+    let b = 1i64
+    return (== a b)
+end

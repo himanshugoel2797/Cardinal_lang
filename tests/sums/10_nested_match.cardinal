@@ -1,0 +1,75 @@
+module t10_nested_match
+
+import io
+
+# Nested match: match inside a case branch
+type Expr
+    Lit (value i32)
+    Add (left Expr) (right Expr)
+    Neg (inner Expr)
+end
+
+func is_zero (e Expr) -> bool
+    match e
+        case (Lit v)
+            if (== v 0)
+                return true
+            else
+                return false
+            end
+        case (Neg inner)
+            # nested match inside Neg case
+            match inner
+                case (Lit v)
+                    if (== v 0)
+                        return true
+                    else
+                        return false
+                    end
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+func simplify (e Expr) -> i32
+    match e
+        case (Lit v)
+            return v
+        case (Add l r)
+            match l
+                case (Lit lv)
+                    match r
+                        case (Lit rv)
+                            return (+ lv rv)
+                        else
+                            return lv
+                    end
+                else
+                    return 0
+            end
+        case (Neg inner)
+            return (- 0 (simplify inner))
+    end
+    return 0
+end
+
+func main () -> i32
+    let e0 = (Lit value: 0)
+    let e5 = (Lit value: 5)
+    let neg0 = (Neg inner: (Lit value: 0))
+    let add = (Add left: (Lit value: 3) right: (Lit value: 7))
+
+    do (io::println (is_zero e0))    # true
+    do (io::println (is_zero e5))    # false
+    do (io::println (is_zero neg0))  # true
+    do (io::println (is_zero add))   # false
+
+    do (io::println (simplify e5))    # 5
+    do (io::println (simplify add))   # 10
+    do (io::println (simplify (Neg inner: (Lit value: 4))))  # -4
+    return 0i32
+end

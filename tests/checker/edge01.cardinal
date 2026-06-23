@@ -1,0 +1,6 @@
+module edge01
+# ILLEGAL: type annotation mismatch on let (annotated bool, RHS is i32)
+func f () -> bool
+    let x bool = 5i32
+    return x
+end

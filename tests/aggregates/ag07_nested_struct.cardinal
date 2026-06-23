@@ -1,0 +1,57 @@
+module ag07_nested_struct
+
+import io
+
+# Nested structs — deeply nested field access and mutation
+struct Inner
+    a i64
+    b i64
+end
+
+struct Outer
+    tag i32
+    inner Inner
+end
+
+struct Deep
+    outer Outer
+    extra i64
+end
+
+func make_outer (tag i32) (a i64) (b i64) -> Outer
+    return (Outer tag: tag inner: (Inner a: a b: b))
+end
+
+func sum_outer (o Outer) -> i64
+    return (+ o.inner.a o.inner.b)
+end
+
+func main () -> i32
+    let o = (make_outer 1i32 10i64 20i64)
+    do (io::println o.tag)          # 1
+    do (io::println o.inner.a)      # 10
+    do (io::println o.inner.b)      # 20
+    do (io::println (sum_outer o))  # 30
+
+    # mutate nested field
+    set o.inner.a = 99i64
+    do (io::println o.inner.a)      # 99
+    do (io::println o.inner.b)      # 20 (unchanged sibling)
+
+    # copy, mutate, original unchanged
+    let p = o
+    set p.inner.b = 777i64
+    do (io::println o.inner.b)      # 20 (original unchanged)
+    do (io::println p.inner.b)      # 777
+
+    # deeply nested
+    let d = (Deep outer: (Outer tag: 5i32 inner: (Inner a: 3i64 b: 4i64)) extra: 100i64)
+    do (io::println d.outer.inner.a)    # 3
+    do (io::println d.outer.inner.b)    # 4
+    do (io::println d.extra)            # 100
+
+    set d.outer.inner.a = 42i64
+    do (io::println d.outer.inner.a)    # 42
+
+    return 0i32
+end

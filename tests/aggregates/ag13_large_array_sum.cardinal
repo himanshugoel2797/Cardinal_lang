@@ -1,0 +1,25 @@
+module ag13_large_array_sum
+
+import io
+
+# Large array: sum 1000 elements using a for loop
+func main () -> i32
+    let a [i64] = (array i64 1000)
+
+    # fill: a[i] = i+1
+    for i = 0 to 1000
+        set a[(as i u64)] = (as (+ i 1) i64)
+    end
+
+    # sum: should be 1+2+...+1000 = 500500
+    let total = 0i64
+    for v in a
+        set total = (+ total v)
+    end
+    do (io::println total)  # 500500
+
+    do (io::println a[0])   # 1
+    do (io::println a[999]) # 1000
+
+    return 0i32
+end

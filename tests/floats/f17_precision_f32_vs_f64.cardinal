@@ -1,0 +1,29 @@
+module f17_precision_f32_vs_f64
+
+import io
+
+func add64 (a f64) (b f64) -> f64
+    return (+ a b)
+end
+
+func main () -> i32
+    # f32 has ~7 significant decimal digits, f64 has ~15-16
+    # Repeated addition: 0.1 added many times — cumulative rounding error
+
+    let s32 = (+ (+ (+ (+ 0.1f32 0.1f32) 0.1f32) 0.1f32) 0.1f32)
+    let s64 = (+ (+ (+ (+ (add64 0.1 0.0) 0.1) 0.1) 0.1) 0.1)
+    do (io::println s32)
+    do (io::println s64)
+
+    # Multiplication chain reveals precision differences
+    let m32 = (* (* 1.1f32 1.1f32) (* 1.1f32 1.1f32))
+    let m64 = (add64 (* (add64 1.1 0.0) (add64 1.1 0.0)) (* (add64 1.1 0.0) (add64 1.1 0.0)))
+    do (io::println m32)
+    do (io::println m64)
+
+    # Division
+    do (io::println (/ 10.0f32 3.0f32))
+    do (io::println (/ (add64 10.0 0.0) (add64 3.0 0.0)))
+
+    return 0i32
+end

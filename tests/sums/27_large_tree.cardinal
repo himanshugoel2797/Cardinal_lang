@@ -1,0 +1,63 @@
+module t27_large_tree
+
+import io
+
+# Build a balanced binary tree of depth 6 programmatically
+# 2^6 - 1 = 63 nodes; recursion depth 6; sum = n*(n+1)/2 for values 1..63
+# Test deep tree: build bottom-up
+type Tree
+    Leaf
+    Node (value i32) (left Tree) (right Tree)
+end
+
+func make_tree (lo i32) (hi i32) -> Tree
+    if (> lo hi)
+        return Leaf
+    end
+    let mid = (/ (+ lo hi) 2)
+    return (Node value: mid left: (make_tree lo (- mid 1)) right: (make_tree (+ mid 1) hi))
+end
+
+func sum_tree (t Tree) -> i32
+    match t
+        case Leaf
+            return 0
+        case (Node v l r)
+            return (+ v (+ (sum_tree l) (sum_tree r)))
+    end
+    return 0
+end
+
+func count_tree (t Tree) -> i32
+    match t
+        case Leaf
+            return 0
+        case (Node v l r)
+            return (+ 1 (+ (count_tree l) (count_tree r)))
+    end
+    return 0
+end
+
+func depth_tree (t Tree) -> i32
+    match t
+        case Leaf
+            return 0
+        case (Node v l r)
+            let ld = (depth_tree l)
+            let rd = (depth_tree r)
+            if (>= ld rd)
+                return (+ 1 ld)
+            else
+                return (+ 1 rd)
+            end
+    end
+    return 0
+end
+
+func main () -> i32
+    let t = (make_tree 1 63)
+    do (io::println (count_tree t))   # 63
+    do (io::println (sum_tree t))     # 2016 = 63*64/2
+    do (io::println (depth_tree t))   # 6
+    return 0i32
+end

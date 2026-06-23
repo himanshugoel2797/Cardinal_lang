@@ -1,0 +1,7 @@
+module edge03
+# ILLEGAL: set m[k][i] = v when map value is NOT vec/array (can't index value)
+func f () -> unit
+    let m {str i32} = (map str i32)
+    set m["a"] = 5i32
+    set m["a"][0] = 99i32
+end

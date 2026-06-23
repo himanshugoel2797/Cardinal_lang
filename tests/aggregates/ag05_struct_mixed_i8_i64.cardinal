@@ -1,0 +1,36 @@
+module ag05_struct_mixed_i8_i64
+
+import io
+
+# Mixed struct {i8, i64} — alignment/padding: actual size >= 16 bytes (1 + 7 pad + 8)
+# This is exactly 16 bytes total; ABI: registers
+struct Padded
+    flag i8
+    value i64
+end
+
+func make_padded (f i8) (v i64) -> Padded
+    return (Padded flag: f value: v)
+end
+
+func negate_padded (p Padded) -> Padded
+    return (Padded flag: (- p.flag) value: (- p.value))
+end
+
+func main () -> i32
+    let p = (make_padded 1i8 42i64)
+    do (io::println p.flag)     # 1
+    do (io::println p.value)    # 42
+
+    let q = (negate_padded p)
+    do (io::println q.flag)     # -1
+    do (io::println q.value)    # -42
+
+    # copy semantics
+    let r = p
+    set r.flag = 5i8
+    do (io::println p.flag)     # 1  (unchanged)
+    do (io::println r.flag)     # 5
+
+    return 0i32
+end

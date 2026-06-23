@@ -1,0 +1,32 @@
+module f14_divzero_inf_nan
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func main () -> i32
+    # Division by zero float — should produce inf/nan
+    # All three backends must agree on the output string
+    let zero = (p64 0.0)
+    let one = (p64 1.0)
+    let neg_one = (- (p64 1.0))
+
+    # +inf: 1.0 / 0.0
+    do (io::println (/ one zero))
+
+    # -inf: -1.0 / 0.0
+    do (io::println (/ neg_one zero))
+
+    # 0/0 = nan
+    do (io::println (/ zero zero))
+
+    # f32 inf: 1.0f32 / 0.0f32
+    do (io::println (/ 1.0f32 0.0f32))
+
+    # f32 nan: 0.0f32 / 0.0f32
+    do (io::println (/ 0.0f32 0.0f32))
+
+    return 0i32
+end

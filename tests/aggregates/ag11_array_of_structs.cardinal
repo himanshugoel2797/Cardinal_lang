@@ -1,0 +1,31 @@
+module ag11_array_of_structs
+
+import io
+
+struct Point
+    x i32
+    y i32
+end
+
+func main () -> i32
+    let pts = [(Point x: 1i32 y: 2i32) (Point x: 3i32 y: 4i32) (Point x: 5i32 y: 6i32)]
+
+    do (io::println pts[0].x)    # 1
+    do (io::println pts[0].y)    # 2
+    do (io::println pts[1].x)    # 3
+    do (io::println pts[2].y)    # 6
+
+    # set field via arr[i].field
+    set pts[1].x = 99i32
+    do (io::println pts[1].x)    # 99
+    do (io::println pts[1].y)    # 4  (unchanged sibling)
+
+    # for-in over array of structs
+    let sum_x = 0i32
+    for p in pts
+        set sum_x = (+ sum_x p.x)
+    end
+    do (io::println sum_x)   # 1 + 99 + 5 = 105
+
+    return 0i32
+end

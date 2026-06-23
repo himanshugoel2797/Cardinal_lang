@@ -1,0 +1,31 @@
+module a18_div_one
+
+import io
+
+func main () -> i32
+    # Division by 1 and -1 edge cases
+    do (io::println (/ 42i32 1i32))
+    do (io::println (/ (- 42i32) 1i32))
+    do (io::println (/ 42i32 (- 1i32)))
+    do (io::println (/ (- 42i32) (- 1i32)))
+
+    do (io::println (/ 42i64 1i64))
+    do (io::println (/ (- 42i64) (- 1i64)))
+
+    # % by 1 = always 0
+    do (io::println (% 42i32 1i32))
+    do (io::println (% (- 42i32) 1i32))
+    do (io::println (% 0i32 1i32))
+
+    # % by -1 = always 0
+    do (io::println (% 42i32 (- 1i32)))
+    do (io::println (% (- 42i32) (- 1i32)))
+
+    # u64 / 1
+    do (io::println (/ 18446744073709551615u64 1u64))
+
+    # u64 % 1 = 0
+    do (io::println (% 18446744073709551615u64 1u64))
+
+    return 0i32
+end

@@ -1,0 +1,25 @@
+module str_convert_signed
+
+import io
+import convert
+
+# str_to_int signed edge cases: large numbers, +/- signs
+func main () -> i32
+    # Large positive
+    do (io::println (convert::str_to_int "2147483647"))    # i32::MAX
+    do (io::println (convert::str_to_int "9223372036854775807"))  # i64::MAX
+
+    # Negative
+    do (io::println (convert::str_to_int "-1"))            # -1
+    do (io::println (convert::str_to_int "-2147483648"))   # i32::MIN
+
+    # Plus sign
+    do (io::println (convert::str_to_int "+0"))            # 0
+    do (io::println (convert::str_to_int "+42"))           # 42
+
+    # Leading zeros (still decimal)
+    do (io::println (convert::str_to_int "007"))           # 7
+    do (io::println (convert::str_to_int "000"))           # 0
+
+    return 0i32
+end

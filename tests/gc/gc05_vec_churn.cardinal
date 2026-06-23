@@ -1,0 +1,19 @@
+module gc05_vec_churn
+
+import io
+
+# Each iteration builds a fresh vec, writes to it, reads a value, and then lets
+# it become garbage.  GC at threshold-0 must not collect the live vec before we
+# read from it.  Expected: 100000 * 42 = 4200000
+
+func main () -> i32
+    let total = 0i64
+    for i = 0 to 100000
+        let v {i32} = (vec i32)
+        do (push v 42)
+        do (push v 99)
+        set total = (+ total (as v[0] i64))
+    end
+    do (io::println total)
+    return 0i32
+end

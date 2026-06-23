@@ -1,0 +1,7 @@
+module promo02
+# ILLEGAL: comparing i32 with i64
+func f () -> bool
+    let a = 1i32
+    let b = 2i64
+    return (< a b)
+end

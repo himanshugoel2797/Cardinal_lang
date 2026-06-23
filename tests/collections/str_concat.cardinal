@@ -1,0 +1,36 @@
+module str_concat
+
+import io
+import strings
+
+# Test chained concat, empty strings, loop concat
+func main () -> i32
+    # Basic concat
+    do (io::println (strings::concat "hello" " world"))
+
+    # Empty string concat
+    do (io::println (strings::concat "" "abc"))
+    do (io::println (strings::concat "abc" ""))
+    do (io::println (strings::concat "" ""))
+
+    # Chained incrementally
+    let s = ""
+    set s = (strings::concat s "a")
+    set s = (strings::concat s "b")
+    set s = (strings::concat s "c")
+    do (io::println s)
+
+    # Loop build
+    let r = ""
+    let i = 0i32
+    while (< i 5)
+        set r = (strings::concat r (strings::concat "[" (strings::concat (to_str i) "]")))
+        set i = (+ i 1)
+    end
+    do (io::println r)
+
+    # Concat with newline escape
+    do (io::println (strings::concat "line1\nline2" ""))
+
+    return 0i32
+end

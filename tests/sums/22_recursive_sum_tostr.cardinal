@@ -1,0 +1,43 @@
+module t22_recursive_sum_tostr
+
+import io
+import strings
+
+# Recursive sum type with manual to_str that recurses
+type Expr
+    Num (value i32)
+    Add (left Expr) (right Expr)
+    Mul (left Expr) (right Expr)
+end
+
+func expr_to_str (e Expr) -> str
+    match e
+        case (Num v)
+            return (to_str v)
+        case (Add l r)
+            return (strings::concat "(" (strings::concat (expr_to_str l) (strings::concat "+" (strings::concat (expr_to_str r) ")"))))
+        case (Mul l r)
+            return (strings::concat "(" (strings::concat (expr_to_str l) (strings::concat "*" (strings::concat (expr_to_str r) ")"))))
+    end
+    return ""
+end
+
+func eval (e Expr) -> i32
+    match e
+        case (Num v)
+            return v
+        case (Add l r)
+            return (+ (eval l) (eval r))
+        case (Mul l r)
+            return (* (eval l) (eval r))
+    end
+    return 0
+end
+
+func main () -> i32
+    let e = (Add left: (Mul left: (Num value: 2) right: (Num value: 3))
+                 right: (Num value: 4))
+    do (io::println (expr_to_str e))   # ((2*3)+4)
+    do (io::println (eval e))          # 10
+    return 0i32
+end

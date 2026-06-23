@@ -1,0 +1,7 @@
+module adv12
+# ADVERSARIAL: float comparisons with <, >, <=, >= (should be legal)
+func f () -> bool
+    let a = 1.5f64
+    let b = 2.5f64
+    return (< a b)
+end

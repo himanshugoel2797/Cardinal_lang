@@ -1,0 +1,35 @@
+module t15_payload_named_tag
+
+import io
+import strings
+
+# HANDOFF gotcha: discriminant was renamed cl_tag internally;
+# a user field literally named `tag` must still work
+type Event
+    Click (tag i32) (x i32) (y i32)
+    Key (tag str) (code i32)
+    Quit
+end
+
+func describe (e Event) -> str
+    match e
+        case (Click t cx cy)
+            return (strings::concat "click-tag=" (strings::concat (to_str t) (strings::concat " pos=" (strings::concat (to_str cx) (strings::concat "," (to_str cy))))))
+        case (Key t code)
+            return (strings::concat "key-tag=" (strings::concat t (strings::concat " code=" (to_str code))))
+        case Quit
+            return "quit"
+    end
+    return ""
+end
+
+func main () -> i32
+    let e1 = (Click tag: 7 x: 100 y: 200)
+    let e2 = (Key tag: "ctrl" code: 13)
+    let e3 = Quit
+
+    do (io::println (describe e1))   # click-tag=7 pos=100,200
+    do (io::println (describe e2))   # key-tag=ctrl code=13
+    do (io::println (describe e3))   # quit
+    return 0i32
+end

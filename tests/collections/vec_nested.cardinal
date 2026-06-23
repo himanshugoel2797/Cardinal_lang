@@ -1,0 +1,28 @@
+module vec_nested
+
+import io
+
+# Nested vector: {i32} inside a {str} — actually do {{i32}}
+func main () -> i32
+    let outer {{i32}} = (vec {i32})
+
+    let inner1 {i32} = {1 2 3}
+    let inner2 {i32} = {4 5}
+
+    do (push outer inner1)
+    do (push outer inner2)
+
+    do (io::println (len outer))         # 2
+    do (io::println (len outer[0]))      # 3
+    do (io::println (len outer[1]))      # 2
+    do (io::println outer[0][2])         # 3
+    do (io::println outer[1][0])         # 4
+
+    # Mutate inner through outer
+    set outer[0][1] = 99
+    do (io::println outer[0][1])         # 99
+    # inner1 was pushed by reference — check if inner1 sees the change
+    do (io::println inner1[1])           # 99 (reference semantics)
+
+    return 0i32
+end

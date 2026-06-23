@@ -1,0 +1,41 @@
+module c28_for_in_step_exact
+
+import io
+
+# Edge cases: step that lands exactly on the bound, step that overshoots
+
+func main () -> i32
+    # Step exactly hits the bound: 0,2,4 hits 4, next would be 6 >= 6, stops
+    # Does it include 4? Yes - 4 < 6 (half-open). Prints: 0, 2, 4
+    let s1 = 0i32
+    for i = 0 to 6 step 2
+        do (io::println i)
+        set s1 = (+ s1 1)
+    end
+    do (io::println s1)   # 3 iterations
+
+    # Step 4 over range 0..8: 0,4 (next 8 >= 8, stops)
+    let s2 = 0i32
+    for i = 0 to 8 step 4
+        do (io::println i)
+        set s2 = (+ s2 1)
+    end
+    do (io::println s2)   # 2 iterations
+
+    # Step larger than range: only 0
+    let s3 = 0i32
+    for i = 0 to 3 step 10
+        do (io::println i)
+        set s3 = (+ s3 1)
+    end
+    do (io::println s3)   # 1 iteration
+
+    # lo == hi: no iterations (already tested in c04, confirm again)
+    let s4 = 0i32
+    for i = 7 to 7
+        set s4 = (+ s4 1)
+    end
+    do (io::println s4)   # 0
+
+    return 0i32
+end

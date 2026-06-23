@@ -1,0 +1,68 @@
+module t06_many_variants
+
+import io
+
+# Many-variant sum (>5 variants) - exercises the tag if-chain length
+type Weekday
+    Mon
+    Tue
+    Wed
+    Thu
+    Fri
+    Sat
+    Sun
+end
+
+func day_num (d Weekday) -> i32
+    match d
+        case Mon
+            return 1
+        case Tue
+            return 2
+        case Wed
+            return 3
+        case Thu
+            return 4
+        case Fri
+            return 5
+        case Sat
+            return 6
+        case Sun
+            return 7
+    end
+    return 0
+end
+
+func is_weekend (d Weekday) -> bool
+    match d
+        case Sat
+            return true
+        case Sun
+            return true
+        else
+            return false
+    end
+    return false
+end
+
+func main () -> i32
+    let days {Weekday} = (vec Weekday)
+    do (push days Mon)
+    do (push days Tue)
+    do (push days Wed)
+    do (push days Thu)
+    do (push days Fri)
+    do (push days Sat)
+    do (push days Sun)
+
+    for d in days
+        do (io::println (day_num d))
+    end
+    # 1 2 3 4 5 6 7
+
+    do (io::println (is_weekend Mon))   # false
+    do (io::println (is_weekend Sat))   # true
+    do (io::println (is_weekend Sun))   # true
+    do (io::println (is_weekend Fri))   # false
+    return 0i32
+end

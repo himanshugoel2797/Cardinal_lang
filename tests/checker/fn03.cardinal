@@ -1,0 +1,8 @@
+module fn03
+# ILLEGAL: wrong arg type
+func g (a i32) -> i32
+    return a
+end
+func f () -> i32
+    return (g true)
+end

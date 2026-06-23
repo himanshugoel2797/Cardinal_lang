@@ -1,0 +1,27 @@
+module a15_i8_i16_arith
+
+import io
+
+func main () -> i32
+    # i8 arithmetic
+    do (io::println (+ 100i8 27i8))
+    do (io::println (- 100i8 127i8))
+    do (io::println (* 11i8 12i8))
+    do (io::println (/ (- 100i8) 7i8))
+    do (io::println (% (- 100i8) 7i8))
+
+    # i16 arithmetic
+    do (io::println (+ 30000i16 5000i16))
+    do (io::println (- (- 30000i16) 5000i16))
+    do (io::println (* 200i16 200i16))
+    do (io::println (/ (- 1000i16) 7i16))
+    do (io::println (% (- 1000i16) 7i16))
+
+    # u8/u16
+    do (io::println (+ 200u8 100u8))
+    do (io::println (* 250u8 2u8))
+    do (io::println (+ 60000u16 10000u16))
+    do (io::println (* 300u16 300u16))
+
+    return 0i32
+end

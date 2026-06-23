@@ -1,0 +1,37 @@
+module c22_closure_shared_mutation
+
+import io
+
+# Two closures sharing ONE captured cell - adversarial mutation ordering
+func make_shared () -> i32
+    let shared = 0i32
+
+    let add = func (n i32) -> i32
+        set shared = (+ shared n)
+        return shared
+    end
+
+    let mul = func (n i32) -> i32
+        set shared = (* shared n)
+        return shared
+    end
+
+    # Interleave calls: add 5, mul 3, add 2, mul 4
+    do (io::println (add 5))   # 5
+    do (io::println (mul 3))   # 15
+    do (io::println (add 2))   # 17
+    do (io::println (mul 4))   # 68
+    return shared              # 68
+end
+
+func main () -> i32
+    do (io::println (make_shared))  # 68
+
+    # Independence: two calls to make_shared have separate cells
+    let r1 = (make_shared)   # also 68
+    let r2 = (make_shared)   # also 68
+    do (io::println r1)
+    do (io::println r2)
+
+    return 0i32
+end

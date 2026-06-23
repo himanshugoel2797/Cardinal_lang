@@ -1,0 +1,10 @@
+module adv31
+# ADVERSARIAL: return type is unit but function has `return` with no value
+# Per DESIGN §9.4: bare `return` in unit function is OK
+func g () -> unit
+    return
+end
+func f () -> i32
+    do (g)
+    return 0i32
+end

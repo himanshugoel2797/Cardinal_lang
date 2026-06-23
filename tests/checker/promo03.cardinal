@@ -1,0 +1,8 @@
+module promo03
+# ILLEGAL: passing i64 where i32 expected
+func g (x i32) -> i32
+    return x
+end
+func f () -> i32
+    return (g 1i64)
+end

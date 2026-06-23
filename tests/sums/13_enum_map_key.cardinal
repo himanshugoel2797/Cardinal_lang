@@ -1,0 +1,34 @@
+module t13_enum_map_key
+
+import io
+
+# Enum as map key
+enum Color
+    Red
+    Green
+    Blue
+end
+
+func main () -> i32
+    let scores {Color i32} = (map Color i32)
+    set scores[Color::Red] = 10
+    set scores[Color::Green] = 20
+    set scores[Color::Blue] = 30
+
+    do (io::println scores[Color::Red])    # 10
+    do (io::println scores[Color::Green])  # 20
+    do (io::println scores[Color::Blue])   # 30
+    do (io::println (len scores))          # 3
+    do (io::println (map_has scores Color::Red))    # true
+    do (io::println (map_has scores Color::Green))  # true
+
+    do (map_del scores Color::Green)
+    do (io::println (len scores))          # 2
+    do (io::println (map_has scores Color::Green))  # false
+
+    # Update existing key
+    set scores[Color::Red] = (+ scores[Color::Red] 5)
+    do (io::println scores[Color::Red])    # 15
+
+    return 0i32
+end

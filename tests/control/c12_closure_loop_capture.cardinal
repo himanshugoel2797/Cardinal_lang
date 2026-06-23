@@ -1,0 +1,37 @@
+module c12_closure_loop_capture
+
+import io
+
+func main () -> i32
+    # KEY TEST: closure capturing a for-loop variable
+    # Each iteration gets a FRESH box, so each closure must return its own iteration value
+    let fns = (vec func(-> i32))
+    for i = 0 to 5
+        let f = func () -> i32
+            return i
+        end
+        do (push fns f)
+    end
+
+    # Call each closure: must print 0, 1, 2, 3, 4 (not all 4/5/last)
+    for i = 0 to 5
+        do (io::println (fns[i]))
+    end
+
+    # Same test with while loop - captures should be fresh per iteration too
+    let gs = (vec func(-> i32))
+    let j = 0i32
+    while (< j 3)
+        let captured_j = j
+        let g = func () -> i32
+            return captured_j
+        end
+        do (push gs g)
+        set j = (+ j 1)
+    end
+    for i = 0 to 3
+        do (io::println (gs[i]))  # 0, 1, 2
+    end
+
+    return 0i32
+end

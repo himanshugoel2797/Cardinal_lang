@@ -1,0 +1,5 @@
+module scope03
+# ILLEGAL: undefined function
+func f () -> i32
+    return (nonexistent_fn 1)
+end

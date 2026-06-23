@@ -1,0 +1,8 @@
+module cond01
+# ILLEGAL: if condition is not bool (i32)
+func f () -> i32
+    if 5i32
+        return 1
+    end
+    return 0
+end

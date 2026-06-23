@@ -1,0 +1,8 @@
+module adv05
+# ADVERSARIAL: calling a zero-argument function with one argument
+func zero () -> i32
+    return 42i32
+end
+func f () -> i32
+    return (zero 1)
+end

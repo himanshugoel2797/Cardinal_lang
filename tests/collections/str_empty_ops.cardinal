@@ -1,0 +1,35 @@
+module str_empty_ops
+
+import io
+import strings
+
+# Exhaustive empty string operations
+func main () -> i32
+    let e = ""
+
+    # chars of empty
+    let cs = (strings::chars e)
+    do (io::println (len cs))            # 0
+
+    # substr of empty
+    do (io::println (strings::substr e 0 0))    # (empty)
+    do (io::println (strings::substr e 0 100))  # (empty) clamped
+    do (io::println (strings::substr e 100 0))  # (empty)
+
+    # concat with empty both sides
+    do (io::println (strings::eq (strings::concat "" "") ""))    # true
+    do (io::println (strings::eq (strings::concat "abc" "") "abc"))  # true
+    do (io::println (strings::eq (strings::concat "" "abc") "abc"))  # true
+
+    # eq empty
+    do (io::println (strings::eq "" ""))     # true
+    do (io::println (strings::eq "" "x"))    # false
+
+    # from_char produces non-empty
+    let s = (strings::from_char 'a')
+    do (io::println (strings::eq s "a"))     # true
+    let cs2 = (strings::chars s)
+    do (io::println (len cs2))               # 1
+
+    return 0i32
+end

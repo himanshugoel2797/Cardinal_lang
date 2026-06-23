@@ -1,0 +1,6 @@
+module adv17
+# ADVERSARIAL: vec push with wrong type
+func f () -> unit
+    let xs {i32} = (vec i32)
+    do (push xs 1i64)
+end

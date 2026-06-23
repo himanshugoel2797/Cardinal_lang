@@ -117,6 +117,21 @@ func ctype (t IRType) -> str
     return "void"
 end
 
+func irt_is_float_c (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TFloat n)
+                    return true
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
 # cl_map_new kind: str keys hash/compare by content, all others by raw bytes.
 func map_kind (kt IRType) -> str
     match kt
@@ -559,7 +574,14 @@ func emit_bin (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk bool) -
     end
     if (or (strings::eq op "/") (strings::eq op "%"))
         let v {str} = (vec str)
-        do (push v (strings::concat "if ((" (strings::concat b ") == 0) cl_panic_cstr(\"integer division by zero\");")))
+        # divide/modulo by zero panics in both int and float forms (matching the
+        # interpreter oracle, which raises on float div-by-zero too). Only the
+        # message differs by type.
+        let zmsg = "\"integer division by zero\""
+        if (irt_is_float_c ty)
+            set zmsg = "\"float division by zero\""
+        end
+        do (push v (strings::concat "if ((" (strings::concat b (strings::concat ") == 0) cl_panic_cstr(" (strings::concat zmsg ");")))))
         do (push v (strings::concat d (strings::concat " = (" (strings::concat cty (strings::concat ")((" (strings::concat a (strings::concat ") " (strings::concat op (strings::concat " (" (strings::concat b "));"))))))))))
         return v
     end

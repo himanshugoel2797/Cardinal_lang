@@ -1,0 +1,20 @@
+module c18b_for_bound_mutation
+
+import io
+
+# Minimal repro: BUG - interpreter vs C/x86 disagree on for-loop bound mutation
+# The for loop uses a variable as its upper bound. Does modifying that variable
+# inside the loop body change the number of iterations?
+
+func main () -> i32
+    let limit = 5i32
+    let count = 0i32
+    for i = 0 to limit
+        set count = (+ count 1)
+        set limit = 100i32   # mutate the bound variable
+    end
+    # Interpreter: 5 (bound evaluated once → 5 iterations)
+    # C/x86:     100 (bound re-evaluated each iter → 100 iterations)
+    do (io::println count)
+    return 0i32
+end

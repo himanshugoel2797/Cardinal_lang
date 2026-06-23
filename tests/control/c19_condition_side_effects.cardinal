@@ -1,0 +1,37 @@
+module c19_condition_side_effects
+
+import io
+
+# Condition with side effects: count how many times condition is evaluated
+func make_counter () -> func(-> i32)
+    let n = 0i32
+    return func () -> i32
+        set n = (+ n 1)
+        return n
+    end
+end
+
+func check_n (cnt func(-> i32)) (limit i32) -> bool
+    let v = (cnt)
+    return (< v limit)
+end
+
+func main () -> i32
+    let cnt = (make_counter)
+
+    # while loop: condition evaluated N+1 times (N body + 1 false check)
+    while (check_n cnt 4)
+        do (io::println "loop")
+    end
+    # cnt should now be 4 (3 true evals + 1 false eval)
+    do (io::println (cnt))   # 5 (printed after the 4th check returned false)
+
+    # if condition: evaluated exactly once
+    let cnt2 = (make_counter)
+    if (check_n cnt2 10)
+        do (io::println "yes")
+    end
+    do (io::println (cnt2))  # 2 (1 for check + 1 for this println)
+
+    return 0i32
+end

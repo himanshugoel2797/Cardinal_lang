@@ -1,0 +1,57 @@
+module a01_widths_overflow
+
+import io
+
+func main () -> i32
+    # i8: max+1 wraps to -128
+    let i8max = 127i8
+    do (io::println (+ i8max 1i8))
+
+    # i8: min-1 wraps to 127
+    let i8min = (- 128i8)
+    do (io::println (- i8min 1i8))
+
+    # u8: 255+1 wraps to 0
+    do (io::println (+ 255u8 1u8))
+
+    # u8: 0-1 wraps to 255
+    do (io::println (- 0u8 1u8))
+
+    # i16: max+1 wraps to -32768
+    let i16max = 32767i16
+    do (io::println (+ i16max 1i16))
+
+    # i16: min-1 wraps to 32767
+    let i16min = (- 32768i16)
+    do (io::println (- i16min 1i16))
+
+    # u16: 65535+1 wraps to 0
+    do (io::println (+ 65535u16 1u16))
+
+    # u16: 0-1 wraps to 65535
+    do (io::println (- 0u16 1u16))
+
+    # i32: max+1 wraps to -2147483648
+    let i32max = 2147483647i32
+    do (io::println (+ i32max 1i32))
+
+    # i32: min-1 wraps to 2147483647
+    let i32min = (- 2147483648i32)
+    do (io::println (- i32min 1i32))
+
+    # u32: 0-1 wraps to 4294967295
+    do (io::println (- 0u32 1u32))
+
+    # i64: max+1 wraps to -9223372036854775808
+    let i64max = 9223372036854775807i64
+    do (io::println (+ i64max 1i64))
+
+    # i64: min-1 wraps to 9223372036854775807
+    let i64min = (- 9223372036854775808i64)
+    do (io::println (- i64min 1i64))
+
+    # u64: 0-1 wraps to 18446744073709551615
+    do (io::println (- 0u64 1u64))
+
+    return 0i32
+end

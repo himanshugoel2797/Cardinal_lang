@@ -1,0 +1,17 @@
+module adv02
+# ADVERSARIAL: sum type — nullary variant used where payload variant expected
+type Expr
+    Num (value i32)
+    Nothing
+end
+func f () -> i32
+    # 'Nothing' has no payload but we try to match it with payload pattern
+    let e = Nothing
+    match e
+        case (Nothing x)
+            return x
+        case Num
+            return 0
+    end
+    return 0
+end

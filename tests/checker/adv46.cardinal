@@ -1,0 +1,6 @@
+module adv46
+# ADVERSARIAL: null assigned to i32 let binding (null is ref type, i32 is not)
+func f () -> i32
+    let x i32 = null
+    return x
+end

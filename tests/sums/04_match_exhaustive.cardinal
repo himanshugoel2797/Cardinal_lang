@@ -1,0 +1,67 @@
+module t04_match_exhaustive
+
+import io
+
+# Test: match exhaustiveness paths
+# Every variant covered; with else; nested match inside case
+
+type Shape
+    Circle (radius i32)
+    Rect (width i32) (height i32)
+    Triangle (base i32) (height i32)
+    Point
+end
+
+func area_approx (s Shape) -> i32
+    match s
+        case (Circle r)
+            # approximate pi as 3
+            return (* 3 (* r r))
+        case (Rect w h)
+            return (* w h)
+        case (Triangle b h)
+            return (/ (* b h) 2)
+        case Point
+            return 0
+    end
+    return 0
+end
+
+func describe (s Shape) -> i32
+    match s
+        case (Circle r)
+            if (> r 10)
+                do (io::println "big circle")
+            else
+                do (io::println "small circle")
+            end
+            return r
+        case (Rect w h)
+            do (io::println "rect")
+            return (* w h)
+        else
+            do (io::println "other")
+            return (- 0 1)
+    end
+    return 0
+end
+
+func main () -> i32
+    let shapes {Shape} = (vec Shape)
+    do (push shapes (Circle radius: 5))
+    do (push shapes (Rect width: 4 height: 6))
+    do (push shapes (Triangle base: 3 height: 4))
+    do (push shapes Point)
+
+    for s in shapes
+        do (io::println (area_approx s))
+    end
+    # 75, 24, 6, 0
+
+    do (describe (Circle radius: 15))   # big circle, returns 15
+    do (describe (Circle radius: 5))    # small circle, returns 5
+    do (describe (Rect width: 3 height: 3))  # rect
+    do (describe Point)                 # other
+
+    return 0i32
+end

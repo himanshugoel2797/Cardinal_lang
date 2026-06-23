@@ -1,0 +1,31 @@
+module a14_shift_by_zero_and_width
+
+import io
+
+func main () -> i32
+    # shl by 0 = identity
+    do (io::println (shl 42i32 0i32))
+
+    # shr by 0 = identity
+    do (io::println (shr 42i32 0i32))
+
+    # shl by exactly width-1 for various types
+    do (io::println (shl 1u8 7u8))
+    do (io::println (shl 1u16 15u16))
+    do (io::println (shl 1u32 31u32))
+    do (io::println (shl 1u64 63u64))
+
+    # shr by exactly width-1 for various types
+    do (io::println (shr 128u8 7u8))
+    do (io::println (shr 32768u16 15u16))
+    do (io::println (shr 2147483648u32 31u32))
+    do (io::println (shr 9223372036854775808u64 63u64))
+
+    # Shift by >= width: UB in C — test if all three agree
+    do (io::println (shl 1u32 32u32))
+    do (io::println (shr 1u32 32u32))
+    do (io::println (shl 1u64 64u64))
+    do (io::println (shr 1u64 64u64))
+
+    return 0i32
+end

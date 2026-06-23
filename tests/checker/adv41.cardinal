@@ -1,0 +1,9 @@
+module adv41
+# ADVERSARIAL: for-to with float step (step must be same type as index i32)
+func f () -> i32
+    let sum = 0i32
+    for i = 0 to 10 step 2.0f64
+        set sum = (+ sum i)
+    end
+    return sum
+end

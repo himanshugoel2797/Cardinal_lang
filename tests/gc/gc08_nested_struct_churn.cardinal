@@ -1,0 +1,32 @@
+module gc08_nested_struct_churn
+
+import io
+import strings
+
+# Struct with managed string fields.  Each iteration produces a fresh struct;
+# the old one becomes garbage.  The live struct (and its string field) must
+# not be collected before we read from it.
+# Expected: 100000
+
+struct Named
+    label str
+    value i32
+end
+
+func make_named (i i32) -> Named
+    let s = (strings::concat "item-" (to_str i))
+    return (Named label: s value: i)
+end
+
+func main () -> i32
+    let total = 0i32
+    for i = 0 to 100000
+        let n = (make_named i)
+        set total = (+ total n.value)
+    end
+    # 0+1+2+...+99999 = 4999950000 — too large for i32, use checksum mod approach
+    # Instead verify last struct's value field
+    let last = (make_named 99999)
+    do (io::println last.value)
+    return 0i32
+end

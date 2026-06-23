@@ -1,0 +1,40 @@
+module str_len_utf8
+
+import io
+import strings
+
+# Test that len(str) is codepoint count, not byte count
+# via strings::chars length comparison
+func main () -> i32
+    # ASCII: len == byte count
+    let a = "hello"
+    let ca = (strings::chars a)
+    do (io::println (len ca))        # 5
+
+    # 2-byte codepoints: é (U+00E9)
+    let b = "ééé"
+    let cb = (strings::chars b)
+    do (io::println (len cb))        # 3 (NOT 6)
+
+    # 3-byte codepoints: 日 (U+65E5)
+    let c = "日日日日"
+    let cc = (strings::chars c)
+    do (io::println (len cc))        # 4 (NOT 12)
+
+    # 4-byte codepoints: 😀 (U+1F600)
+    let d = "😀😀"
+    let cd = (strings::chars d)
+    do (io::println (len cd))        # 2 (NOT 8)
+
+    # Mixed: "a日é😀" = 4 codepoints
+    let e = "a日é😀"
+    let ce = (strings::chars e)
+    do (io::println (len ce))        # 4
+
+    # Empty string
+    let f = ""
+    let cf = (strings::chars f)
+    do (io::println (len cf))        # 0
+
+    return 0i32
+end

@@ -1,0 +1,10 @@
+module enum01
+# ILLEGAL: using a nonexistent enum variant
+enum Color
+    Red
+    Green
+    Blue
+end
+func f () -> Color
+    return Color::Bogus
+end

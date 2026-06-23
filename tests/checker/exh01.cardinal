@@ -1,0 +1,13 @@
+module exh01
+# ILLEGAL: non-exhaustive match (missing variant B)
+type T
+    A
+    B
+end
+func f (t T) -> i32
+    match t
+        case A
+            return 1
+    end
+    return 0
+end

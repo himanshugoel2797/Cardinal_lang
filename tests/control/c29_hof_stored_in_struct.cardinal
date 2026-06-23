@@ -1,0 +1,52 @@
+module c29_hof_stored_in_struct
+
+import io
+
+# Higher-order function stored in a struct field
+# (uses vec as struct-like container since struct fields can't be func types... check if they can)
+
+# Actually let's test func passed around extensively
+func compose (f func(i32 -> i32)) (g func(i32 -> i32)) -> func(i32 -> i32)
+    return func (x i32) -> i32
+        return (f (g x))
+    end
+end
+
+func inc (x i32) -> i32
+    return (+ x 1)
+end
+
+func double (x i32) -> i32
+    return (* x 2)
+end
+
+func square (x i32) -> i32
+    return (* x x)
+end
+
+func main () -> i32
+    # compose(inc, double): double first then inc
+    let f1 = (compose inc double)
+    do (io::println (f1 5))   # double(5)=10, inc(10)=11
+
+    # compose(double, inc): inc first then double
+    let f2 = (compose double inc)
+    do (io::println (f2 5))   # inc(5)=6, double(6)=12
+
+    # compose(square, inc)
+    let f3 = (compose square inc)
+    do (io::println (f3 4))   # inc(4)=5, square(5)=25
+
+    # triple composition: compose(inc, compose(double, square))
+    let inner = (compose double square)
+    let triple = (compose inc inner)
+    do (io::println (triple 3))  # square(3)=9, double(9)=18, inc(18)=19
+
+    # Pass composed function to apply
+    let apply_to_10 = func (f func(i32 -> i32)) -> i32
+        return (f 10)
+    end
+    do (io::println (apply_to_10 f1))  # 21 (double(10)=20, inc(20)=21)
+
+    return 0i32
+end

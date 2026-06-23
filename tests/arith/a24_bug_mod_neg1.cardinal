@@ -1,0 +1,16 @@
+module a24_bug_mod_neg1
+
+import io
+
+func main () -> i32
+    # Minimal repro: modulo by -1 for signed types
+    # C/x86: -42 % -1 = 0 (mathematically exact, no remainder)
+    # Interpreter adds extra line?
+
+    # Step through line by line to identify the extra output
+    do (io::println (% 42i32 (- 1i32)))
+    do (io::println (% (- 42i32) (- 1i32)))
+    do (io::println 999i32)
+
+    return 0i32
+end

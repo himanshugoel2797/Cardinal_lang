@@ -1,0 +1,5 @@
+module mapkey02
+# ILLEGAL: vec as map key (not hashable)
+func f () -> unit
+    let m {{i32} i32} = (map {i32} i32)
+end

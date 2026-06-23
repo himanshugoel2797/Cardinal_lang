@@ -1,0 +1,5 @@
+module scope02
+# ILLEGAL: undefined variable
+func f () -> i32
+    return undefined_var
+end

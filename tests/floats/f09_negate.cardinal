@@ -1,0 +1,31 @@
+module f09_negate
+
+import io
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func main () -> i32
+    # Negate f64
+    let a = (p64 1.5)
+    do (io::println (- a))
+
+    # Negate negative (double negate = positive)
+    let b = (- (p64 1.5))
+    do (io::println (- b))
+
+    # Negate f32
+    let c = 3.14f32
+    do (io::println (- c))
+
+    # Negate zero f64
+    let z = (p64 0.0)
+    do (io::println (- z))
+
+    # Negate result of arithmetic
+    do (io::println (- (+ (p64 1.0) (p64 2.0))))
+    do (io::println (- (* (p64 2.0) (p64 3.5))))
+
+    return 0i32
+end

@@ -1,0 +1,7 @@
+module promo01
+# ILLEGAL: adding i32 and i64 — no implicit promotion
+func f () -> i64
+    let a = 1i32
+    let b = 2i64
+    return (+ a b)
+end

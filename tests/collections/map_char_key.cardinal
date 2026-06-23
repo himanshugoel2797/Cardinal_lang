@@ -1,0 +1,26 @@
+module map_char_key
+
+import io
+
+# Map with char keys
+func main () -> i32
+    let m {char i32} = (map char i32)
+    set m['a'] = 1
+    set m['b'] = 2
+    set m['c'] = 3
+    do (io::println (len m))           # 3
+    do (io::println m['a'])            # 1
+    do (io::println m['b'])            # 2
+    do (io::println (map_has m 'z'))   # false
+
+    do (map_del m 'b')
+    do (io::println (len m))           # 2
+    do (io::println (map_has m 'b'))   # false
+
+    # Multi-byte char key
+    set m['é'] = 10
+    do (io::println m['é'])            # 10
+    do (io::println (map_has m 'é'))   # true
+
+    return 0i32
+end

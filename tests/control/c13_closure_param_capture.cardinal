@@ -1,0 +1,50 @@
+module c13_closure_param_capture
+
+import io
+
+# Closure capturing a function parameter
+func make_multiplier (factor i32) -> func(i32 -> i32)
+    return func (x i32) -> i32
+        return (* x factor)
+    end
+end
+
+# Closure capturing multiple params
+func make_range_check (lo i32) (hi i32) -> func(i32 -> bool)
+    return func (x i32) -> bool
+        return (and (>= x lo) (< x hi))
+    end
+end
+
+# Recursive closure via captured parameter
+func countdown (n i32) -> i32
+    let total = 0i32
+    let f = func () -> i32
+        return n
+    end
+    let i = 0i32
+    while (< i n)
+        set total = (+ total (f))
+        set i = (+ i 1)
+    end
+    return total
+end
+
+func main () -> i32
+    let times3 = (make_multiplier 3)
+    do (io::println (times3 4))    # 12
+    do (io::println (times3 10))   # 30
+
+    let times7 = (make_multiplier 7)
+    do (io::println (times7 6))    # 42
+
+    let in_range = (make_range_check 5 10)
+    do (io::println (in_range 4))   # false
+    do (io::println (in_range 5))   # true
+    do (io::println (in_range 9))   # true
+    do (io::println (in_range 10))  # false
+
+    do (io::println (countdown 5))  # 25 (5+5+5+5+5)
+
+    return 0i32
+end

@@ -1,0 +1,31 @@
+module ag29_array_struct_12byte_read_only
+
+import io
+
+# Same 12-byte struct in array, but only READ (no set) — does the x86 bug still trigger?
+struct S12
+    a i32
+    b i32
+    c i32
+end
+
+func main () -> i32
+    let arr = [(S12 a: 1i32 b: 2i32 c: 3i32) (S12 a: 4i32 b: 5i32 c: 6i32)]
+
+    # Only reads — no set arr[i] or set arr[i].field
+    do (io::println arr[0].a)  # 1
+    do (io::println arr[0].b)  # 2
+    do (io::println arr[0].c)  # 3
+    do (io::println arr[1].a)  # 4
+    do (io::println arr[1].b)  # 5
+    do (io::println arr[1].c)  # 6
+
+    # for-in over array of structs
+    let sum_a = 0i32
+    for s in arr
+        set sum_a = (+ sum_a s.a)
+    end
+    do (io::println sum_a)  # 5
+
+    return 0i32
+end

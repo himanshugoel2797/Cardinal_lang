@@ -1,0 +1,33 @@
+module map_insertion_order
+
+import io
+
+# Insertion-order must be consistent: insert, delete middle, re-insert at end
+func main () -> i32
+    let m {str i32} = (map str i32)
+
+    set m["first"] = 1
+    set m["second"] = 2
+    set m["third"] = 3
+    set m["fourth"] = 4
+
+    # Delete middle entry
+    do (map_del m "second")
+
+    # Re-insert (should go at end, not the original position)
+    set m["second"] = 22
+
+    # Keys order: first, third, fourth, second
+    for k in (map_keys m)
+        do (io::println k)
+    end
+
+    # Overwrite does NOT change order
+    set m["first"] = 100
+    for k in (map_keys m)
+        do (io::println k)
+    end
+    # first, third, fourth, second (same order)
+
+    return 0i32
+end

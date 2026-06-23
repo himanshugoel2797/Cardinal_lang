@@ -1,0 +1,6 @@
+module promo05
+# LEGAL: explicit cast from i32 to i64 — should be OK
+func f () -> i64
+    let a = 1i32
+    return (as a i64)
+end

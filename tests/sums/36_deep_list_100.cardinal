@@ -1,0 +1,35 @@
+module t36_deep_list_100
+
+import io
+
+# Deep recursion: list of 60 elements
+# Tests stack depth handling across all backends
+# Using 60 to stay within Python's recursion limit
+type List
+    Nil
+    Cons (head i32) (tail List)
+end
+
+func build_list (n i32) -> List
+    if (<= n 0)
+        return Nil
+    end
+    return (Cons head: n tail: (build_list (- n 1)))
+end
+
+func list_sum (xs List) -> i32
+    match xs
+        case Nil
+            return 0
+        case (Cons h t)
+            return (+ h (list_sum t))
+    end
+    return 0
+end
+
+func main () -> i32
+    # Build list 1..60; sum = 1830
+    let xs = (build_list 60)
+    do (io::println (list_sum xs))   # 1830
+    return 0i32
+end

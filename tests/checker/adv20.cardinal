@@ -1,0 +1,9 @@
+module adv20
+# ADVERSARIAL: returning null from a function that returns a sum type (null IS a ref type — LEGAL?)
+type Tree
+    Leaf
+    Node (value i32) (left Tree) (right Tree)
+end
+func f () -> Tree
+    return null
+end

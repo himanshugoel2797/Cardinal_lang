@@ -1,0 +1,35 @@
+module t38_sum_array_payload
+
+import io
+
+# Sum type with an array payload
+type Data
+    Empty
+    Fixed (values [i32]) (count i32)
+end
+
+func data_sum (d Data) -> i32
+    match d
+        case Empty
+            return 0
+        case (Fixed vals cnt)
+            let total = 0i32
+            let i = 0i32
+            while (< i cnt)
+                set total = (+ total vals[i])
+                set i = (+ i 1)
+            end
+            return total
+    end
+    return 0
+end
+
+func main () -> i32
+    let d1 = Empty
+    do (io::println (data_sum d1))    # 0
+
+    let arr [i32] = [10 20 30 40 50]
+    let d2 = (Fixed values: arr count: 5)
+    do (io::println (data_sum d2))    # 150
+    return 0i32
+end

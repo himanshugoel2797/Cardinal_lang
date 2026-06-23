@@ -1,0 +1,15 @@
+module exh02
+# LEGAL: exhaustive match (all variants covered)
+type T
+    A
+    B
+end
+func f (t T) -> i32
+    match t
+        case A
+            return 1
+        case B
+            return 2
+    end
+    return 0
+end

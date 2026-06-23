@@ -1,0 +1,33 @@
+module a16_cast_arith_combo
+
+import io
+
+func main () -> i32
+    # Cast result and then do arithmetic on it
+    # -1i8 -> i32 sign-extends to -1, then * 2 = -2
+    do (io::println (* (as (- 1i8) i32) 2i32))
+
+    # 200u8 -> i32 zero-extends to 200, then + 56 = 256
+    do (io::println (+ (as 200u8 i32) 56i32))
+
+    # Narrowing cast then shift: 257i32 as u8 = 1, shl 3 = 8
+    do (io::println (shl (as 257i32 u8) 3u8))
+
+    # i32 negative -> u32 -> / 2 (unsigned division)
+    do (io::println (/ (as (- 2i32) u32) 2u32))
+
+    # Band after widening
+    do (io::println (band (as 255u8 u32) 0xF0u32))
+
+    # shr after sign-extension
+    do (io::println (shr (as (- 128i8) i32) 4i32))
+
+    # Large i64 -> i32 narrowing then *2 overflow
+    let big = (as 9999999999i64 i32)
+    do (io::println (* big 2i32))
+
+    # Chain: u8 saturate-narrowing of negative: -200i32 as u8
+    do (io::println (as (- 200i32) u8))
+
+    return 0i32
+end

@@ -1,0 +1,48 @@
+module c15_early_return
+
+import io
+
+# Early return from nested loops
+func find_pair (target i32) -> i32
+    for i = 0 to 10
+        for j = 0 to 10
+            if (== (+ i j) target)
+                return i
+            end
+        end
+    end
+    return (- 1i32)
+end
+
+# Multiple return paths
+func abs_val (n i32) -> i32
+    if (< n 0)
+        return (- n)
+    end
+    return n
+end
+
+# Unit function (early return)
+func print_unless_zero (n i32) -> unit
+    if (== n 0)
+        return
+    end
+    do (io::println n)
+end
+
+func main () -> i32
+    # Early return from nested loops
+    do (io::println (find_pair 3))   # 0 (0+3=3)
+    do (io::println (find_pair 15))  # 6 (6+9=15)
+    do (io::println (find_pair 25))  # -1 (max is 9+9=18, so not found)
+
+    do (io::println (abs_val (- 5i32)))   # 5
+    do (io::println (abs_val 5))    # 5
+    do (io::println (abs_val 0))    # 0
+
+    do (print_unless_zero 0)
+    do (print_unless_zero 42)   # 42
+    do (print_unless_zero 0)
+
+    return 0i32
+end

@@ -1,0 +1,11 @@
+module field06
+# ILLEGAL: set struct field with wrong type
+struct P
+    x i32
+    y i32
+end
+func f () -> i32
+    let p = (P x: 1 y: 2)
+    set p.x = 1i64
+    return p.x
+end

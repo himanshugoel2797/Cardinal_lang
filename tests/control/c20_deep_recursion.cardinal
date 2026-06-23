@@ -1,0 +1,26 @@
+module c20_deep_recursion
+
+import io
+
+# Moderate depth recursion - tests all 3 paths handle the same depth
+func count_down (n i32) -> i32
+    if (<= n 0)
+        return 0i32
+    end
+    return (+ 1 (count_down (- n 1)))
+end
+
+func sum_to (n i32) -> i32
+    if (<= n 0)
+        return 0i32
+    end
+    return (+ n (sum_to (- n 1)))
+end
+
+func main () -> i32
+    # Keep depth moderate - all 3 paths should agree up to ~100
+    do (io::println (count_down 50))   # 50
+    do (io::println (sum_to 100))      # 5050
+    do (io::println (count_down 100))  # 100
+    return 0i32
+end

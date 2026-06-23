@@ -1,0 +1,9 @@
+module fn05
+# ILLEGAL: returning a value from a unit function
+func g () -> unit
+    return 42i32
+end
+func f () -> i32
+    do (g)
+    return 0i32
+end

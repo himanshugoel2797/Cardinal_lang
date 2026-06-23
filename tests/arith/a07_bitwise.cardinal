@@ -1,0 +1,40 @@
+module a07_bitwise
+
+import io
+
+func main () -> i32
+    # band
+    do (io::println (band 0xFFi32 0x0Fi32))
+
+    # bor
+    do (io::println (bor 0xF0i32 0x0Fi32))
+
+    # bxor
+    do (io::println (bxor 0xFFi32 0x55i32))
+
+    # bnot of 0 = all 1s = -1 for signed
+    do (io::println (bnot 0i32))
+
+    # bnot of -1 = 0
+    do (io::println (bnot (- 1i32)))
+
+    # bnot of 255u8 = 0
+    do (io::println (bnot 255u8))
+
+    # bnot of 0u8 = 255
+    do (io::println (bnot 0u8))
+
+    # band on u64 max with pattern
+    do (io::println (band 18446744073709551615u64 0xFF00FF00FF00FF00u64))
+
+    # bxor same value = 0
+    do (io::println (bxor 0xDEADBEEFu32 0xDEADBEEFu32))
+
+    # bor u64 accumulation
+    do (io::println (bor 0x00000000FFFFFFFFu64 0xFFFFFFFF00000000u64))
+
+    # i64 bnot of 0 = -1
+    do (io::println (bnot 0i64))
+
+    return 0i32
+end

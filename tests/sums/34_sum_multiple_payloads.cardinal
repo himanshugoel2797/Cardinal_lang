@@ -1,0 +1,58 @@
+module t34_sum_multiple_payloads
+
+import io
+import strings
+
+# Sum with variants that have multiple payload fields of different types
+# Tests multi-field payload binding in match
+type Record
+    Person (name str) (age i32) (active bool)
+    Company (name str) (employees i32) (revenue i64)
+    Unknown (code i32)
+end
+
+func record_name (r Record) -> str
+    match r
+        case (Person name age active)
+            return name
+        case (Company name emps rev)
+            return name
+        case (Unknown code)
+            return (strings::concat "unknown-" (to_str code))
+    end
+    return ""
+end
+
+func record_score (r Record) -> i32
+    match r
+        case (Person name age active)
+            if active
+                return age
+            else
+                return 0
+            end
+        case (Company name emps rev)
+            return emps
+        case (Unknown code)
+            return (- 0i32 1i32)
+    end
+    return 0
+end
+
+func main () -> i32
+    let p1 = (Person name: "Alice" age: 30 active: true)
+    let p2 = (Person name: "Bob" age: 25 active: false)
+    let c1 = (Company name: "Acme" employees: 100 revenue: 1000000i64)
+    let u1 = (Unknown code: 42)
+
+    do (io::println (record_name p1))    # Alice
+    do (io::println (record_name p2))    # Bob
+    do (io::println (record_name c1))    # Acme
+    do (io::println (record_name u1))    # unknown-42
+
+    do (io::println (record_score p1))   # 30
+    do (io::println (record_score p2))   # 0
+    do (io::println (record_score c1))   # 100
+    do (io::println (record_score u1))   # -1
+    return 0i32
+end

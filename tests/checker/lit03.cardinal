@@ -1,0 +1,5 @@
+module lit03
+# LEGAL: unsuffixed literal inferred from function return type
+func f () -> i32
+    return 5
+end

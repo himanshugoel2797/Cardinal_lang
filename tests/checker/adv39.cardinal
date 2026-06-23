@@ -1,0 +1,9 @@
+module adv39
+# ADVERSARIAL: for-numeric with float bounds (should error — index is always i32)
+func f () -> i32
+    let sum = 0i32
+    for i = 0.0f64 to 5.0f64
+        set sum = (+ sum 1)
+    end
+    return sum
+end

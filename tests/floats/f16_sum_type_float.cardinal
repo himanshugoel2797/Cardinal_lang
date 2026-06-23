@@ -1,0 +1,41 @@
+module f16_sum_type_float
+
+import io
+
+type Shape
+    Circle (r f64)
+    Rect (w f64) (h f64)
+    Point
+end
+
+func pi_approx () -> f64
+    return 3.14159
+end
+
+func area (s Shape) -> f64
+    match s
+    case (Circle r)
+        return (* (* r r) (pi_approx))
+    case (Rect w h)
+        return (* w h)
+    case Point
+        return 0.0
+    end
+end
+
+func main () -> i32
+    let c = (Circle r: 1.0)
+    let r = (Rect w: 3.0 h: 4.0)
+    let p = Point
+
+    do (io::println (area c))
+    do (io::println (area r))
+    do (io::println (area p))
+
+    # to_str of sum type containing floats
+    do (io::println (to_str c))
+    do (io::println (to_str r))
+    do (io::println (to_str p))
+
+    return 0i32
+end

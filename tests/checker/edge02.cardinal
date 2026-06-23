@@ -1,0 +1,10 @@
+module edge02
+# LEGAL: valid program with all correct types
+import io
+func f (a i32) (b i32) -> i32
+    return (+ a b)
+end
+func main () -> i32
+    do (io::println (f 3 4))
+    return 0i32
+end

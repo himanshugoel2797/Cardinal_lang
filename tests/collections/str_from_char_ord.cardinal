@@ -1,0 +1,43 @@
+module str_from_char_ord
+
+import io
+import strings
+import convert
+
+# from_char and ord round-trips for multi-byte codepoints
+func main () -> i32
+    # ASCII round trip
+    let ca = 'A'
+    let sa = (strings::from_char ca)
+    do (io::println sa)                        # A
+    let cs_a = (strings::chars sa)
+    do (io::println (convert::ord cs_a[0]))    # 65
+
+    # 2-byte: é (U+00E9)
+    let ce = 'é'
+    let se = (strings::from_char ce)
+    do (io::println se)                        # é
+    let cs_e = (strings::chars se)
+    do (io::println (convert::ord cs_e[0]))    # 233
+
+    # 3-byte: 日 (U+65E5)
+    let cj = '日'
+    let sj = (strings::from_char cj)
+    do (io::println sj)                        # 日
+    let cs_j = (strings::chars sj)
+    do (io::println (convert::ord cs_j[0]))    # 26085
+
+    # 4-byte: 😀 (U+1F600)
+    let cem = '😀'
+    let sem = (strings::from_char cem)
+    do (io::println sem)                       # 😀
+    let cs_em = (strings::chars sem)
+    do (io::println (convert::ord cs_em[0]))   # 128512
+
+    # chr round-trip
+    let cp = (convert::ord 'é')
+    let c2 = (convert::chr cp)
+    do (io::println (strings::from_char c2))   # é
+
+    return 0i32
+end

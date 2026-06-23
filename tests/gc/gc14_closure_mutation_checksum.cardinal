@@ -1,0 +1,37 @@
+module gc14_closure_mutation_checksum
+
+import io
+
+# Escaping closure with mutable captured cell — closure returned, cell mutated
+# via the closure handle held by the caller, while GC pressure runs in parallel.
+# The cell must remain valid between GC cycles.
+# Expected: 30000
+
+func make_acc () -> func(i32 -> i32)
+    let total = 0i32
+    return func (x i32) -> i32
+        set total = (+ total x)
+        return total
+    end
+end
+
+func burn () -> unit
+    for k = 0 to 200
+        let v {i32} = (vec i32)
+        do (push v k)
+    end
+end
+
+func main () -> i32
+    let acc = (make_acc)
+    let result = 0i32
+    for i = 0 to 30000
+        # every 100 iterations, cause GC pressure
+        if (== (- i (* (/ i 100) 100)) 0)
+            do (burn)
+        end
+        set result = (acc 1)
+    end
+    do (io::println result)
+    return 0i32
+end

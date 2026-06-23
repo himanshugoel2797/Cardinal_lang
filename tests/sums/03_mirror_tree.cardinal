@@ -1,0 +1,83 @@
+module t03_mirror_tree
+
+import io
+
+# Mirror / reverse a tree; then sum
+type Tree
+    Leaf
+    Node (value i32) (left Tree) (right Tree)
+end
+
+func mirror (t Tree) -> Tree
+    match t
+        case Leaf
+            return Leaf
+        case (Node v l r)
+            return (Node value: v left: (mirror r) right: (mirror l))
+    end
+    return Leaf
+end
+
+func sum_tree (t Tree) -> i32
+    match t
+        case Leaf
+            return 0
+        case (Node v l r)
+            return (+ v (+ (sum_tree l) (sum_tree r)))
+    end
+    return 0
+end
+
+func depth_tree (t Tree) -> i32
+    match t
+        case Leaf
+            return 0
+        case (Node v l r)
+            let ld = (depth_tree l)
+            let rd = (depth_tree r)
+            if (>= ld rd)
+                return (+ 1 ld)
+            else
+                return (+ 1 rd)
+            end
+    end
+    return 0
+end
+
+# Leftmost value
+func leftmost (t Tree) -> i32
+    match t
+        case Leaf
+            return (- 0 1)
+        case (Node v l r)
+            match l
+                case Leaf
+                    return v
+                case (Node lv ll lr)
+                    return (leftmost l)
+            end
+    end
+    return (- 0 1)
+end
+
+func main () -> i32
+    #       1
+    #      / \
+    #     2   3
+    #    /
+    #   4
+    let t = (Node value: 1
+                  left: (Node value: 2
+                              left: (Node value: 4 left: Leaf right: Leaf)
+                              right: Leaf)
+                  right: (Node value: 3 left: Leaf right: Leaf))
+    let m = (mirror t)
+    do (io::println (sum_tree t))      # 10
+    do (io::println (sum_tree m))      # 10  (same sum after mirror)
+    do (io::println (depth_tree t))    # 3
+    do (io::println (depth_tree m))    # 3
+    # After mirror: leftmost is 3
+    do (io::println (leftmost t))      # 2  (original left child value)
+    do (io::println (leftmost m))      # 3  (mirrored: right becomes left)
+    return 0i32
+end

@@ -1,0 +1,6 @@
+module lit01
+# ILLEGAL: unsuffixed literal with no type context — no fallback
+func f () -> i32
+    let x = 5
+    return x
+end

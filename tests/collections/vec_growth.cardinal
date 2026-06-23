@@ -1,0 +1,26 @@
+module vec_growth
+
+import io
+
+# Push many items to test vec growth (reallocation)
+func main () -> i32
+    let v {i32} = (vec i32)
+    let i = 0i32
+    while (< i 100)
+        do (push v i)
+        set i = (+ i 1)
+    end
+    do (io::println (len v))     # 100
+    do (io::println v[0])        # 0
+    do (io::println v[50])       # 50
+    do (io::println v[99])       # 99
+
+    # pop until empty, check last popped = 0
+    let last = (- 1i32)
+    while (> (len v) 0)
+        set last = (pop v)
+    end
+    do (io::println last)        # 0
+    do (io::println (len v))     # 0
+    return 0i32
+end

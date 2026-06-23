@@ -1,0 +1,47 @@
+module c08_short_circuit
+
+import io
+
+# Use a global counter via a closure to detect side effects
+# Short-circuit: RHS side effect fires only when needed
+
+func make_counter () -> func(-> i32)
+    let n = 0i32
+    return func () -> i32
+        set n = (+ n 1)
+        return n
+    end
+end
+
+func main () -> i32
+    let cnt = (make_counter)
+
+    # and: false AND rhs -> rhs must NOT be evaluated
+    let _ = (and false (== (cnt) 0))
+    do (io::println (cnt))  # 1: cnt was called once here, not by the and-rhs
+
+    # Reset with fresh counter
+    let cnt2 = (make_counter)
+
+    # and: true AND rhs -> rhs IS evaluated
+    let _ = (and true (== (cnt2) 0))
+    do (io::println (cnt2))  # 2: cnt2 called once in and-rhs, once here
+
+    let cnt3 = (make_counter)
+
+    # or: true OR rhs -> rhs must NOT be evaluated
+    let _ = (or true (== (cnt3) 0))
+    do (io::println (cnt3))  # 1: cnt3 only called here, not by or-rhs
+
+    let cnt4 = (make_counter)
+
+    # or: false OR rhs -> rhs IS evaluated
+    let _ = (or false (== (cnt4) 0))
+    do (io::println (cnt4))  # 2: cnt4 called once in or-rhs, once here
+
+    # not
+    do (io::println (not true))   # false
+    do (io::println (not false))  # true
+
+    return 0i32
+end

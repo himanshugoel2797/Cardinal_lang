@@ -1,0 +1,37 @@
+module map_keys_after_reinsert
+
+import io
+
+# Stress test map_keys order with many inserts, deletes, re-inserts
+func main () -> i32
+    let m {i32 i32} = (map i32 i32)
+
+    # Insert 0..9
+    let i = 0i32
+    while (< i 10)
+        set m[i] = i
+        set i = (+ i 1)
+    end
+    do (io::println (len m))     # 10
+
+    # Delete 5 entries (1, 3, 5, 7, 9)
+    do (map_del m 1)
+    do (map_del m 3)
+    do (map_del m 5)
+    do (map_del m 7)
+    do (map_del m 9)
+    do (io::println (len m))     # 5
+
+    # Re-insert deleted keys (should appear at end)
+    do (map_del m 5)             # already deleted, no-op
+    set m[5] = 55
+    set m[1] = 11
+    do (io::println (len m))     # 7
+
+    # Keys should be: 0, 2, 4, 6, 8, 5, 1 (insertion order)
+    for k in (map_keys m)
+        do (io::println k)
+    end
+
+    return 0i32
+end

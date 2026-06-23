@@ -1,0 +1,40 @@
+module ag24_struct_f32_f32_i64
+
+import io
+
+# struct {f32; f32; i64} = 4+4+8 = 16 bytes
+# ABI: first 8 bytes = two f32s (SSE class), second 8 bytes = i64 (INTEGER class)
+# Classic ABI bug surface: mixed float+int across two register-class words
+struct UV
+    u f32
+    v f32
+    id i64
+end
+
+func make_uv (u f32) (v f32) (id i64) -> UV
+    return (UV u: u v: v id: id)
+end
+
+func flip_uv (uv UV) -> UV
+    return (UV u: uv.v v: uv.u id: uv.id)
+end
+
+func main () -> i32
+    let uv = (make_uv 0.25f32 0.75f32 42i64)
+    do (io::println uv.u)   # 0.25
+    do (io::println uv.v)   # 0.75
+    do (io::println uv.id)  # 42
+
+    let fuv = (flip_uv uv)
+    do (io::println fuv.u)  # 0.75
+    do (io::println fuv.v)  # 0.25
+    do (io::println fuv.id) # 42
+
+    # copy semantics
+    let uv2 = uv
+    set uv2.id = 99i64
+    do (io::println uv.id)  # 42 (unchanged)
+    do (io::println uv2.id) # 99
+
+    return 0i32
+end

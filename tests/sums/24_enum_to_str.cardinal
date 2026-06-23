@@ -1,0 +1,61 @@
+module t24_enum_to_str
+
+import io
+
+# Enum to_str and enum stored/returned/passed
+enum Season
+    Spring
+    Summer
+    Autumn
+    Winter
+end
+
+func next_season (s Season) -> Season
+    if (== s Season::Spring)
+        return Season::Summer
+    end
+    if (== s Season::Summer)
+        return Season::Autumn
+    end
+    if (== s Season::Autumn)
+        return Season::Winter
+    end
+    return Season::Spring
+end
+
+func season_temp (s Season) -> i32
+    if (== s Season::Spring)
+        return 15
+    end
+    if (== s Season::Summer)
+        return 30
+    end
+    if (== s Season::Autumn)
+        return 10
+    end
+    return (- 0i32 5i32)
+end
+
+func main () -> i32
+    do (io::println (to_str Season::Spring))   # Spring
+    do (io::println (to_str Season::Summer))   # Summer
+    do (io::println (to_str Season::Autumn))   # Autumn
+    do (io::println (to_str Season::Winter))   # Winter
+
+    let s = Season::Winter
+    let ns = (next_season s)
+    do (io::println (to_str ns))               # Spring
+    do (io::println (== ns Season::Spring))    # true
+
+    # iterate through all seasons
+    let cur = Season::Spring
+    let i = 0i32
+    while (< i 4)
+        do (io::println (season_temp cur))
+        set cur = (next_season cur)
+        set i = (+ i 1)
+    end
+    # 15 30 10 -5
+
+    return 0i32
+end

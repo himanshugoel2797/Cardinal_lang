@@ -1,0 +1,21 @@
+module gc06_map_rebuild
+
+import io
+
+# Rebuild a map from scratch each iteration; the old map becomes garbage.
+# The live map must survive the GC triggered on the next iteration's alloc.
+# Expected: final map has key "z" = 99999
+
+func main () -> i32
+    let m {str i32} = (map str i32)
+    for i = 0 to 100000
+        set m = (map str i32)
+        set m["a"] = i
+        set m["b"] = (+ i 1)
+        set m["z"] = (- i 1)
+    end
+    # last iteration: i=99999, so z = 99998
+    set m["z"] = 99999
+    do (io::println m["z"])
+    return 0i32
+end

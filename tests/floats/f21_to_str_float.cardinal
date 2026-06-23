@@ -1,0 +1,29 @@
+module f21_to_str_float
+
+import io
+
+struct Measurement
+    name str
+    value f64
+end
+
+func p64 (x f64) -> f64
+    return x
+end
+
+func main () -> i32
+    # to_str on f64 values directly
+    do (io::println (to_str (p64 3.14)))
+    do (io::println (to_str (- (p64 2.71))))
+    do (io::println (to_str (p64 0.0)))
+    do (io::println (to_str (p64 1.0e10)))
+
+    # to_str on f32
+    do (io::println (to_str 3.14f32))
+
+    # to_str on struct with float field
+    let m = (Measurement name: "temp" value: (p64 98.6))
+    do (io::println (to_str m))
+
+    return 0i32
+end

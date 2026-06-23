@@ -1,0 +1,10 @@
+module ag09_array_oob_high
+
+import io
+
+# OOB: index == len must PANIC in all three backends
+func main () -> i32
+    let a = [1i32 2i32 3i32]
+    do (io::println a[3])   # OOB: len=3, index=3 must panic
+    return 0i32
+end

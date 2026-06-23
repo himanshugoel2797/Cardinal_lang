@@ -1,0 +1,42 @@
+module ag06_struct_three_i32
+
+import io
+
+# struct {i32, i32, i32} = 12 bytes — fits in registers but spread across 2 words
+struct Triple
+    x i32
+    y i32
+    z i32
+end
+
+func make_triple (x i32) (y i32) (z i32) -> Triple
+    return (Triple x: x y: y z: z)
+end
+
+func dot (a Triple) (b Triple) -> i32
+    return (+ (* a.x b.x) (+ (* a.y b.y) (* a.z b.z)))
+end
+
+func scale (t Triple) (s i32) -> Triple
+    return (Triple x: (* t.x s) y: (* t.y s) z: (* t.z s))
+end
+
+func main () -> i32
+    let a = (make_triple 1i32 2i32 3i32)
+    do (io::println a.x)    # 1
+    do (io::println a.y)    # 2
+    do (io::println a.z)    # 3
+
+    let b = (make_triple 4i32 5i32 6i32)
+    do (io::println (dot a b))      # 1*4+2*5+3*6 = 4+10+18 = 32
+
+    let s = (scale a 3i32)
+    do (io::println s.x)    # 3
+    do (io::println s.y)    # 6
+    do (io::println s.z)    # 9
+
+    # round-trip: return then access inline
+    do (io::println (make_triple 7i32 8i32 9i32).x)    # 7
+
+    return 0i32
+end

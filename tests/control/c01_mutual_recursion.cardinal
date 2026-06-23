@@ -1,0 +1,28 @@
+module c01_mutual_recursion
+
+import io
+
+# Mutual recursion: even/odd
+func is_even (n i32) -> bool
+    if (== n 0)
+        return true
+    end
+    return (is_odd (- n 1))
+end
+
+func is_odd (n i32) -> bool
+    if (== n 0)
+        return false
+    end
+    return (is_even (- n 1))
+end
+
+func main () -> i32
+    do (io::println (is_even 0))   # true
+    do (io::println (is_odd 1))    # true
+    do (io::println (is_even 10))  # true
+    do (io::println (is_odd 9))    # true
+    do (io::println (is_even 7))   # false
+    do (io::println (is_odd 4))    # false
+    return 0i32
+end

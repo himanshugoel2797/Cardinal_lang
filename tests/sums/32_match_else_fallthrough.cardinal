@@ -1,0 +1,54 @@
+module t32_match_else_fallthrough
+
+import io
+
+# Test: match with else clause falls through correctly for unmatched variants
+type Value
+    Zero
+    Pos (n i32)
+    Neg (n i32)
+    NaN
+    Inf
+end
+
+func classify (v Value) -> i32
+    match v
+        case Zero
+            return 0
+        case (Pos n)
+            return n
+        else
+            # NaN, Neg, Inf all fall to else
+            return (- 0i32 999i32)
+    end
+    return 0
+end
+
+func sign (v Value) -> str
+    match v
+        case Zero
+            return "zero"
+        case (Pos n)
+            return "positive"
+        case (Neg n)
+            return "negative"
+        else
+            return "special"
+    end
+    return ""
+end
+
+func main () -> i32
+    do (io::println (classify Zero))           # 0
+    do (io::println (classify (Pos n: 42)))    # 42
+    do (io::println (classify (Neg n: 5)))     # -999 (else)
+    do (io::println (classify NaN))            # -999 (else)
+    do (io::println (classify Inf))            # -999 (else)
+
+    do (io::println (sign Zero))              # zero
+    do (io::println (sign (Pos n: 1)))        # positive
+    do (io::println (sign (Neg n: 1)))        # negative
+    do (io::println (sign NaN))               # special
+    do (io::println (sign Inf))               # special
+    return 0i32
+end

@@ -1,0 +1,37 @@
+module str_unicode_boundary
+
+import io
+import strings
+
+# Test 1-byte/2-byte/3-byte/4-byte codepoint boundaries in substr
+# Checking that off-by-one in byte/codepoint tracking produces correct results
+func main () -> i32
+    # Boundary between ASCII and 2-byte: U+007F (1 byte) and U+0080 (2 bytes)
+    # We use safe printable ones: U+007E '~' (1-byte) and U+00A9 '©' (2-byte)
+    let s = "~©~©"    # 4 codepoints, 1+2+1+2 = 6 bytes
+    let cs = (strings::chars s)
+    do (io::println (len cs))              # 4
+    do (io::println (strings::substr s 0 1))  # ~
+    do (io::println (strings::substr s 1 1))  # ©
+    do (io::println (strings::substr s 2 1))  # ~
+    do (io::println (strings::substr s 3 1))  # ©
+    do (io::println (strings::substr s 1 2))  # ©~
+
+    # Boundary 2-byte/3-byte: © (U+00A9, 2-byte) and ™ (U+2122, 3-byte)
+    let s2 = "©™©"    # 3 codepoints, 2+3+2 = 7 bytes
+    let cs2 = (strings::chars s2)
+    do (io::println (len cs2))             # 3
+    do (io::println (strings::substr s2 0 1))  # ©
+    do (io::println (strings::substr s2 1 1))  # ™
+    do (io::println (strings::substr s2 2 1))  # ©
+    do (io::println (strings::substr s2 0 3))  # ©™©
+
+    # Boundary 3-byte/4-byte: ™ (U+2122, 3-byte) and 😀 (U+1F600, 4-byte)
+    let s3 = "™😀™"   # 3 codepoints, 3+4+3 = 10 bytes
+    let cs3 = (strings::chars s3)
+    do (io::println (len cs3))             # 3
+    do (io::println (strings::substr s3 1 1))  # 😀
+    do (io::println (strings::substr s3 0 2))  # ™😀
+
+    return 0i32
+end

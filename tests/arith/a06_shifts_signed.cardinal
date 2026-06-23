@@ -1,0 +1,38 @@
+module a06_shifts_signed
+
+import io
+
+func main () -> i32
+    # shr on negative signed: arithmetic shift (sign extension)
+    # -1 >> 1 should be -1 (arithmetic, not logical)
+    do (io::println (shr (- 1i32) 1i32))
+
+    # shr on -128i32 by 4: arithmetic shift should give -8
+    do (io::println (shr (- 128i32) 4i32))
+
+    # shr -2147483648 by 1: arithmetic shift gives -1073741824
+    do (io::println (shr (- 2147483648i32) 1i32))
+
+    # shr -2147483648 by 31: all 1s = -1
+    do (io::println (shr (- 2147483648i32) 31i32))
+
+    # shl positive: normal
+    do (io::println (shl 1i32 10i32))
+
+    # shl into sign bit area
+    do (io::println (shl 1i32 30i32))
+
+    # i64 arithmetic shift right
+    do (io::println (shr (- 1i64) 1i64))
+
+    # i64 shift left
+    do (io::println (shl 1i64 62i64))
+
+    # i8 shr of -1
+    do (io::println (shr (- 1i8) 1i8))
+
+    # i8 shr of -128 by 7: should be -1
+    do (io::println (shr (- 128i8) 7i8))
+
+    return 0i32
+end

@@ -1,0 +1,28 @@
+module map_str_value
+
+import io
+import strings
+
+# Map with string values, including UTF-8 strings
+func main () -> i32
+    let m {i32 str} = (map i32 str)
+    set m[1] = "hello"
+    set m[2] = "日本語"
+    set m[3] = "a😀b"
+    set m[4] = ""
+
+    do (io::println m[1])       # hello
+    do (io::println m[2])       # 日本語
+    do (io::println m[3])       # a😀b
+    do (io::println m[4])       # (empty line)
+
+    # Use string value from map in strings ops
+    let cs = (strings::chars m[2])
+    do (io::println (len cs))   # 3 (codepoint count)
+
+    # Overwrite with new string
+    set m[1] = (strings::concat "hel" "lo world")
+    do (io::println m[1])       # hello world
+
+    return 0i32
+end

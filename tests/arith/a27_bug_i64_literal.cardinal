@@ -1,0 +1,26 @@
+module a27_bug_i64_literal
+
+import io
+
+func main () -> i32
+    # Print the literal directly
+    do (io::println 9223372036854775807i64)
+
+    # Print it via a variable
+    let x = 9223372036854775807i64
+    do (io::println x)
+
+    # / 1 via variable
+    do (io::println (/ x 1i64))
+
+    # / 1 via literal directly
+    do (io::println (/ 9223372036854775807i64 1i64))
+
+    # % 1 of literal
+    do (io::println (% 9223372036854775807i64 1i64))
+
+    # % 7 of literal
+    do (io::println (% 9223372036854775807i64 7i64))
+
+    return 0i32
+end

@@ -1,0 +1,9 @@
+module adv30
+# ADVERSARIAL: for-in over a non-iterable type (i32 — should error)
+func f () -> i32
+    let x = 5i32
+    for v in x
+        return v
+    end
+    return 0
+end

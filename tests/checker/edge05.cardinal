@@ -1,0 +1,12 @@
+module edge05
+# ILLEGAL: sum variant with payload constructed without parentheses syntax
+type Expr
+    Num (value i32)
+    Add (lhs Expr) (rhs Expr)
+end
+func f () -> i32
+    # Num is not a nullary variant — it has a payload (value i32)
+    # Using bare 'Num' as a value should be an error
+    let e = Num
+    return 0i32
+end

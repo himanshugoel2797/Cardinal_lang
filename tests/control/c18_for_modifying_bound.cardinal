@@ -1,0 +1,37 @@
+module c18_for_modifying_bound
+
+import io
+
+func main () -> i32
+    # For loop with step: does it overshoot?
+    # 0, 2, 4 (half-open: stops before 6)
+    let acc = 0i32
+    for i = 0 to 6 step 2
+        set acc = (+ acc i)
+    end
+    do (io::println acc)  # 6 (0+2+4)
+
+    # Step 3, range 0..7: 0, 3, 6 (next would be 9 >= 7, so stops at 6)
+    let acc2 = 0i32
+    for i = 0 to 7 step 3
+        set acc2 = (+ acc2 i)
+    end
+    do (io::println acc2)  # 9 (0+3+6)
+
+    # Large step that jumps to exactly N: 0, 5 (next 10>=10 stops)
+    let acc3 = 0i32
+    for i = 0 to 10 step 5
+        set acc3 = (+ acc3 i)
+    end
+    do (io::println acc3)  # 5 (0+5; 10 not included since half-open)
+
+    # step 1 with big range
+    let sum = 0i32
+    for i = 1 to 101 step 1
+        set sum = (+ sum i)
+    end
+    do (io::println sum)   # 5050
+
+    do (io::println "done")
+    return 0i32
+end

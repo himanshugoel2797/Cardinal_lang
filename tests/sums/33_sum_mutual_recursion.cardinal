@@ -1,0 +1,69 @@
+module t33_sum_mutual_recursion
+
+import io
+
+# Test a sum type with two mutually-contained types isn't possible in Cardinal,
+# but we CAN test a sum whose recursive call goes through another function
+# and makes a chain of calls.
+# This tests the call chain: process -> is_positive -> process
+type Nat
+    Zero
+    Succ (pred Nat)
+end
+
+func nat_to_int (n Nat) -> i32
+    match n
+        case Zero
+            return 0
+        case (Succ p)
+            return (+ 1 (nat_to_int p))
+    end
+    return 0
+end
+
+func int_to_nat (n i32) -> Nat
+    if (<= n 0)
+        return Zero
+    end
+    return (Succ pred: (int_to_nat (- n 1)))
+end
+
+func nat_add (a Nat) (b Nat) -> Nat
+    match a
+        case Zero
+            return b
+        case (Succ pa)
+            return (Succ pred: (nat_add pa b))
+    end
+    return Zero
+end
+
+func nat_mul (a Nat) (b Nat) -> Nat
+    match a
+        case Zero
+            return Zero
+        case (Succ pa)
+            return (nat_add b (nat_mul pa b))
+    end
+    return Zero
+end
+
+func main () -> i32
+    let zero = Zero
+    let one = (Succ pred: Zero)
+    let two = (Succ pred: (Succ pred: Zero))
+    let three = (int_to_nat 3)
+    let four = (int_to_nat 4)
+
+    do (io::println (nat_to_int zero))    # 0
+    do (io::println (nat_to_int one))     # 1
+    do (io::println (nat_to_int two))     # 2
+    do (io::println (nat_to_int three))   # 3
+
+    let sum = (nat_add three four)
+    do (io::println (nat_to_int sum))     # 7
+
+    let prod = (nat_mul three four)
+    do (io::println (nat_to_int prod))    # 12
+    return 0i32
+end

@@ -1,0 +1,11 @@
+module map_missing_key_panic
+
+import io
+
+# Reading a missing key from a map should panic
+func main () -> i32
+    let m {str i32} = (map str i32)
+    set m["exists"] = 1
+    do (io::println m["missing"])
+    return 0i32
+end

@@ -1,0 +1,32 @@
+module c06_while_complex
+
+import io
+
+func main () -> i32
+    # while with complex condition (compound boolean)
+    let a = 0i32
+    let b = 10i32
+    while (and (< a 5) (> b 7))
+        set a = (+ a 1)
+        set b = (- b 1)
+        do (io::println a)
+    end
+    # a=3, b=7 when condition fails (a<5 fails at a=5 OR b>7 fails at b=7, whichever first)
+    # step 1: a=1, b=9 → print 1
+    # step 2: a=2, b=8 → print 2
+    # step 3: a=3, b=7 → print 3, then check a=3<5 AND b=7>7=false → stop
+    do (io::println a)   # 3
+    do (io::println b)   # 7
+
+    # continue in while
+    let x = 0i32
+    while (< x 6)
+        set x = (+ x 1)
+        if (== x 3)
+            continue
+        end
+        do (io::println x)  # 1,2,4,5,6
+    end
+
+    return 0i32
+end

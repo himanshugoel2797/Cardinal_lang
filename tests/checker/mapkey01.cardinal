@@ -1,0 +1,8 @@
+module mapkey01
+# ILLEGAL: struct as map key (not hashable)
+struct P
+    x i32
+end
+func f () -> unit
+    let m {P i32} = (map P i32)
+end

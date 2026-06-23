@@ -1,0 +1,35 @@
+module f07_f32_f64_cast
+
+import io
+
+func main () -> i32
+    # f32 -> f64: reveals f32 rounding in 0.1
+    let x32 = 0.1f32
+    let x64 = (as x32 f64)
+    do (io::println x64)
+
+    # f64 -> f32 -> f64 round-trip: reveals precision loss
+    # 0.1 in f32 is not the same as 0.1 in f64
+    let y32 = (as 0.1f32 f64)
+    do (io::println y32)
+
+    # 1/3 in f32 -> f64: reveals rounding
+    let a32 = (/ 1.0f32 3.0f32)
+    let a64 = (as a32 f64)
+    do (io::println a64)
+
+    # f64 -> f32 precision loss on large integer value
+    let big32 = (as 123456789i32 f32)
+    do (io::println big32)
+
+    # f32 -> f64 for that rounded number
+    let big32_to_64 = (as big32 f64)
+    do (io::println big32_to_64)
+
+    # 0.5 is exact in both (power of 2)
+    let half32 = 0.5f32
+    let half64 = (as half32 f64)
+    do (io::println half64)
+
+    return 0i32
+end

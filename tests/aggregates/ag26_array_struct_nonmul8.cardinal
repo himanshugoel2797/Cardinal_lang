@@ -1,0 +1,30 @@
+module ag26_array_struct_nonmul8
+
+import io
+
+# Minimal repro for x86 panic: array of struct where struct size is NOT a multiple of 8
+# {i32, i32, i32} = 12 bytes; setting arr[i] = struct should work
+struct S12
+    a i32
+    b i32
+    c i32
+end
+
+func main () -> i32
+    let arr = [(S12 a: 1i32 b: 2i32 c: 3i32) (S12 a: 4i32 b: 5i32 c: 6i32)]
+
+    # Read first
+    do (io::println arr[0].a)  # 1
+    do (io::println arr[1].c)  # 6
+
+    # Assign whole struct element (triggers the x86 multi-word bug)
+    set arr[0] = (S12 a: 10i32 b: 20i32 c: 30i32)
+    do (io::println arr[0].a)  # 10
+    do (io::println arr[0].b)  # 20
+    do (io::println arr[0].c)  # 30
+
+    # arr[1] unchanged
+    do (io::println arr[1].a)  # 4
+
+    return 0i32
+end

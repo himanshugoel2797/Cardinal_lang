@@ -1,0 +1,10 @@
+module vec_oob_panic
+
+import io
+
+# OOB index on vector should panic
+func main () -> i32
+    let v {i32} = {1 2 3}
+    do (io::println v[5])
+    return 0i32
+end

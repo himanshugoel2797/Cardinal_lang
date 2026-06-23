@@ -1,0 +1,22 @@
+module c03_tree_recursion_fib
+
+import io
+
+# Tree recursion: fib with counting calls
+# Count calls to verify all 3 paths execute the same number of times
+func fib (n i32) -> i32
+    if (< n 2)
+        return n
+    end
+    return (+ (fib (- n 1)) (fib (- n 2)))
+end
+
+func main () -> i32
+    # fib sequence 0..14
+    let i = 0i32
+    while (< i 15)
+        do (io::println (fib i))
+        set i = (+ i 1)
+    end
+    return 0i32
+end

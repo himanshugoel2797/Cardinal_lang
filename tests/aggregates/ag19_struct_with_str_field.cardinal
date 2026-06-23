@@ -1,0 +1,34 @@
+module ag19_struct_with_str_field
+
+import io
+import strings
+
+# Struct with a str field (managed/GC-rooted)
+struct NamedVal
+    name str
+    value i32
+end
+
+func make_nv (name str) (value i32) -> NamedVal
+    return (NamedVal name: name value: value)
+end
+
+func main () -> i32
+    let a = (make_nv "hello" 42i32)
+    do (io::println a.name)     # hello
+    do (io::println a.value)    # 42
+
+    # copy struct with str field
+    let b = a
+    set b.value = 99i32
+    do (io::println a.value)    # 42  (unchanged)
+    do (io::println b.name)     # hello
+    do (io::println b.value)    # 99
+
+    # pass by value
+    let c = (make_nv "world" 7i32)
+    do (io::println c.name)     # world
+    do (io::println c.value)    # 7
+
+    return 0i32
+end

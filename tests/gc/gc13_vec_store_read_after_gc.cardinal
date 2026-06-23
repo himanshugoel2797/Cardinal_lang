@@ -1,0 +1,30 @@
+module gc13_vec_store_read_after_gc
+
+import io
+
+# Push managed objects (vecs) into a vec-of-vecs; after building the outer vec
+# do heavy allocation to force GC, then read back the inner vecs.
+# All inner vecs must survive because they're reachable through the outer vec.
+# Expected: sum = n*(n-1)/2 for n=200 = 19900
+
+func main () -> i32
+    let outer {{i32}} = (vec {i32})
+    for i = 0 to 200
+        let inner {i32} = (vec i32)
+        do (push inner i)
+        do (push outer inner)
+    end
+    # heavy allocation pressure
+    for k = 0 to 50000
+        let tmp {i32} = (vec i32)
+        do (push tmp k)
+        do (push tmp (+ k 1))
+    end
+    # now read back and sum inner[0]
+    let total = 0i32
+    for v in outer
+        set total = (+ total v[0])
+    end
+    do (io::println total)
+    return 0i32
+end

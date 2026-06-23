@@ -1,0 +1,39 @@
+module c30_for_in_array
+
+import io
+
+func main () -> i32
+    # for-in over a fixed array
+    let arr = [10i32 20i32 30i32 40i32 50i32]
+    let sum = 0i32
+    for x in arr
+        set sum = (+ sum x)
+    end
+    do (io::println sum)   # 150
+
+    # for-in over a vec
+    let v = (vec i32)
+    do (push v 1i32)
+    do (push v 2i32)
+    do (push v 3i32)
+    let vsum = 0i32
+    for x in v
+        set vsum = (+ vsum x)
+    end
+    do (io::println vsum)  # 6
+
+    # for-in with closure capture of iteration value
+    let fns = (vec func(-> i32))
+    let vals = [100i32 200i32 300i32]
+    for x in vals
+        let f = func () -> i32
+            return x
+        end
+        do (push fns f)
+    end
+    for i = 0 to 3
+        do (io::println (fns[i]))  # 100, 200, 300
+    end
+
+    return 0i32
+end
