@@ -142,6 +142,12 @@ func collect_instr (strs {str str}) (ins Instr) -> unit
             do (collect_iv strs ky)
         case (IVecGet dst vc idx ty)
             do (collect_iv strs idx)
+        case (ICallClosure has_dst dst clos args ret ptys)
+            let i = 0u64
+            while (< i (len args))
+                do (collect_iv strs args[i])
+                set i = (+ i 1)
+            end
         else
             pass
     end
@@ -531,6 +537,46 @@ func type_size (t IRType) (sm {str IRStruct}) -> i64
     return 8i64
 end
 
+# A frame slot is type_size rounded up to 8 bytes; multi-word values (cl_closure
+# 16B, cl_array 24B, value structs) occupy several consecutive 8-byte words.
+func slot_size (t IRType) (sm {str IRStruct}) -> i64
+    let s = (type_size t sm)
+    if (< s 8i64)
+        return 8i64
+    end
+    let r = (% s 8i64)
+    if (== r 0i64)
+        return s
+    end
+    return (+ s (- 8i64 r))
+end
+
+func nwords (t IRType) (sm {str IRStruct}) -> i64
+    return (/ (slot_size t sm) 8i64)
+end
+
+# SysV: how many INTEGER registers a by-value argument of this type consumes.
+# ≤8B -> 1; cl_closure (16B, {ptr,handle}) -> 2. Larger aggregates are MEMORY
+# class (passed on the stack) — not yet supported here.
+func int_regs_for (t IRType) (sm {str IRStruct}) -> i64
+    match t
+        case (TyOf st)
+            match st
+                case (TFunc p r)
+                    return 2i64
+                case (TStruct n)
+                    do (panic "x86: by-value struct argument (later milestone)")
+                case (TArray e)
+                    do (panic "x86: by-value array argument (later milestone)")
+                else
+                    return 1i64
+            end
+        else
+            return 1i64
+    end
+    return 1i64
+end
+
 func align_up (off i64) (a i64) -> i64
     if (<= a 1i64)
         return off
@@ -906,33 +952,149 @@ func emit_un (bx BX) (dst IVal) (op str) (v IVal) (ty IRType) (chk bool) -> str
     return out
 end
 
-func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> str
-    if (> (len args) 6u64)
-        do (panic "x86: >6 call arguments (stack args later)")
+# Materialize one argument's words into consecutive scratch slots starting at word
+# index `w0`; returns the asm and the next free word index. ≤8B args use one word
+# (via load_to_rax, handling string literals); a cl_closure (16B) copies 2 words.
+func emit_park_arg (bx BX) (a IVal) (w0 i64) -> str
+    if (irt_is_float (iv_ty a))
+        do (panic "x86: float call arg (later milestone)")
     end
+    let nw = (nwords (iv_ty a) bx.structs)
+    if (== nw 1i64)
+        let out = (load_to_rax bx a)
+        return (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ bx.scratch (* w0 8i64))) "")))
+    end
+    # multi-word value (e.g. a closure) lives in a slot: copy word by word
     let out = ""
-    # Materialize each arg into a frame scratch slot (NOT a push — a strlit/call
-    # while args are pushed would misalign %rsp at the internal call), then load
-    # the scratch slots into the SysV arg registers, then call (16-aligned, no
-    # outstanding pushes).
+    let w = 0i64
+    while (< w nw)
+        set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key a)) (* w 8i64))) ", %rax"))))
+        set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ bx.scratch (* (+ w0 w) 8i64))) "")))
+        set w = (+ w 1i64)
+    end
+    return out
+end
+
+func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> str
+    let out = ""
+    # Park every arg's words into frame scratch slots (NOT pushes — a strlit/call
+    # while args are pushed would misalign %rsp), then load the scratch words into
+    # the SysV integer arg registers in order (a 16B cl_closure arg takes 2 regs),
+    # then call (16-aligned, no outstanding pushes).
+    let nw = 0i64
     let i = 0u64
     while (< i (len args))
-        if (irt_is_float (iv_ty args[i]))
-            do (panic "x86: float call arg (later milestone)")
-        end
-        set out = (strings::concat out (load_to_rax bx args[i]))
-        set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ bx.scratch (* (as i i64) 8i64))) "")))
+        set out = (strings::concat out (emit_park_arg bx args[i] nw))
+        set nw = (+ nw (nwords (iv_ty args[i]) bx.structs))
         set i = (+ i 1)
     end
-    set i = 0u64
-    while (< i (len args))
-        set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem (+ bx.scratch (* (as i i64) 8i64))) ", ") (argreg (as i i64)))))
-        set i = (+ i 1)
+    if (> nw 6i64)
+        do (panic "x86: >6 integer-class argument words (stack args later)")
+    end
+    let w = 0i64
+    while (< w nw)
+        set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem (+ bx.scratch (* w 8i64))) ", ") (argreg w))))
+        set w = (+ w 1i64)
     end
     set out = (strings::concat out (line (cat2 "    call " callee)))
     if has_dst
-        set out = (strings::concat out (store_rax bx dst))
+        if (> (nwords (iv_ty dst) bx.structs) 1i64)
+            # multi-word result (cl_closure) returned in %rax:%rdx
+            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) "")))
+            set out = (strings::concat out (line (cat3 "    movq %rdx, " (off_mem (+ (slot_off bx (iv_key dst)) 8i64)) "")))
+        else
+            set out = (strings::concat out (store_rax bx dst))
+        end
     end
+    return out
+end
+
+# --- function-as-value thunks ---------------------------------------------- #
+
+func tfn_params (t Type) -> {Type}
+    match t
+        case (TFunc p r)
+            return p
+        else
+            return (vec Type)
+    end
+    return (vec Type)
+end
+
+# integer-register words a source-type by-value argument consumes (matches
+# int_regs_for, but on a checker Type).
+func int_regs_for_src (t Type) -> i64
+    match t
+        case (TFunc p r)
+            return 2i64
+        case (TStruct n)
+            do (panic "x86: by-value struct thunk param (later milestone)")
+        case (TArray e)
+            do (panic "x86: by-value array thunk param (later milestone)")
+        else
+            return 1i64
+    end
+    return 1i64
+end
+
+func bc_str_lt (a str) (b str) -> bool
+    let ca = (strings::chars a)
+    let cb = (strings::chars b)
+    let n = (len ca)
+    if (< (len cb) n)
+        set n = (len cb)
+    end
+    let i = 0u64
+    while (< i n)
+        let xa = (convert::ord ca[i])
+        let xb = (convert::ord cb[i])
+        if (< xa xb)
+            return true
+        end
+        if (> xa xb)
+            return false
+        end
+        set i = (+ i 1)
+    end
+    return (< (len ca) (len cb))
+end
+
+func sorted_keys (m {str Type}) -> {str}
+    let ks {str} = (vec str)
+    for k in (map_keys m)
+        do (push ks k)
+    end
+    let i = 1u64
+    while (< i (len ks))
+        let j = i
+        while (and (> j 0u64) (bc_str_lt ks[j] ks[(- j 1u64)]))
+            let tmp = ks[j]
+            set ks[j] = ks[(- j 1u64)]
+            set ks[(- j 1u64)] = tmp
+            set j = (- j 1u64)
+        end
+        set i = (+ i 1)
+    end
+    return ks
+end
+
+# A function-as-value thunk: drops the leading env arg (%rdi) by shifting the real
+# args down one integer register, then tail-calls the real function.
+func emit_thunk (name str) (ft Type) -> str
+    let ps = (tfn_params ft)
+    let k = 0i64
+    let i = 0u64
+    while (< i (len ps))
+        set k = (+ k (int_regs_for_src ps[i]))
+        set i = (+ i 1)
+    end
+    let out = (line (cat3 name "__thunk" ":"))
+    let w = 0i64
+    while (< w k)
+        set out = (strings::concat out (line (cat2 "    movq " (cat3 (argreg (+ w 1i64)) ", " (argreg w)))))
+        set w = (+ w 1i64)
+    end
+    set out = (strings::concat out (line (cat2 "    jmp " name)))
     return out
 end
 
@@ -984,10 +1146,31 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
         case (IAssign p src)
             match p
                 case (PLocal name ty)
+                    # multi-word value (e.g. a cl_closure): copy word by word
+                    if (> (nwords ty bx.structs) 1i64)
+                        let out = ""
+                        let w = 0i64
+                        let nw = (nwords ty bx.structs)
+                        while (< w nw)
+                            set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key src)) (* w 8i64))) ", %rax"))))
+                            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ (slot_off bx (lkey name)) (* w 8i64))) "")))
+                            set w = (+ w 1i64)
+                        end
+                        return out
+                    end
                     let out = (load_to_rax bx src)
                     return (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (lkey name))) "")))
+                case (PDeref ptr ty)
+                    # store through a boxed variable: *(ty*)cl_gc_deref(ptr) = src
+                    let out = (load_to_rax bx src)
+                    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+                    set out = (strings::concat out (load_into bx "%rdi" ptr))
+                    set out = (strings::concat out (line "    call cl_gc_deref"))
+                    set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
+                    set out = (strings::concat out (store_sized (type_size ty bx.structs) "c" "(%rax)"))
+                    return out
                 else
-                    do (panic "x86: only PLocal assignment supported (aggregates later)")
+                    do (panic "x86: unsupported assignment place")
             end
         case (ICall has_dst dst callee args ty)
             return (emit_call bx has_dst dst callee args)
@@ -1012,7 +1195,12 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                 if (irt_is_float (iv_ty v))
                     do (panic "x86: float return (later milestone)")
                 end
-                set out = (strings::concat out (load_into bx "%rax" v))
+                if (> (nwords (iv_ty v) bx.structs) 1i64)
+                    set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (slot_off bx (iv_key v))) ", %rax"))))
+                    set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key v)) 8i64)) ", %rdx"))))
+                else
+                    set out = (strings::concat out (load_into bx "%rax" v))
+                end
             end
             set out = (strings::concat out (line "    leave"))
             set out = (strings::concat out (line "    ret"))
@@ -1156,6 +1344,70 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             let out = (load_into bx "%rdi" mp)
             set out = (strings::concat out (line "    call cl_map_keys"))
             return (strings::concat out (store_rax bx dst))
+        case (IAlloc dst ty)
+            # a 1-slot heap box holding a value of `ty` (captured-var cell)
+            let out = (line (cat2 "    movq $" (cat2 (i2s (type_size ty bx.structs)) ", %rdi")))
+            set out = (strings::concat out (line "    call cl_gc_alloc"))
+            return (strings::concat out (store_rax bx dst))
+        case (ILoad dst ptr ty)
+            let out = (load_into bx "%rdi" ptr)
+            set out = (strings::concat out (line "    call cl_gc_deref"))
+            set out = (strings::concat out (load_sized (type_size ty bx.structs) (irt_signed ty) "(%rax)"))
+            return (strings::concat out (store_rax bx dst))
+        case (IEnvNew dst n)
+            let out = (line (cat2 "    movq $" (cat2 (i2s (* n 8i64)) ", %rdi")))
+            set out = (strings::concat out (line "    call cl_gc_alloc"))
+            return (strings::concat out (store_rax bx dst))
+        case (IEnvStore env idx ptr)
+            let out = (load_into bx "%rdi" env)
+            set out = (strings::concat out (line "    call cl_gc_deref"))
+            set out = (strings::concat out (load_into bx "%rcx" ptr))
+            set out = (strings::concat out (line (cat2 "    movq %rcx, " (cat2 (i2s (* idx 8i64)) "(%rax)"))))
+            return out
+        case (IEnvLoad dst env idx ty)
+            let out = (load_into bx "%rdi" env)
+            set out = (strings::concat out (line "    call cl_gc_deref"))
+            set out = (strings::concat out (line (cat2 "    movq " (cat2 (i2s (* idx 8i64)) "(%rax), %rax"))))
+            return (strings::concat out (store_rax bx dst))
+        case (IMakeClosure dst fn env)
+            # cl_closure {void* fn; cl_handle env} stored as two words in dst's slot
+            let out = (line (cat2 "    leaq " (cat2 fn "(%rip), %rax")))
+            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) "")))
+            set out = (strings::concat out (load_into bx "%rax" env))
+            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ (slot_off bx (iv_key dst)) 8i64)) "")))
+            return out
+        case (ICallClosure has_dst dst clos args ret ptys)
+            # env (clos+8) is the implicit first arg; the actual args follow. Park
+            # all arg words in scratch slots, load into arg regs, then call through
+            # the closure's fn pointer (clos+0).
+            let out = (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key clos)) 8i64)) ", %rax")))
+            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+            let nw = 1i64
+            let i = 0u64
+            while (< i (len args))
+                set out = (strings::concat out (emit_park_arg bx args[i] nw))
+                set nw = (+ nw (nwords (iv_ty args[i]) bx.structs))
+                set i = (+ i 1)
+            end
+            if (> nw 6i64)
+                do (panic "x86: >6 closure-call argument words (stack args later)")
+            end
+            let w = 0i64
+            while (< w nw)
+                set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem (+ bx.scratch (* w 8i64))) ", ") (argreg w))))
+                set w = (+ w 1i64)
+            end
+            set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (slot_off bx (iv_key clos))) ", %r11"))))
+            set out = (strings::concat out (line "    call *%r11"))
+            if has_dst
+                if (> (nwords ret bx.structs) 1i64)
+                    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) "")))
+                    set out = (strings::concat out (line (cat3 "    movq %rdx, " (off_mem (+ (slot_off bx (iv_key dst)) 8i64)) "")))
+                else
+                    set out = (strings::concat out (store_rax bx dst))
+                end
+            end
+            return out
         else
             do (panic "x86: unsupported instruction (later milestone)")
     end
@@ -1175,13 +1427,20 @@ func round16 (n i64) -> i64
 end
 
 func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
-    # 1) assign a slot to every param, non-unit temp, and local.
+    # 1) assign a size-aware slot to every param, non-unit temp, and local. Build
+    # parallel arrays (key, type, is-param) so rooting/zeroing know each size.
     let slots {str i64} = (map str i64)
+    let allkeys {str} = (vec str)
+    let alltys {IRType} = (vec IRType)
+    let allparam {bool} = (vec bool)
     let off = 0i64
     let pi = 0u64
     while (< pi (len f.params))
-        set off = (- off 8i64)
+        set off = (- off (slot_size f.params[pi].ty sm))
         set slots[(lkey f.params[pi].name)] = off
+        do (push allkeys (lkey f.params[pi].name))
+        do (push alltys f.params[pi].ty)
+        do (push allparam true)
         set pi = (+ pi 1)
     end
     let ti = 0u64
@@ -1189,8 +1448,11 @@ func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
         match f.temps[ti]
             case (Temp id ty)
                 if (not (irt_is_unit ty))
-                    set off = (- off 8i64)
+                    set off = (- off (slot_size ty sm))
                     set slots[(tkey id)] = off
+                    do (push allkeys (tkey id))
+                    do (push alltys ty)
+                    do (push allparam false)
                 end
             else
                 pass
@@ -1199,8 +1461,11 @@ func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
     end
     let li = 0u64
     while (< li (len f.locals))
-        set off = (- off 8i64)
+        set off = (- off (slot_size f.locals[li].ty sm))
         set slots[(lkey f.locals[li].name)] = off
+        do (push allkeys (lkey f.locals[li].name))
+        do (push alltys f.locals[li].ty)
+        do (push allparam false)
         set li = (+ li 1)
     end
     # 6 spare slots for parking call args / values across runtime calls (so we
@@ -1210,50 +1475,16 @@ func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
     let frame = (round16 (- 0i64 off))
     let bx = (BX slots: slots fname: f.name strs: strs structs: sm scratch: scratch)
 
-    # 2) collect managed slots (for GC rooting): (key, offset) pairs.
-    let rkeys {str} = (vec str)
-    set pi = 0u64
-    while (< pi (len f.params))
-        if (managed f.params[pi].ty)
-            if (not (is_simple_8byte f.params[pi].ty))
-                do (panic "x86: multi-word aggregate param (later milestone)")
-            end
-            do (push rkeys (lkey f.params[pi].name))
+    let nroots = 0i64
+    let i = 0u64
+    while (< i (len allkeys))
+        if (managed alltys[i])
+            set nroots = (+ nroots 1i64)
         end
-        set pi = (+ pi 1)
+        set i = (+ i 1)
     end
-    let mtemps {str} = (vec str)
-    set ti = 0u64
-    while (< ti (len f.temps))
-        match f.temps[ti]
-            case (Temp id ty)
-                if (and (not (irt_is_unit ty)) (managed ty))
-                    if (not (is_simple_8byte ty))
-                        do (panic "x86: multi-word aggregate temp (later milestone)")
-                    end
-                    do (push mtemps (tkey id))
-                    do (push rkeys (tkey id))
-                end
-            else
-                pass
-        end
-        set ti = (+ ti 1)
-    end
-    let mlocals {str} = (vec str)
-    set li = 0u64
-    while (< li (len f.locals))
-        if (managed f.locals[li].ty)
-            if (not (is_simple_8byte f.locals[li].ty))
-                do (panic "x86: multi-word aggregate local (later milestone)")
-            end
-            do (push mlocals (lkey f.locals[li].name))
-            do (push rkeys (lkey f.locals[li].name))
-        end
-        set li = (+ li 1)
-    end
-    let nroots = (as (len rkeys) i64)
 
-    # 3) prologue
+    # 2) prologue
     let out = ""
     set out = (strings::concat out (line (cat2 f.name ":")))
     set out = (strings::concat out (line "    pushq %rbp"))
@@ -1261,36 +1492,48 @@ func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
     if (> frame 0i64)
         set out = (strings::concat out (line (cat2 "    subq $" (cat2 (i2s frame) ", %rsp"))))
     end
-    # store incoming params (int-class only; ≤6)
-    if (> (len f.params) 6u64)
-        do (panic "x86: >6 params (stack params later)")
-    end
+    # store incoming params from arg registers (a cl_closure param takes 2 regs)
+    let rg = 0i64
     set pi = 0u64
     while (< pi (len f.params))
         if (irt_is_float f.params[pi].ty)
             do (panic "x86: float param (later milestone)")
         end
-        set out = (strings::concat out (line (cat2 "    movq " (cat3 (argreg (as pi i64)) ", " (off_mem (slot_off bx (lkey f.params[pi].name)))))))
+        let nr = (int_regs_for f.params[pi].ty sm)
+        if (> (+ rg nr) 6i64)
+            do (panic "x86: too many integer-class params (stack params later)")
+        end
+        let w = 0i64
+        while (< w nr)
+            set out = (strings::concat out (line (cat2 "    movq " (cat3 (argreg (+ rg w)) ", " (off_mem (+ (slot_off bx (lkey f.params[pi].name)) (* w 8i64)))))))
+            set w = (+ w 1i64)
+        end
+        set rg = (+ rg nr)
         set pi = (+ pi 1)
     end
-    # zero managed temp/local slots (params already hold valid handles)
-    let zi = 0u64
-    while (< zi (len mtemps))
-        set out = (strings::concat out (line (cat3 "    movq $0, " (off_mem (slot_off bx mtemps[zi])) "")))
-        set zi = (+ zi 1)
+    # zero managed non-param slots word-by-word (params already hold valid bytes)
+    set i = 0u64
+    while (< i (len allkeys))
+        if (and (managed alltys[i]) (not allparam[i]))
+            let nw = (nwords alltys[i] sm)
+            let w = 0i64
+            while (< w nw)
+                set out = (strings::concat out (line (cat3 "    movq $0, " (off_mem (+ (slot_off bx allkeys[i]) (* w 8i64))) "")))
+                set w = (+ w 1i64)
+            end
+        end
+        set i = (+ i 1)
     end
-    set zi = 0u64
-    while (< zi (len mlocals))
-        set out = (strings::concat out (line (cat3 "    movq $0, " (off_mem (slot_off bx mlocals[zi])) "")))
-        set zi = (+ zi 1)
-    end
-    # root every managed slot on the shadow stack
-    let ri = 0u64
-    while (< ri (len rkeys))
-        set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem (slot_off bx rkeys[ri])) ", %rdi"))))
-        set out = (strings::concat out (line "    movl $8, %esi"))
-        set out = (strings::concat out (line "    call cl_gc_push_root"))
-        set ri = (+ ri 1)
+    # root every managed slot on the shadow stack (size = type_size; the conservative
+    # scan finds embedded handles within multi-word values)
+    set i = 0u64
+    while (< i (len allkeys))
+        if (managed alltys[i])
+            set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem (slot_off bx allkeys[i])) ", %rdi"))))
+            set out = (strings::concat out (line (cat2 "    movl $" (cat2 (i2s (type_size alltys[i] sm)) ", %esi"))))
+            set out = (strings::concat out (line "    call cl_gc_push_root"))
+        end
+        set i = (+ i 1)
     end
 
     # 4) body
@@ -1409,6 +1652,14 @@ export func emit (m IRModule) -> str
         set out = (strings::concat out (emit_func m.funcs[i] strs sm))
         set out = (strings::concat out (line ""))
         set i = (+ i 1)
+    end
+    # function-as-value thunks (sorted = deterministic)
+    let tnames = (sorted_keys m.thunks)
+    let ti = 0u64
+    while (< ti (len tnames))
+        set out = (strings::concat out (emit_thunk tnames[ti] m.thunks[tnames[ti]]))
+        set out = (strings::concat out (line ""))
+        set ti = (+ ti 1)
     end
     set out = (strings::concat out (main_wrapper m))
     return out
