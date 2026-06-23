@@ -1573,9 +1573,14 @@ class Interp:
             fvals, ty = self.unify_floats(vals)
             acc = fvals[0]
             for x in fvals[1:]:
-                acc = {"+": acc + x, "-": acc - x, "*": acc * x,
-                       "/": acc / x if x != 0 else self._fzero(),
-                       "%": acc % x}[op]
+                # if/elif (not a dict literal) so only the selected op evaluates —
+                # a dict eagerly ran every branch, hitting _fzero()/%-by-zero for
+                # ANY op whenever the RHS was 0.0.
+                if op == "+": acc = acc + x
+                elif op == "-": acc = acc - x
+                elif op == "*": acc = acc * x
+                elif op == "/": acc = acc / x if x != 0 else self._fzero()
+                elif op == "%": acc = acc % x if x != 0 else self._fzero()
             return CFloat(self._round_float(acc, ty), ty)
         ivals, _, ty = self.unify_ints(vals)
         acc = ivals[0]
