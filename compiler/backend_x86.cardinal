@@ -125,6 +125,23 @@ func collect_instr (strs {str str}) (ins Instr) -> unit
                 do (collect_iv strs fvals[i])
                 set i = (+ i 1)
             end
+        case (IVecPush vc sval elem)
+            do (collect_iv strs sval)
+        case (IVecSet vc idx sval elem)
+            do (collect_iv strs sval)
+        case (IArrSet arr idx sval elem)
+            do (collect_iv strs sval)
+        case (IMapSet mp ky sval kty vty)
+            do (collect_iv strs ky)
+            do (collect_iv strs sval)
+        case (IMapGet dst mp ky kty vty)
+            do (collect_iv strs ky)
+        case (IMapHas dst mp ky kty)
+            do (collect_iv strs ky)
+        case (IMapDel mp ky kty)
+            do (collect_iv strs ky)
+        case (IVecGet dst vc idx ty)
+            do (collect_iv strs idx)
         else
             pass
     end
@@ -919,6 +936,31 @@ func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> s
     return out
 end
 
+func irt_is_str (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TPrim n)
+                    return (strings::eq n "str")
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+# cl_vec_push(vc, &elem): park the element in a frame slot, pass its address.
+func emit_vec_push (bx BX) (vc IVal) (sval IVal) (esz i64) -> str
+    let out = (load_to_rax bx sval)
+    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+    set out = (strings::concat out (load_into bx "%rdi" vc))
+    set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem bx.scratch) ", %rsi"))))
+    set out = (strings::concat out (line "    call cl_vec_push"))
+    return out
+end
+
 func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
     match ins
         case (IConst dst v ty)
@@ -1021,6 +1063,99 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             set out = (strings::concat out (load_sized fsz (irt_signed ty) (cat3 (i2s foff) "(%rax)" "")))
             set out = (strings::concat out (store_rax bx dst))
             return out
+        case (IVecNew dst elem)
+            let out = (line (cat2 "    movq $" (cat2 (i2s (type_size elem bx.structs)) ", %rdi")))
+            set out = (strings::concat out (line "    call cl_vec_new"))
+            return (strings::concat out (store_rax bx dst))
+        case (IVecLit dst elem elems)
+            let esz = (type_size elem bx.structs)
+            let out = (line (cat2 "    movq $" (cat2 (i2s esz) ", %rdi")))
+            set out = (strings::concat out (line "    call cl_vec_new"))
+            set out = (strings::concat out (store_rax bx dst))
+            let k = 0u64
+            while (< k (len elems))
+                set out = (strings::concat out (emit_vec_push bx dst elems[k] esz))
+                set k = (+ k 1)
+            end
+            return out
+        case (IVecLen dst vc)
+            let out = (load_into bx "%rdi" vc)
+            set out = (strings::concat out (line "    call cl_vec_len"))
+            return (strings::concat out (store_rax bx dst))
+        case (IVecGet dst vc idx ty)
+            let out = (load_into bx "%rdi" vc)
+            set out = (strings::concat out (load_into bx "%rsi" idx))
+            set out = (strings::concat out (line "    call cl_vec_at"))
+            set out = (strings::concat out (load_sized (type_size ty bx.structs) (irt_signed ty) "(%rax)"))
+            return (strings::concat out (store_rax bx dst))
+        case (IVecSet vc idx sval elem)
+            let esz = (type_size elem bx.structs)
+            let out = (load_to_rax bx sval)
+            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+            set out = (strings::concat out (load_into bx "%rdi" vc))
+            set out = (strings::concat out (load_into bx "%rsi" idx))
+            set out = (strings::concat out (line "    call cl_vec_at"))
+            set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
+            set out = (strings::concat out (store_sized esz "c" "(%rax)"))
+            return out
+        case (IVecPush vc sval elem)
+            return (emit_vec_push bx vc sval (type_size elem bx.structs))
+        case (IVecPop dst vc elem)
+            let out = (load_into bx "%rdi" vc)
+            set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem bx.scratch) ", %rsi"))))
+            set out = (strings::concat out (line "    call cl_vec_pop"))
+            set out = (strings::concat out (load_sized (type_size elem bx.structs) (irt_signed elem) (off_mem bx.scratch)))
+            return (strings::concat out (store_rax bx dst))
+        case (IMapNew dst kty vty)
+            let kind = "0"
+            if (irt_is_str kty)
+                set kind = "1"
+            end
+            let out = (line (cat2 "    movq $" (cat2 (i2s (type_size kty bx.structs)) ", %rdi")))
+            set out = (strings::concat out (line (cat2 "    movq $" (cat2 (i2s (type_size vty bx.structs)) ", %rsi"))))
+            set out = (strings::concat out (line (cat2 "    movq $" (cat2 kind ", %rdx"))))
+            set out = (strings::concat out (line "    call cl_map_new"))
+            return (strings::concat out (store_rax bx dst))
+        case (IMapLen dst mp)
+            let out = (load_into bx "%rdi" mp)
+            set out = (strings::concat out (line "    call cl_map_len"))
+            return (strings::concat out (store_rax bx dst))
+        case (IMapGet dst mp ky kty vty)
+            let out = (load_to_rax bx ky)
+            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+            set out = (strings::concat out (load_into bx "%rdi" mp))
+            set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem bx.scratch) ", %rsi"))))
+            set out = (strings::concat out (line "    call cl_map_get"))
+            set out = (strings::concat out (load_sized (type_size vty bx.structs) (irt_signed vty) "(%rax)"))
+            return (strings::concat out (store_rax bx dst))
+        case (IMapSet mp ky sval kty vty)
+            let out = (load_to_rax bx ky)
+            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+            set out = (strings::concat out (load_to_rax bx sval))
+            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ bx.scratch 8i64)) "")))
+            set out = (strings::concat out (load_into bx "%rdi" mp))
+            set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem bx.scratch) ", %rsi"))))
+            set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem (+ bx.scratch 8i64)) ", %rdx"))))
+            set out = (strings::concat out (line "    call cl_map_set"))
+            return out
+        case (IMapHas dst mp ky kty)
+            let out = (load_to_rax bx ky)
+            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+            set out = (strings::concat out (load_into bx "%rdi" mp))
+            set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem bx.scratch) ", %rsi"))))
+            set out = (strings::concat out (line "    call cl_map_has"))
+            return (strings::concat out (store_rax bx dst))
+        case (IMapDel mp ky kty)
+            let out = (load_to_rax bx ky)
+            set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+            set out = (strings::concat out (load_into bx "%rdi" mp))
+            set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem bx.scratch) ", %rsi"))))
+            set out = (strings::concat out (line "    call cl_map_del"))
+            return out
+        case (IMapKeys dst mp)
+            let out = (load_into bx "%rdi" mp)
+            set out = (strings::concat out (line "    call cl_map_keys"))
+            return (strings::concat out (store_rax bx dst))
         else
             do (panic "x86: unsupported instruction (later milestone)")
     end
