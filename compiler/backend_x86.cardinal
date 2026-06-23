@@ -101,6 +101,8 @@ func collect_instr (strs {str str}) (ins Instr) -> unit
             end
         case (IPanic msg)
             do (collect_iv strs msg)
+        case (IRet has_val v)
+            do (collect_iv strs v)
         case (IStructNew dst struct_name fnames fvals)
             let i = 0u64
             while (< i (len fvals))
@@ -457,6 +459,8 @@ struct BX
     strs {str str}      # string-literal content -> rodata label
     structs {str IRStruct}   # qualified struct/variant name -> its IRStruct (layout)
     scratch i64         # a spare frame slot offset (park a value across a call)
+    ret_mem bool        # function returns a >16B struct via a hidden pointer
+    hidden_ret i64      # frame slot holding that hidden return pointer
 end
 
 # --------------------------------------------------------------------------- #
@@ -1006,6 +1010,37 @@ func emit_park_arg (bx BX) (a IVal) (w0 i64) -> str
     return out
 end
 
+# Copy a stack-passed argument's words to (off)(%rsp). A slot/MEMORY value is copied
+# word by word; an immediate is materialized. (ImmStr stack args aren't needed yet.)
+func emit_store_arg_to_stack (bx BX) (a IVal) (off i64) -> str
+    match a
+        case (Temp id ty)
+            let out = ""
+            let nw = (nwords ty bx.structs)
+            let w = 0i64
+            while (< w nw)
+                set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (tkey id)) (* w 8i64))) ", %rax"))))
+                set out = (strings::concat out (line (cat2 "    movq %rax, " (cat2 (i2s (+ off (* w 8i64))) "(%rsp)"))))
+                set w = (+ w 1i64)
+            end
+            return out
+        case (Local name ty)
+            let out = ""
+            let nw = (nwords ty bx.structs)
+            let w = 0i64
+            while (< w nw)
+                set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (lkey name)) (* w 8i64))) ", %rax"))))
+                set out = (strings::concat out (line (cat2 "    movq %rax, " (cat2 (i2s (+ off (* w 8i64))) "(%rsp)"))))
+                set w = (+ w 1i64)
+            end
+            return out
+        else
+            let out = (load_to_rax bx a)
+            return (strings::concat out (line (cat2 "    movq %rax, " (cat2 (i2s off) "(%rsp)"))))
+    end
+    return ""
+end
+
 func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> str
     let out = ""
     # A result larger than 16 bytes is returned via a hidden pointer (SysV MEMORY):
@@ -1016,31 +1051,57 @@ func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> s
             set hidden = true
         end
     end
-    # Park every arg's words into frame scratch slots (NOT pushes — a strlit/call
-    # while args are pushed would misalign %rsp), then load the scratch words into
-    # the SysV integer arg registers in order (a 16B cl_closure arg takes 2 regs),
-    # then call (16-aligned, no outstanding pushes).
-    let nw = 0i64
-    let i = 0u64
-    while (< i (len args))
-        set out = (strings::concat out (emit_park_arg bx args[i] nw))
-        set nw = (+ nw (nwords (iv_ty args[i]) bx.structs))
-        set i = (+ i 1)
-    end
     let base = 0i64
     if hidden
         set base = 1i64
+    end
+    # Classify each arg (SysV, integer/memory only): a ≤16B value goes in registers
+    # if its eightbytes fit in the 6 integer regs, else (or if >16B = MEMORY) it goes
+    # on the stack. argstk[i] records the choice; reg args are parked into scratch now
+    # (before any %rsp change, so a strlit while parking stays 16-aligned).
+    let argstk {bool} = (vec bool)
+    let argoff {i64} = (vec i64)
+    let regw = 0i64
+    let stackbytes = 0i64
+    let i = 0u64
+    while (< i (len args))
+        let k = (nwords (iv_ty args[i]) bx.structs)
+        if (and (<= k 2i64) (<= (+ (+ base regw) k) 6i64))
+            set out = (strings::concat out (emit_park_arg bx args[i] regw))
+            set regw = (+ regw k)
+            do (push argstk false)
+            do (push argoff 0i64)
+        else
+            do (push argstk true)
+            do (push argoff stackbytes)
+            set stackbytes = (+ stackbytes (* k 8i64))
+        end
+        set i = (+ i 1)
+    end
+    let memtotal = (round16 stackbytes)
+    if (> memtotal 0i64)
+        set out = (strings::concat out (line (cat2 "    subq $" (cat2 (i2s memtotal) ", %rsp"))))
+    end
+    # copy stack args to (off)(%rsp), in source order
+    set i = 0u64
+    while (< i (len args))
+        if argstk[i]
+            set out = (strings::concat out (emit_store_arg_to_stack bx args[i] argoff[i]))
+        end
+        set i = (+ i 1)
+    end
+    if hidden
         set out = (strings::concat out (line (cat3 "    leaq " (off_mem (slot_off bx (iv_key dst))) ", %rdi")))
     end
-    if (> (+ nw base) 6i64)
-        do (panic "x86: >6 integer-class argument words (stack args later)")
-    end
     let w = 0i64
-    while (< w nw)
+    while (< w regw)
         set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem (+ bx.scratch (* w 8i64))) ", ") (argreg (+ w base)))))
         set w = (+ w 1i64)
     end
     set out = (strings::concat out (line (cat2 "    call " callee)))
+    if (> memtotal 0i64)
+        set out = (strings::concat out (line (cat2 "    addq $" (cat2 (i2s memtotal) ", %rsp"))))
+    end
     if has_dst
         if hidden
             pass
@@ -1381,11 +1442,24 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                 if (irt_is_float (iv_ty v))
                     do (panic "x86: float return (later milestone)")
                 end
-                if (> (nwords (iv_ty v) bx.structs) 1i64)
+                if bx.ret_mem
+                    # >16B struct: copy the value to the caller's buffer (hidden ptr),
+                    # return that pointer in %rax.
+                    set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.hidden_ret) ", %rdi"))))
+                    let nwr = (nwords (iv_ty v) bx.structs)
+                    let w = 0i64
+                    while (< w nwr)
+                        set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key v)) (* w 8i64))) ", %rax"))))
+                        set out = (strings::concat out (line (cat2 "    movq %rax, " (cat2 (i2s (* w 8i64)) "(%rdi)"))))
+                        set w = (+ w 1i64)
+                    end
+                    set out = (strings::concat out (line "    movq %rdi, %rax"))
+                elsif (> (nwords (iv_ty v) bx.structs) 1i64)
                     set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (slot_off bx (iv_key v))) ", %rax"))))
                     set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem (+ (slot_off bx (iv_key v)) 8i64)) ", %rdx"))))
                 else
-                    set out = (strings::concat out (load_into bx "%rax" v))
+                    # load_to_rax (not load_into) so a bare `return "literal"` works
+                    set out = (strings::concat out (load_to_rax bx v))
                 end
             end
             set out = (strings::concat out (line "    leave"))
@@ -1724,8 +1798,15 @@ func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
     # never have an outstanding push misaligning the stack at an internal call).
     set off = (- off 48i64)
     let scratch = off
+    # a slot for the hidden return pointer when this function returns a >16B struct
+    let ret_mem = (> (nwords f.ret sm) 2i64)
+    let hidden_ret = 0i64
+    if ret_mem
+        set off = (- off 8i64)
+        set hidden_ret = off
+    end
     let frame = (round16 (- 0i64 off))
-    let bx = (BX slots: slots fname: f.name strs: strs structs: sm scratch: scratch)
+    let bx = (BX slots: slots fname: f.name strs: strs structs: sm scratch: scratch ret_mem: ret_mem hidden_ret: hidden_ret)
 
     let nroots = 0i64
     let i = 0u64
@@ -1744,23 +1825,40 @@ func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
     if (> frame 0i64)
         set out = (strings::concat out (line (cat2 "    subq $" (cat2 (i2s frame) ", %rsp"))))
     end
-    # store incoming params from arg registers (a cl_closure param takes 2 regs)
+    # store incoming params. A >16B struct param arrives on the stack (SysV MEMORY,
+    # at %rbp+16+memoff); smaller ones in integer regs (a cl_closure / ≤16B struct
+    # takes 2). When the result is a >16B struct, %rdi is the hidden return pointer.
     let rg = 0i64
+    if ret_mem
+        set out = (strings::concat out (line (cat3 "    movq %rdi, " (off_mem hidden_ret) "")))
+        set rg = 1i64
+    end
+    # Same reg/stack classification as emit_call: a ≤16B param whose eightbytes fit
+    # in the remaining integer regs is in registers; otherwise (or >16B) it was
+    # passed on the stack at %rbp+16+memoff, in source order.
+    let memoff = 16i64
     set pi = 0u64
     while (< pi (len f.params))
         if (irt_is_float f.params[pi].ty)
             do (panic "x86: float param (later milestone)")
         end
-        let nr = (int_regs_for f.params[pi].ty sm)
-        if (> (+ rg nr) 6i64)
-            do (panic "x86: too many integer-class params (stack params later)")
+        let k = (nwords f.params[pi].ty sm)
+        if (and (<= k 2i64) (<= (+ rg k) 6i64))
+            let w = 0i64
+            while (< w k)
+                set out = (strings::concat out (line (cat2 "    movq " (cat3 (argreg (+ rg w)) ", " (off_mem (+ (slot_off bx (lkey f.params[pi].name)) (* w 8i64)))))))
+                set w = (+ w 1i64)
+            end
+            set rg = (+ rg k)
+        else
+            let w = 0i64
+            while (< w k)
+                set out = (strings::concat out (line (cat2 "    movq " (cat2 (cat2 (i2s (+ memoff (* w 8i64))) "(%rbp)") ", %rax"))))
+                set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ (slot_off bx (lkey f.params[pi].name)) (* w 8i64))) "")))
+                set w = (+ w 1i64)
+            end
+            set memoff = (+ memoff (* k 8i64))
         end
-        let w = 0i64
-        while (< w nr)
-            set out = (strings::concat out (line (cat2 "    movq " (cat3 (argreg (+ rg w)) ", " (off_mem (+ (slot_off bx (lkey f.params[pi].name)) (* w 8i64)))))))
-            set w = (+ w 1i64)
-        end
-        set rg = (+ rg nr)
         set pi = (+ pi 1)
     end
     # zero managed non-param slots word-by-word (params already hold valid bytes)
