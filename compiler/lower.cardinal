@@ -1248,6 +1248,9 @@ func lower_call (lx LX) (vs {str IVal}) (ts {str Binding}) (callee Expr) (args {
             if (strings::eq parts[0] "io")
                 return (lower_io lx vs ts parts[1] args)
             end
+            if (strings::eq parts[0] "reflect")
+                return (lower_reflect lx vs ts parts[1] args)
+            end
         else
             pass
     end
@@ -1417,6 +1420,195 @@ func variant_fields (lx LX) (sumq str) (variant str) -> {FieldDef}
     end
     do (panic (strings::concat "lower: unknown sum variant " variant))
     return (vec FieldDef)
+end
+
+# --------------------------------------------------------------------------- #
+# Reflection (DESIGN §5.6 runtime type descriptors). reflect::typeof(x) builds a
+# TypeInfo record from x's STATIC type (precise width, qualified user-type name);
+# reflect::variant_of(x) yields the live variant of a sum/enum value. The
+# descriptor strings/kinds are produced identically here and in the interpreter.
+# --------------------------------------------------------------------------- #
+
+# Canonical type name for a descriptor (matches the interpreter's _type_descr).
+func ti_name (t Type) -> str
+    match t
+        case (TInt n)
+            return n
+        case (TFloat n)
+            return n
+        case (TPrim n)
+            return n
+        case (TStruct qn)
+            return qn
+        case (TEnum qn)
+            return qn
+        case (TSum qn)
+            return qn
+        case (TArray e)
+            return "array"
+        case (TVec e)
+            return "vec"
+        case (TMap k v)
+            return "map"
+        case (TFunc p r)
+            return "func"
+        else
+            return "unknown"
+    end
+    return "unknown"
+end
+
+func ti_kind (t Type) -> str
+    match t
+        case (TInt n)
+            return "int"
+        case (TFloat n)
+            return "float"
+        case (TPrim n)
+            return n
+        case (TStruct qn)
+            return "struct"
+        case (TEnum qn)
+            return "enum"
+        case (TSum qn)
+            return "sum"
+        case (TArray e)
+            return "array"
+        case (TVec e)
+            return "vec"
+        case (TMap k v)
+            return "map"
+        case (TFunc p r)
+            return "func"
+        else
+            return "unknown"
+    end
+    return "unknown"
+end
+
+# enum/sum variant names for the descriptor (declaration order); empty otherwise.
+func type_variant_names (lx LX) (t Type) -> {str}
+    match t
+        case (TEnum qn)
+            let m = (qual_module qn)
+            let b = (bare_name qn)
+            if (and (map_has lx.ctx.sigs m) (map_has lx.ctx.sigs[m].enums b))
+                return lx.ctx.sigs[m].enums[b]
+            end
+        case (TSum qn)
+            let m = (qual_module qn)
+            let b = (bare_name qn)
+            if (and (map_has lx.ctx.sigs m) (map_has lx.ctx.sigs[m].sum_variants b))
+                return lx.ctx.sigs[m].sum_variants[b]
+            end
+        else
+            pass
+    end
+    return (vec str)
+end
+
+# Build a reflect::TypeInfo value for the static type `t`.
+func build_typeinfo (lx LX) (t Type) -> IVal
+    let nm = (ti_name t)
+    let kd = (ti_kind t)
+    # struct field names (declaration order); empty for non-structs
+    let fnames {IVal} = (vec IVal)
+    if (t_is_struct t)
+        let sl = (checker::struct_fields lx.ctx (t_struct_name t))
+        let i = 0u64
+        while (< i (len sl.fields))
+            do (push fnames (ImmStr s: sl.fields[i].name))
+            set i = (+ i 1)
+        end
+    end
+    let fvec = (ir::fresh_temp lx.b (irt (TVec elem: (str_ty))))
+    do (ir::emit lx.b (IVecLit dst: fvec elem: (irt (str_ty)) elems: fnames))
+    # enum/sum variant names
+    let vnames {IVal} = (vec IVal)
+    let vs2 = (type_variant_names lx t)
+    let j = 0u64
+    while (< j (len vs2))
+        do (push vnames (ImmStr s: vs2[j]))
+        set j = (+ j 1)
+    end
+    let vvec = (ir::fresh_temp lx.b (irt (TVec elem: (str_ty))))
+    do (ir::emit lx.b (IVecLit dst: vvec elem: (irt (str_ty)) elems: vnames))
+    let dst = (ir::fresh_temp lx.b (irt (TStruct name: "reflect::TypeInfo")))
+    let fld {str} = (vec str)
+    do (push fld "name")
+    do (push fld "kind")
+    do (push fld "fields")
+    do (push fld "variants")
+    let fvals {IVal} = (vec IVal)
+    do (push fvals (ImmStr s: nm))
+    do (push fvals (ImmStr s: kd))
+    do (push fvals fvec)
+    do (push fvals vvec)
+    do (ir::emit lx.b (IStructNew dst: dst struct_name: "reflect::TypeInfo" fnames: fld fvals: fvals))
+    return dst
+end
+
+# reflect::variant_of(x): the live variant name for a sum/enum value, else "".
+func lower_variant_of (lx LX) (t Type) (v IVal) -> IVal
+    let resn = (uniq lx "vof")
+    let res = (ir::add_local lx.b resn (irt (str_ty)))
+    do (ir::emit lx.b (IAssign place: (PLocal name: resn ty: (irt (str_ty))) src: (ImmStr s: "")))
+    if (t_is_sum t)
+        let names = (type_variant_names lx t)
+        let tagv = (ir::fresh_temp lx.b (irt (TInt name: "i32")))
+        do (ir::emit lx.b (ISumTag dst: tagv sum: v sum_qual: (t_sum_name t)))
+        let i = 0u64
+        while (< i (len names))
+            let c = (ir::fresh_temp lx.b (irt (bool_ty)))
+            do (ir::emit lx.b (IBin dst: c op: "==" lhs: tagv rhs: (ImmInt val: (as i i64) ty: (irt (TInt name: "i32"))) ty: (irt (TInt name: "i32")) chk: false))
+            let yes = (ir::fresh_label lx.b "vof_y")
+            let no = (ir::fresh_label lx.b "vof_n")
+            do (ir::emit lx.b (ICondBr cond: c then_l: yes else_l: no))
+            do (ir::new_block lx.b yes)
+            do (ir::emit lx.b (IAssign place: (PLocal name: resn ty: (irt (str_ty))) src: (ImmStr s: names[i])))
+            do (ir::emit lx.b (IBr target: no))
+            do (ir::new_block lx.b no)
+            set i = (+ i 1)
+        end
+        return res
+    end
+    match t
+        case (TEnum qn)
+            let names = (type_variant_names lx t)
+            let i = 0u64
+            while (< i (len names))
+                let c = (ir::fresh_temp lx.b (irt (bool_ty)))
+                do (ir::emit lx.b (IBin dst: c op: "==" lhs: v rhs: (ImmInt val: (as i i64) ty: (irt t)) ty: (irt t) chk: false))
+                let yes = (ir::fresh_label lx.b "vof_y")
+                let no = (ir::fresh_label lx.b "vof_n")
+                do (ir::emit lx.b (ICondBr cond: c then_l: yes else_l: no))
+                do (ir::new_block lx.b yes)
+                do (ir::emit lx.b (IAssign place: (PLocal name: resn ty: (irt (str_ty))) src: (ImmStr s: names[i])))
+                do (ir::emit lx.b (IBr target: no))
+                do (ir::new_block lx.b no)
+                set i = (+ i 1)
+            end
+        else
+            pass
+    end
+    return res
+end
+
+func lower_reflect (lx LX) (vs {str IVal}) (ts {str Binding}) (fn str) (args {Expr}) -> IVal
+    if (strings::eq fn "typeof")
+        let t = (checker::check_expr lx.ctx args[0] ts TNone)
+        # evaluate the argument for side-effect parity with the interpreter, then
+        # discard the value (typeof reflects the static type, not the value).
+        let ign = (lower_expr lx vs ts args[0] t)
+        return (build_typeinfo lx t)
+    end
+    if (strings::eq fn "variant_of")
+        let t = (checker::check_expr lx.ctx args[0] ts TNone)
+        let v = (lower_expr lx vs ts args[0] t)
+        return (lower_variant_of lx t v)
+    end
+    do (panic (strings::concat "lower: unknown reflect intrinsic " fn))
+    return ImmUnit
 end
 
 # --------------------------------------------------------------------------- #
@@ -2437,6 +2629,16 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
         end
         set si = (+ si 1)
     end
+    # reflect::TypeInfo is a builtin-module struct (no source decls); register its
+    # typedef when the program imports reflect (DESIGN §5.6).
+    if (map_has lx.ctx.sigs "reflect")
+        let tif {IRParam} = (vec IRParam)
+        do (push tif (IRParam name: "name" ty: (irt (str_ty))))
+        do (push tif (IRParam name: "kind" ty: (irt (str_ty))))
+        do (push tif (IRParam name: "fields" ty: (irt (TVec elem: (str_ty)))))
+        do (push tif (IRParam name: "variants" ty: (irt (TVec elem: (str_ty)))))
+        do (push lx.irm.structs (IRStruct name: "reflect::TypeInfo" fields: tif))
+    end
     # Pass 2: lower functions.
     let ni = 0u64
     while (< ni (len names))
@@ -2495,6 +2697,11 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
             end
         end
         set ti = (+ ti 1)
+    end
+    # autogen to_str for the builtin reflect::TypeInfo (so descriptors print).
+    if (map_has lx.ctx.sigs "reflect")
+        set lx.ctx.cur = lx.ctx.sigs["reflect"]
+        do (synth_struct_to_str lx "reflect" "TypeInfo")
     end
     return m
 end

@@ -208,6 +208,14 @@ class Checker:
             sig.funcs["args"] = FuncT((), VecT(STR))
             self.sigs[name] = sig
             return sig
+        if name == "reflect":
+            # DESIGN §5.6 runtime type descriptors. TypeInfo is a record; typeof /
+            # variant_of are type-directed intrinsics checked specially below.
+            sig = ModSig("reflect")
+            sig.structs["TypeInfo"] = {"name": STR, "kind": STR,
+                                       "fields": VecT(STR), "variants": VecT(STR)}
+            self.sigs[name] = sig
+            return sig
         path = self._find(name)
         if not path:
             raise TypeError_(f"module {name!r} not found")
@@ -714,6 +722,25 @@ class Checker:
             for a in e.args:
                 self.check_expr(a, scope, sig, None)
             return NEVER
+        if isinstance(callee, Path) and len(callee.parts) == 2 \
+                and callee.parts[0] == "reflect" and sig.imported.get("reflect"):
+            fn = callee.parts[1]
+            if fn == "typeof":
+                if len(e.args) != 1:
+                    self.err("reflect::typeof takes 1 argument", e)
+                else:
+                    at = self.check_expr(e.args[0], scope, sig, None)
+                    if isinstance(at, (UntypedIntT, UntypedFloatT)):
+                        self.err("reflect::typeof needs a concretely-typed argument; annotate it (DESIGN §7.2)", e)
+                return StructT("reflect::TypeInfo")
+            if fn == "variant_of":
+                if len(e.args) != 1:
+                    self.err("reflect::variant_of takes 1 argument", e)
+                else:
+                    self.check_expr(e.args[0], scope, sig, None)
+                return STR
+            self.err(f"module reflect has no value {fn!r}", e)
+            return UNIT
         if isinstance(callee, Path) and callee.parts[0] in ("io",) \
                 and (sig.imported.get("io") or self.sigs.get("io")):
             for a in e.args:

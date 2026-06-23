@@ -2194,12 +2194,77 @@ def builtin_sys():
     return ms
 
 
+def _type_descr(interp, v):
+    # (name, kind, struct-field-names, enum/sum-variant-names) for a runtime value
+    # — kept identical to the native lowerer's ti_name/ti_kind (DESIGN §5.6).
+    if isinstance(v, bool):
+        return ("bool", "bool", [], [])
+    if isinstance(v, CInt):
+        return (v.ty or "int", "int", [], [])
+    if isinstance(v, CFloat):
+        return (v.ty or "float", "float", [], [])
+    if isinstance(v, CChar):
+        return ("char", "char", [], [])
+    if isinstance(v, str):
+        return ("str", "str", [], [])
+    if v is UNIT:
+        return ("unit", "unit", [], [])
+    if v is NULL:
+        return ("null", "unknown", [], [])
+    if isinstance(v, ArrayV):
+        return ("array", "array", [], [])
+    if isinstance(v, VecV):
+        return ("vec", "vec", [], [])
+    if isinstance(v, MapV):
+        return ("map", "map", [], [])
+    if isinstance(v, (Closure, Builtin)):
+        return ("func", "func", [], [])
+    if isinstance(v, StructV):
+        qn = (v.defmod + "::" + v.typename) if v.defmod else v.typename
+        return (qn, "struct", list(v.fields.keys()), [])
+    if isinstance(v, EnumV):
+        qn = (v.defmod + "::" + v.enum) if v.defmod else v.enum
+        variants = []
+        msc = interp.modules.get(v.defmod)
+        if msc and v.enum in msc.enums:
+            variants = list(msc.enums[v.enum].variants)
+        return (qn, "enum", [], variants)
+    if isinstance(v, SumV):
+        qn = (v.defmod + "::" + v.sum) if v.defmod else v.sum
+        variants = []
+        msc = interp.modules.get(v.defmod)
+        if msc and v.sum in msc.sums:
+            variants = [vname for vname, _ in msc.sums[v.sum].variants]
+        return (qn, "sum", [], variants)
+    return ("unknown", "unknown", [], [])
+
+
+def builtin_reflect():
+    ms = ModuleScope("reflect")
+    def _typeof(interp, args):
+        name, kind, fields, variants = _type_descr(interp, args[0])
+        return StructV("TypeInfo", {
+            "name": name, "kind": kind,
+            "fields": VecV(TyName("str"), list(fields)),
+            "variants": VecV(TyName("str"), list(variants)),
+        }, "reflect")
+    def _variant_of(interp, args):
+        v = args[0]
+        if isinstance(v, (SumV, EnumV)):
+            return v.variant
+        return ""
+    ms.env.define("typeof", Builtin("reflect::typeof", _typeof), mutable=False)
+    ms.env.define("variant_of", Builtin("reflect::variant_of", _variant_of), mutable=False)
+    return ms
+
+
 BUILTIN_MODULES = {
     "io": builtin_io,
     "strings": builtin_strings,
     "convert": builtin_convert,
     "fs": builtin_fs,
     "sys": builtin_sys,
+    "reflect": builtin_reflect,
 }
 
 

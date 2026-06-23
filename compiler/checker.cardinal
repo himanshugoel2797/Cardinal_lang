@@ -735,7 +735,21 @@ func is_builtin_module (m str) -> bool
     do (push v "convert")
     do (push v "fs")
     do (push v "sys")
+    do (push v "reflect")
     return (str_in_vec m v)
+end
+
+# The reflect module's TypeInfo record (DESIGN §5.6 runtime type descriptors).
+# A descriptor for a value's static type: qualified/precise `name`, coarse `kind`,
+# struct field names, and enum/sum variant names. typeof/variant_of are compiler
+# intrinsics (type-directed), not ordinary module functions.
+func reflect_typeinfo_fields () -> {FieldDef}
+    let fs {FieldDef} = (vec FieldDef)
+    do (push fs (FieldDef name: "name" ty: (t_str)))
+    do (push fs (FieldDef name: "kind" ty: (t_str)))
+    do (push fs (FieldDef name: "fields" ty: (TVec elem: (t_str))))
+    do (push fs (FieldDef name: "variants" ty: (TVec elem: (t_str))))
+    return fs
 end
 
 # --------------------------------------------------------------------------- #
@@ -790,6 +804,9 @@ func builtin_sig (name str) -> Sig
     let s = (new_sig name (vec Decl) false)
     for f in (builtin_fn_names name)
         set s.funcs[f] = (builtin_path_type name f)
+    end
+    if (strings::eq name "reflect")
+        set s.structs["TypeInfo"] = (reflect_typeinfo_fields)
     end
     return s
 end
@@ -1598,6 +1615,9 @@ func check_call (ctx Ctx) (callee Expr) (args {Expr}) (scope {str Binding}) -> T
                 return r
             end
         case (EPath parts)
+            if (and (and (== (len parts) 2u64) (strings::eq parts[0] "reflect")) (map_has ctx.cur.imports "reflect"))
+                return (check_reflect_call ctx parts[1] args scope)
+            end
             if (and (and (== (len parts) 2u64) (strings::eq parts[0] "io")) (or (map_has ctx.cur.imports "io") (map_has ctx.sigs "io")))
                 for a in args
                     let at = (check_expr ctx a scope TNone)
@@ -1630,6 +1650,32 @@ func check_call (ctx Ctx) (callee Expr) (args {Expr}) (scope {str Binding}) -> T
         set i = (+ i 1)
     end
     return (func_ret ft)
+end
+
+# reflect:: intrinsics (DESIGN §5.6). typeof reflects the arg's STATIC type into a
+# TypeInfo record; variant_of yields a sum/enum value's live variant name.
+func check_reflect_call (ctx Ctx) (fn str) (args {Expr}) (scope {str Binding}) -> Type
+    if (strings::eq fn "typeof")
+        if (not (== (len args) 1u64))
+            do (err ctx "reflect::typeof takes 1 argument")
+            return (TStruct name: "reflect::TypeInfo")
+        end
+        let at = (check_expr ctx args[0] scope TNone)
+        if (or (is_uint at) (is_ufloat at))
+            do (err ctx "reflect::typeof needs a concretely-typed argument; annotate it (DESIGN §7.2)")
+        end
+        return (TStruct name: "reflect::TypeInfo")
+    end
+    if (strings::eq fn "variant_of")
+        if (not (== (len args) 1u64))
+            do (err ctx "reflect::variant_of takes 1 argument")
+        else
+            do (check_expr ctx args[0] scope TNone)
+        end
+        return (t_str)
+    end
+    do (err ctx (strings::concat "module reflect has no value " fn))
+    return (t_unit)
 end
 
 func check_builtin_call (ctx Ctx) (id str) (args {Expr}) (scope {str Binding}) -> Type
