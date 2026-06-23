@@ -191,12 +191,28 @@ immutable static `cl_str`.** You must:
      chars, raw (unescaped) strings, map del+reinsert order, non-str keys, empties;
      ASan/UBSan clean at CARDINAL_GC_THRESHOLD=0 (nested cl_map_keys get distinct
      rooted slots). examples/vectest now PASSES natively. DESIGN §12 gap-list
-     updated. REMAINING display gaps: **enum-value display** (`Enum::Variant`)
-     still panics cleanly "display of enum values not yet supported" (needs an
-     int->variant-name reverse map emitted from the enum def); **float display**
-     diverges (interpreter uses Python `repr`, native `cl_print_f64` uses `%g`,
-     e.g. `1.0` vs `1`) — a PRE-EXISTING scalar-float issue, not introduced here,
-     inherited by aggregate floats. maptest still needs Stage-4 callbacks.
+     updated. maptest still needs Stage-4 callbacks.
+   * **`to_str` + reflection (DESIGN §5.5/§5.6) — DESIGN DONE; impl step 1 DONE.**
+     Generic `to_str(x) -> str` builtin (type-dispatched like `len`): interpreter
+     (= `_display`, exposed), both checkers (difftest AGREE=13), and native
+     lowering (`lower_to_str`/`lts_seq`/`lts_map`/`lts_struct`, builds a cl_str via
+     a rooted accumulator + concat). Float display unified to `%g` in BOTH backends
+     (closed the repr-vs-%g divergence). Committee-gated (parity+integration
+     APPROVE; GC-safety APPROVE after the cl_strlit pin fix it surfaced — see
+     commit 8444a71: permanent roots must use `cl_gc_pin`, NOT the LIFO shadow
+     stack). **STEP 2 (pending):** (a) **function-ize** — emit a per-type
+     `cl_<mod>__<Type>_to_str` FUNCTION (always-emitted, exported) instead of
+     inline, and reroute io::print through `print(to_str(x))` so there's ONE
+     formatter (removes the lower_display/lower_to_str duplication; add a tracked
+     test round-tripping `io::print(x)` vs `io::print(to_str(x))`). (b) **enum**
+     `to_str` (int->variant-name switch from the enum def — also closes io::print
+     of enums). (c) **override** hooks: use a user-defined `<Type>_to_str` in the
+     type's defining module iff present with the right sig, else autogen; wrong
+     sig = error; mirror the lookup verdict-equivalently in both checkers. This is
+     also the foundation for recursive **sum-type display** (Stage 4) — a
+     per-type function recurses over data at runtime. (d) **runtime type
+     descriptors** (§5.6, user chose IN scope) — its own later subsystem; NOT
+     needed by to_str.
    * **`set m[k].field = v` — RESOLVED (user ruling): rejected in BOTH checkers.**
      Maps hold value-semantic copies, so taking a mutable field reference into a
      map element has no faithful semantics. `check_place` now threads a `via_map`
