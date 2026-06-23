@@ -457,10 +457,35 @@ struct BX
     slots {str i64}     # slot key -> byte offset from %rbp (negative)
     fname str           # current function (label prefix, avoids cross-fn clashes)
     strs {str str}      # string-literal content -> rodata label
+    floats {str str}    # float-literal key ("f64:TEXT"/"f32:TEXT") -> rodata label
     structs {str IRStruct}   # qualified struct/variant name -> its IRStruct (layout)
     scratch i64         # a spare frame slot offset (park a value across a call)
     ret_mem bool        # function returns a >16B struct via a hidden pointer
     hidden_ret i64      # frame slot holding that hidden return pointer
+end
+
+# True if an IRType is the 32-bit float type (else f64 / non-float).
+func irt_f32 (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TFloat n)
+                    return (strings::eq n "f32")
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+# The scalar (ss) vs double (sd) SSE suffix for a float type.
+func sse_sfx (t IRType) -> str
+    if (irt_f32 t)
+        return "ss"
+    end
+    return "sd"
 end
 
 # --------------------------------------------------------------------------- #
@@ -834,6 +859,86 @@ func load_to_rax (bx BX) (v IVal) -> str
 end
 
 # --------------------------------------------------------------------------- #
+# Floats (SSE/xmm). Float literals are interned in a rodata pool (lazily, during
+# emission); values live in 8-byte slots (f64 bits, or f32 in the low 4 bytes).
+# --------------------------------------------------------------------------- #
+
+func float_pool_add (floats {str str}) (text str) (is_f32 bool) -> str
+    let pre = "f64:"
+    if is_f32
+        set pre = "f32:"
+    end
+    let key = (strings::concat pre text)
+    if (map_has floats key)
+        return floats[key]
+    end
+    let lab = (strings::concat ".Lflt" (i2s (as (len (map_keys floats)) i64)))
+    set floats[key] = lab
+    return lab
+end
+
+# Load a float operand into the named xmm register (movsd/movss).
+func load_xmm (bx BX) (xreg str) (v IVal) -> str
+    let mov = (strings::concat "    mov" (sse_sfx (iv_ty v)))
+    match v
+        case (Temp id ty)
+            return (line (cat3 mov " " (cat3 (off_mem (slot_off bx (tkey id))) ", " xreg)))
+        case (Local name ty)
+            return (line (cat3 mov " " (cat3 (off_mem (slot_off bx (lkey name))) ", " xreg)))
+        case (ImmFloat text ty)
+            let lab = (float_pool_add bx.floats text (irt_f32 ty))
+            return (line (cat3 mov " " (cat3 lab "(%rip), " xreg)))
+        else
+            do (panic "x86: non-float operand in a float context")
+    end
+    return ""
+end
+
+# Store an xmm register into a float operand's slot.
+func store_xmm (bx BX) (xreg str) (dst IVal) -> str
+    let mov = (strings::concat "    mov" (sse_sfx (iv_ty dst)))
+    return (line (cat3 mov " " (cat3 xreg ", " (off_mem (slot_off bx (iv_key dst))))))
+end
+
+# The SSE arithmetic mnemonic for a float op (addsd/subss/...).
+func float_arith_op (op str) (sfx str) -> str
+    if (strings::eq op "+")
+        return (strings::concat "add" sfx)
+    end
+    if (strings::eq op "-")
+        return (strings::concat "sub" sfx)
+    end
+    if (strings::eq op "*")
+        return (strings::concat "mul" sfx)
+    end
+    if (strings::eq op "/")
+        return (strings::concat "div" sfx)
+    end
+    do (panic (strings::concat "x86: unsupported float op " op))
+    return ""
+end
+
+# setcc for a float comparison after ucomisd/ucomiss (ordered, C-like).
+func float_setcc (op str) -> str
+    if (strings::eq op "==")
+        return "sete"
+    end
+    if (strings::eq op "!=")
+        return "setne"
+    end
+    if (strings::eq op "<")
+        return "setb"
+    end
+    if (strings::eq op "<=")
+        return "setbe"
+    end
+    if (strings::eq op ">")
+        return "seta"
+    end
+    return "setae"
+end
+
+# --------------------------------------------------------------------------- #
 # Instruction emission
 # --------------------------------------------------------------------------- #
 
@@ -887,6 +992,20 @@ func is_cmp_op (op str) -> bool
 end
 
 func emit_bin (bx BX) (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk bool) -> str
+    # float arithmetic / comparison via SSE (operand type `ty` drives ss vs sd).
+    if (irt_is_float ty)
+        let sfx = (sse_sfx ty)
+        let fout = (load_xmm bx "%xmm0" lhs)
+        set fout = (strings::concat fout (load_xmm bx "%xmm1" rhs))
+        if (is_cmp_op op)
+            set fout = (strings::concat fout (line (cat3 "    ucomi" sfx " %xmm1, %xmm0")))
+            set fout = (strings::concat fout (line (cat3 "    " (float_setcc op) " %al")))
+            set fout = (strings::concat fout (line "    movzbq %al, %rax"))
+            return (strings::concat fout (store_rax bx dst))
+        end
+        set fout = (strings::concat fout (line (cat3 "    " (float_arith_op op sfx) " %xmm1, %xmm0")))
+        return (strings::concat fout (store_xmm bx "%xmm0" dst))
+    end
     let bits = (irt_bits ty)
     let signed = (irt_signed ty)
     let out = ""
@@ -964,6 +1083,20 @@ func emit_bin (bx BX) (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk
 end
 
 func emit_un (bx BX) (dst IVal) (op str) (v IVal) (ty IRType) (chk bool) -> str
+    # float unary minus: flip the sign bit via xmm (reg-form xor, no alignment req).
+    if (irt_is_float ty)
+        let fout = (load_xmm bx "%xmm0" v)
+        if (irt_f32 ty)
+            set fout = (strings::concat fout (line "    movl $0x80000000, %eax"))
+            set fout = (strings::concat fout (line "    movd %eax, %xmm1"))
+            set fout = (strings::concat fout (line "    xorps %xmm1, %xmm0"))
+        else
+            set fout = (strings::concat fout (line "    movabsq $0x8000000000000000, %rax"))
+            set fout = (strings::concat fout (line "    movq %rax, %xmm1"))
+            set fout = (strings::concat fout (line "    xorpd %xmm1, %xmm0"))
+        end
+        return (strings::concat fout (store_xmm bx "%xmm0" dst))
+    end
     let bits = (irt_bits ty)
     let signed = (irt_signed ty)
     let out = (load_into bx "%rax" v)
@@ -992,7 +1125,9 @@ end
 # (via load_to_rax, handling string literals); a cl_closure (16B) copies 2 words.
 func emit_park_arg (bx BX) (a IVal) (w0 i64) -> str
     if (irt_is_float (iv_ty a))
-        do (panic "x86: float call arg (later milestone)")
+        # park a float's bits into one scratch word (via xmm0)
+        let out = (load_xmm bx "%xmm0" a)
+        return (strings::concat out (line (cat3 (strings::concat "    mov" (sse_sfx (iv_ty a))) " %xmm0, " (off_mem (+ bx.scratch (* w0 8i64))))))
     end
     let nw = (nwords (iv_ty a) bx.structs)
     if (== nw 1i64)
@@ -1013,6 +1148,10 @@ end
 # Copy a stack-passed argument's words to (off)(%rsp). A slot/MEMORY value is copied
 # word by word; an immediate is materialized. (ImmStr stack args aren't needed yet.)
 func emit_store_arg_to_stack (bx BX) (a IVal) (off i64) -> str
+    if (irt_is_float (iv_ty a))
+        let out = (load_xmm bx "%xmm0" a)
+        return (strings::concat out (line (cat3 (strings::concat "    mov" (sse_sfx (iv_ty a))) " %xmm0, " (cat2 (i2s off) "(%rsp)"))))
+    end
     match a
         case (Temp id ty)
             let out = ""
@@ -1055,26 +1194,48 @@ func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> s
     if hidden
         set base = 1i64
     end
-    # Classify each arg (SysV, integer/memory only): a ≤16B value goes in registers
-    # if its eightbytes fit in the 6 integer regs, else (or if >16B = MEMORY) it goes
-    # on the stack. argstk[i] records the choice; reg args are parked into scratch now
-    # (before any %rsp change, so a strlit while parking stays 16-aligned).
-    let argstk {bool} = (vec bool)
+    # Classify each arg (SysV): floats -> xmm0..7; ≤16B integer aggregates -> GP regs
+    # if they fit, else stack; >16B -> stack (MEMORY). Reg/xmm args are parked into
+    # scratch now (before any %rsp change, so a strlit/movsd while parking stays
+    # 16-aligned). argcat: 0=GP, 1=xmm, 2=stack.
+    let argcat {i64} = (vec i64)
+    let argscr {i64} = (vec i64)
     let argoff {i64} = (vec i64)
-    let regw = 0i64
+    let gpw = 0i64
+    let xmmw = 0i64
+    let pw = 0i64
     let stackbytes = 0i64
     let i = 0u64
     while (< i (len args))
-        let k = (nwords (iv_ty args[i]) bx.structs)
-        if (and (<= k 2i64) (<= (+ (+ base regw) k) 6i64))
-            set out = (strings::concat out (emit_park_arg bx args[i] regw))
-            set regw = (+ regw k)
-            do (push argstk false)
-            do (push argoff 0i64)
+        if (irt_is_float (iv_ty args[i]))
+            if (< xmmw 8i64)
+                set out = (strings::concat out (emit_park_arg bx args[i] pw))
+                do (push argcat 1i64)
+                do (push argscr pw)
+                do (push argoff 0i64)
+                set pw = (+ pw 1i64)
+                set xmmw = (+ xmmw 1i64)
+            else
+                do (push argcat 2i64)
+                do (push argscr 0i64)
+                do (push argoff stackbytes)
+                set stackbytes = (+ stackbytes 8i64)
+            end
         else
-            do (push argstk true)
-            do (push argoff stackbytes)
-            set stackbytes = (+ stackbytes (* k 8i64))
+            let k = (nwords (iv_ty args[i]) bx.structs)
+            if (and (<= k 2i64) (<= (+ (+ base gpw) k) 6i64))
+                set out = (strings::concat out (emit_park_arg bx args[i] pw))
+                do (push argcat 0i64)
+                do (push argscr pw)
+                do (push argoff 0i64)
+                set pw = (+ pw k)
+                set gpw = (+ gpw k)
+            else
+                do (push argcat 2i64)
+                do (push argscr 0i64)
+                do (push argoff stackbytes)
+                set stackbytes = (+ stackbytes (* k 8i64))
+            end
         end
         set i = (+ i 1)
     end
@@ -1085,7 +1246,7 @@ func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> s
     # copy stack args to (off)(%rsp), in source order
     set i = 0u64
     while (< i (len args))
-        if argstk[i]
+        if (== argcat[i] 2i64)
             set out = (strings::concat out (emit_store_arg_to_stack bx args[i] argoff[i]))
         end
         set i = (+ i 1)
@@ -1093,10 +1254,30 @@ func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> s
     if hidden
         set out = (strings::concat out (line (cat3 "    leaq " (off_mem (slot_off bx (iv_key dst))) ", %rdi")))
     end
-    let w = 0i64
-    while (< w regw)
-        set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem (+ bx.scratch (* w 8i64))) ", ") (argreg (+ w base)))))
-        set w = (+ w 1i64)
+    # load GP args into %rdi.. (after the hidden base), in source order
+    let gpreg = base
+    set i = 0u64
+    while (< i (len args))
+        if (== argcat[i] 0i64)
+            let k = (nwords (iv_ty args[i]) bx.structs)
+            let w = 0i64
+            while (< w k)
+                set out = (strings::concat out (line (cat3 "    movq " (cat2 (off_mem (+ bx.scratch (* (+ argscr[i] w) 8i64))) ", ") (argreg gpreg))))
+                set gpreg = (+ gpreg 1i64)
+                set w = (+ w 1i64)
+            end
+        end
+        set i = (+ i 1)
+    end
+    # load float args into %xmm0.., in source order
+    let xreg = 0i64
+    set i = 0u64
+    while (< i (len args))
+        if (== argcat[i] 1i64)
+            set out = (strings::concat out (line (cat3 (strings::concat "    mov" (sse_sfx (iv_ty args[i]))) " " (cat3 (off_mem (+ bx.scratch (* argscr[i] 8i64))) ", %xmm" (i2s xreg)))))
+            set xreg = (+ xreg 1i64)
+        end
+        set i = (+ i 1)
     end
     set out = (strings::concat out (line (cat2 "    call " callee)))
     if (> memtotal 0i64)
@@ -1105,6 +1286,8 @@ func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> s
     if has_dst
         if hidden
             pass
+        elsif (irt_is_float (iv_ty dst))
+            set out = (strings::concat out (store_xmm bx "%xmm0" dst))
         elsif (> (nwords (iv_ty dst) bx.structs) 1i64)
             # 9..16-byte result (e.g. cl_closure) returned in %rax:%rdx
             set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) "")))
@@ -1167,6 +1350,26 @@ func bc_str_lt (a str) (b str) -> bool
 end
 
 func sorted_keys (m {str Type}) -> {str}
+    let ks {str} = (vec str)
+    for k in (map_keys m)
+        do (push ks k)
+    end
+    let i = 1u64
+    while (< i (len ks))
+        let j = i
+        while (and (> j 0u64) (bc_str_lt ks[j] ks[(- j 1u64)]))
+            let tmp = ks[j]
+            set ks[j] = ks[(- j 1u64)]
+            set ks[(- j 1u64)] = tmp
+            set j = (- j 1u64)
+        end
+        set i = (+ i 1)
+    end
+    return ks
+end
+
+# Same insertion sort, for a {str str} map (the string/float-literal pools).
+func sorted_str_keys (m {str str}) -> {str}
     let ks {str} = (vec str)
     for k in (map_keys m)
         do (push ks k)
@@ -1367,6 +1570,10 @@ end
 func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
     match ins
         case (IConst dst v ty)
+            if (or (irt_is_float ty) (irt_is_float (iv_ty v)))
+                let out = (load_xmm bx "%xmm0" v)
+                return (strings::concat out (store_xmm bx "%xmm0" dst))
+            end
             let out = (load_to_rax bx v)
             return (strings::concat out (store_rax bx dst))
         case (IBin dst op lhs rhs ty chk)
@@ -1374,19 +1581,48 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
         case (IUn dst op v ty chk)
             return (emit_un bx dst op v ty chk)
         case (ICast dst v toty)
-            # int<->int: load, normalize to the target width, store. (float later)
-            if (irt_is_float toty)
-                do (panic "x86: float cast (later milestone)")
+            let fromf = (irt_is_float (iv_ty v))
+            let tof = (irt_is_float toty)
+            if (and fromf tof)
+                # f32<->f64 (or same): convert via xmm, or just move if same width
+                let out = (load_xmm bx "%xmm0" v)
+                if (irt_f32 (iv_ty v))
+                    if (not (irt_f32 toty))
+                        set out = (strings::concat out (line "    cvtss2sd %xmm0, %xmm0"))
+                    end
+                else
+                    if (irt_f32 toty)
+                        set out = (strings::concat out (line "    cvtsd2ss %xmm0, %xmm0"))
+                    end
+                end
+                return (strings::concat out (store_xmm bx "%xmm0" dst))
             end
-            if (irt_is_float (iv_ty v))
-                do (panic "x86: float cast (later milestone)")
+            if tof
+                # int -> float: cvtsi2sd/ss from a 64-bit GP reg (operand normalized)
+                let out = (load_into bx "%rax" v)
+                set out = (strings::concat out (extend_rax (irt_bits (iv_ty v)) (irt_signed (iv_ty v))))
+                set out = (strings::concat out (line (cat3 "    cvtsi2" (sse_sfx toty) "q %rax, %xmm0")))
+                return (strings::concat out (store_xmm bx "%xmm0" dst))
             end
+            if fromf
+                # float -> int: truncate toward zero (matches C / the interpreter)
+                let out = (load_xmm bx "%xmm0" v)
+                set out = (strings::concat out (line (cat3 "    cvtt" (sse_sfx (iv_ty v)) "2siq %xmm0, %rax")))
+                set out = (strings::concat out (extend_rax (irt_bits toty) (irt_signed toty)))
+                return (strings::concat out (store_rax bx dst))
+            end
+            # int<->int: load, normalize to the target width, store.
             let out = (load_into bx "%rax" v)
             set out = (strings::concat out (extend_rax (irt_bits toty) (irt_signed toty)))
             return (strings::concat out (store_rax bx dst))
         case (IAssign p src)
             match p
                 case (PLocal name ty)
+                    # float: move via xmm (movss/movsd) into the slot
+                    if (irt_is_float ty)
+                        let out = (load_xmm bx "%xmm0" src)
+                        return (strings::concat out (line (cat3 (strings::concat "    mov" (sse_sfx ty)) " %xmm0, " (off_mem (slot_off bx (lkey name))))))
+                    end
                     # multi-word value (e.g. a cl_closure): copy word by word
                     if (> (nwords ty bx.structs) 1i64)
                         let out = ""
@@ -1403,8 +1639,8 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                     return (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (lkey name))) "")))
                 case (PDeref ptr ty)
                     # store through a boxed variable: *(ty*)cl_gc_deref(ptr) = src
-                    let out = (load_to_rax bx src)
-                    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+                    # (park src bits via emit_park_arg, which handles floats via xmm)
+                    let out = (emit_park_arg bx src 0i64)
                     set out = (strings::concat out (load_into bx "%rdi" ptr))
                     set out = (strings::concat out (line "    call cl_gc_deref"))
                     set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
@@ -1424,16 +1660,14 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                     return out
                 case (PArrElem arr idx ty)
                     # set arr[i] = src  (element address via cl_array_at)
-                    let out = (load_to_rax bx src)
-                    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+                    let out = (emit_park_arg bx src 0i64)
                     set out = (strings::concat out (emit_array_at bx arr idx))
                     set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
                     set out = (strings::concat out (store_sized (type_size ty bx.structs) "c" "(%rax)"))
                     return out
                 case (PVecElem vc idx ty)
                     # set vec[i] = src  (element address via cl_vec_at)
-                    let out = (load_to_rax bx src)
-                    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+                    let out = (emit_park_arg bx src 0i64)
                     set out = (strings::concat out (load_into bx "%rdi" vc))
                     set out = (strings::concat out (load_into bx "%rsi" idx))
                     set out = (strings::concat out (line "    call cl_vec_at"))
@@ -1464,7 +1698,11 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
             end
             if has_val
                 if (irt_is_float (iv_ty v))
-                    do (panic "x86: float return (later milestone)")
+                    # floats return in %xmm0
+                    set out = (strings::concat out (load_xmm bx "%xmm0" v))
+                    set out = (strings::concat out (line "    leave"))
+                    set out = (strings::concat out (line "    ret"))
+                    return out
                 end
                 if bx.ret_mem
                     # >16B struct: copy the value to the caller's buffer (hidden ptr),
@@ -1523,11 +1761,10 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                         set w = (+ w 1i64)
                     end
                 else
-                    # materialize the field value FIRST (may call cl_strlit), park it in
-                    # a frame slot (NOT a push — that would misalign %rsp across the
-                    # cl_gc_deref call), then deref the (rooted) object and store.
-                    set out = (strings::concat out (load_to_rax bx fvals[k]))
-                    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem bx.scratch) "")))
+                    # materialize the field value FIRST (may call cl_strlit / be a float),
+                    # park it in a frame slot (NOT a push — that would misalign %rsp across
+                    # the cl_gc_deref call), then deref the (rooted) object and store.
+                    set out = (strings::concat out (emit_park_arg bx fvals[k] 0i64))
                     set out = (strings::concat out (load_into bx "%rdi" dst))
                     set out = (strings::concat out (line "    call cl_gc_deref"))
                     set out = (strings::concat out (line (cat2 "    movq " (cat2 (off_mem bx.scratch) ", %rcx"))))
@@ -1695,6 +1932,9 @@ func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
                         set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ (+ (slot_off bx (iv_key dst)) foff) (* w 8i64))) "")))
                         set w = (+ w 1i64)
                     end
+                elsif (irt_is_float fty)
+                    set out = (strings::concat out (load_xmm bx "%xmm0" fvals[k]))
+                    set out = (strings::concat out (line (cat3 (strings::concat "    mov" (sse_sfx fty)) " %xmm0, " (off_mem (+ (slot_off bx (iv_key dst)) foff)))))
                 else
                     set out = (strings::concat out (load_to_rax bx fvals[k]))
                     set out = (strings::concat out (store_sized fsz "a" (off_mem (+ (slot_off bx (iv_key dst)) foff))))
@@ -1801,7 +2041,7 @@ func round16 (n i64) -> i64
     return (+ n (- 16i64 r))
 end
 
-func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
+func emit_func (f IRFunc) (strs {str str}) (floats {str str}) (sm {str IRStruct}) -> str
     # 1) assign a size-aware slot to every param, non-unit temp, and local. Build
     # parallel arrays (key, type, is-param) so rooting/zeroing know each size.
     let slots {str i64} = (map str i64)
@@ -1843,9 +2083,12 @@ func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
         do (push allparam false)
         set li = (+ li 1)
     end
-    # 6 spare slots for parking call args / values across runtime calls (so we
-    # never have an outstanding push misaligning the stack at an internal call).
-    set off = (- off 48i64)
+    # Spare slots for parking register-bound call args / values across runtime calls
+    # (so we never have an outstanding push misaligning the stack at an internal call).
+    # A single call parks every register arg contiguously via one shared word cursor:
+    # SysV allows up to 6 GP integer regs + 8 xmm float regs = 14 register args, so we
+    # reserve 14 words. (Stack-passed overflow args go straight to (%rsp), not scratch.)
+    set off = (- off 112i64)
     let scratch = off
     # a slot for the hidden return pointer when this function returns a >16B struct
     let ret_mem = (> (nwords f.ret sm) 2i64)
@@ -1855,7 +2098,7 @@ func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
         set hidden_ret = off
     end
     let frame = (round16 (- 0i64 off))
-    let bx = (BX slots: slots fname: f.name strs: strs structs: sm scratch: scratch ret_mem: ret_mem hidden_ret: hidden_ret)
+    let bx = (BX slots: slots fname: f.name strs: strs floats: floats structs: sm scratch: scratch ret_mem: ret_mem hidden_ret: hidden_ret)
 
     let nroots = 0i64
     let i = 0u64
@@ -1886,27 +2129,36 @@ func emit_func (f IRFunc) (strs {str str}) (sm {str IRStruct}) -> str
     # in the remaining integer regs is in registers; otherwise (or >16B) it was
     # passed on the stack at %rbp+16+memoff, in source order.
     let memoff = 16i64
+    let xrg = 0i64
     set pi = 0u64
     while (< pi (len f.params))
         if (irt_is_float f.params[pi].ty)
-            do (panic "x86: float param (later milestone)")
-        end
-        let k = (nwords f.params[pi].ty sm)
-        if (and (<= k 2i64) (<= (+ rg k) 6i64))
-            let w = 0i64
-            while (< w k)
-                set out = (strings::concat out (line (cat2 "    movq " (cat3 (argreg (+ rg w)) ", " (off_mem (+ (slot_off bx (lkey f.params[pi].name)) (* w 8i64)))))))
-                set w = (+ w 1i64)
+            if (< xrg 8i64)
+                set out = (strings::concat out (line (cat3 (strings::concat "    mov" (sse_sfx f.params[pi].ty)) (cat3 " %xmm" (i2s xrg) ", ") (off_mem (slot_off bx (lkey f.params[pi].name))))))
+                set xrg = (+ xrg 1i64)
+            else
+                set out = (strings::concat out (line (cat2 "    movq " (cat2 (cat2 (i2s memoff) "(%rbp)") ", %rax"))))
+                set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (lkey f.params[pi].name))) "")))
+                set memoff = (+ memoff 8i64)
             end
-            set rg = (+ rg k)
         else
-            let w = 0i64
-            while (< w k)
-                set out = (strings::concat out (line (cat2 "    movq " (cat2 (cat2 (i2s (+ memoff (* w 8i64))) "(%rbp)") ", %rax"))))
-                set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ (slot_off bx (lkey f.params[pi].name)) (* w 8i64))) "")))
-                set w = (+ w 1i64)
+            let k = (nwords f.params[pi].ty sm)
+            if (and (<= k 2i64) (<= (+ rg k) 6i64))
+                let w = 0i64
+                while (< w k)
+                    set out = (strings::concat out (line (cat2 "    movq " (cat3 (argreg (+ rg w)) ", " (off_mem (+ (slot_off bx (lkey f.params[pi].name)) (* w 8i64)))))))
+                    set w = (+ w 1i64)
+                end
+                set rg = (+ rg k)
+            else
+                let w = 0i64
+                while (< w k)
+                    set out = (strings::concat out (line (cat2 "    movq " (cat2 (cat2 (i2s (+ memoff (* w 8i64))) "(%rbp)") ", %rax"))))
+                    set out = (strings::concat out (line (cat3 "    movq %rax, " (off_mem (+ (slot_off bx (lkey f.params[pi].name)) (* w 8i64))) "")))
+                    set w = (+ w 1i64)
+                end
+                set memoff = (+ memoff (* k 8i64))
             end
-            set memoff = (+ memoff (* k 8i64))
         end
         set pi = (+ pi 1)
     end
@@ -2046,9 +2298,11 @@ export func emit (m IRModule) -> str
         set out = (strings::concat out (line (cat3 "    .asciz \"" (asm_escape s) "\"")))
     end
     set out = (strings::concat out (line "    .text"))
+    # float-literal pool (filled while emitting funcs; rodata emitted at the end).
+    let floats {str str} = (map str str)
     let i = 0u64
     while (< i (len m.funcs))
-        set out = (strings::concat out (emit_func m.funcs[i] strs sm))
+        set out = (strings::concat out (emit_func m.funcs[i] strs floats sm))
         set out = (strings::concat out (line ""))
         set i = (+ i 1)
     end
@@ -2061,5 +2315,25 @@ export func emit (m IRModule) -> str
         set ti = (+ ti 1)
     end
     set out = (strings::concat out (main_wrapper m))
+    # float-literal rodata (8-byte aligned; .double for f64, .float for f32). Keys
+    # are "f64:TEXT"/"f32:TEXT"; emit in label order for determinism.
+    let fkeys = (sorted_str_keys floats)
+    if (> (len fkeys) 0u64)
+        set out = (strings::concat out (line "    .section .rodata"))
+        let fi = 0u64
+        while (< fi (len fkeys))
+            let key = fkeys[fi]
+            let is32 = (strings::eq (strings::substr key 0u64 4u64) "f32:")
+            let text = (strings::substr key 4u64 (- (len key) 4u64))
+            set out = (strings::concat out (line "    .align 8"))
+            set out = (strings::concat out (line (cat2 floats[key] ":")))
+            if is32
+                set out = (strings::concat out (line (cat2 "    .float " text)))
+            else
+                set out = (strings::concat out (line (cat2 "    .double " text)))
+            end
+            set fi = (+ fi 1)
+        end
+    end
     return out
 end
