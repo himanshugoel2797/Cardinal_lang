@@ -1441,6 +1441,15 @@ class Interp:
             if parts[1] not in ed.variants:
                 raise CardinalError(f"no variant {parts[1]} in enum {parts[0]}")
             return EnumV(parts[0], parts[1], ed.variants.index(parts[1]), ms.name)
+        # an IMPORTED enum's variant (the enum type is in scope by bare name, so a
+        # qualified variant resolves through the importing module's imports)
+        if len(parts) == 2:
+            for mod in ms.imported_modules.values():
+                if parts[0] in mod.enums:
+                    ed = mod.enums[parts[0]]
+                    if parts[1] not in ed.variants:
+                        raise CardinalError(f"no variant {parts[1]} in enum {parts[0]}")
+                    return EnumV(parts[0], parts[1], ed.variants.index(parts[1]), mod.name)
         # module member  mod::name
         mod = ms.imported_modules.get(parts[0])
         if mod is None:

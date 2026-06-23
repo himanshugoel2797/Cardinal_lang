@@ -617,6 +617,15 @@ func emit_instr (ins Instr) (nroots i64) -> {str}
         case (ICast dst v toty)
             return (line1 (strings::concat (val dst) (strings::concat " = (" (strings::concat (ctype toty) (strings::concat ")(" (strings::concat (val v) ");"))))))
         case (IAssign p src)
+            # a write to a unit-typed local is a no-op (the local is elided)
+            match p
+                case (PLocal name pty)
+                    if (irt_is_unit pty)
+                        return (vec str)
+                    end
+                else
+                    pass
+            end
             return (line1 (strings::concat (place p) (strings::concat " = " (strings::concat (val src) ";"))))
         case (ILoadField dst base field ty)
             return (line1 (strings::concat (val dst) (strings::concat " = (" (strings::concat (val base) (strings::concat ")." (strings::concat field ";"))))))
@@ -1076,14 +1085,18 @@ func func_def (f IRFunc) -> str
     let li = 0u64
     while (< li (len f.locals))
         let lp = f.locals[li]
-        let nm = (strings::concat "v_" lp.name)
-        let initz = ""
-        if (managed lp.ty)
-            set initz = " = {0}"
-        end
-        set out = (strings::concat out (strings::concat "    " (strings::concat (ctype lp.ty) (strings::concat " " (strings::concat nm (strings::concat initz ";\n"))))))
-        if (managed lp.ty)
-            do (push roots nm)
+        # a unit-typed local has no C representation (cf. unit temps); skip it so we
+        # never emit an illegal `void v_x;` (its only write is a discarded unit).
+        if (not (irt_is_unit lp.ty))
+            let nm = (strings::concat "v_" lp.name)
+            let initz = ""
+            if (managed lp.ty)
+                set initz = " = {0}"
+            end
+            set out = (strings::concat out (strings::concat "    " (strings::concat (ctype lp.ty) (strings::concat " " (strings::concat nm (strings::concat initz ";\n"))))))
+            if (managed lp.ty)
+                do (push roots nm)
+            end
         end
         set li = (+ li 1)
     end
