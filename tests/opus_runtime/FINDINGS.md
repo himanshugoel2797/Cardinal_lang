@@ -29,18 +29,16 @@ C and x86 share the C runtime.
    appended `""` → len 0. FIXED: emit a `.byte 0` separator after each entry's end
    label so every literal has a distinct address. (backend_x86.cardinal)
 
-4. **`from_char` of a codepoint > 0x10FFFF** — `from_char_out_of_range`.
-   `(from_char (chr 1200000u32))`: interp crashes with an uncaught Python
-   `ValueError` (chr() out of range); C/x86 blindly UTF-8-encode 4 bytes. Both
-   stdout AND status diverge, and the oracle leaks a host exception. Fix: validate
-   the codepoint (reject > 0x10FFFF) with a clean Panic in BOTH the interpreter and
-   the runtime (cl_strings__from_char), so all three agree.
+## FIXED
 
-5. **Printing a surrogate codepoint (U+D800)** — `print_surrogate`.
-   `(println (from_char (chr 55296u32)))`: interp crashes with an uncaught Python
-   `UnicodeEncodeError` (surrogates can't encode); C/x86 emit the 3-byte form.
-   `len`/`chars` of a surrogate string agree — only the encode/print path diverges.
-   Fix: reject surrogates (0xD800–0xDFFF) in from_char (interp + runtime), same as #4.
+4 & 5. **`chr` of an invalid codepoint (> 0x10FFFF or a surrogate)** —
+   `from_char_out_of_range`, `print_surrogate`. `(chr 1200000u32)` then from_char
+   crashed the interpreter with an uncaught Python `ValueError`; `(chr 55296u32)`
+   (U+D800) then println crashed it with a `UnicodeEncodeError`; the backends
+   blindly encoded an invalid UTF-8 form and continued. FIXED: a char is a Unicode
+   scalar value, so `chr` now rejects codepoints > 0x10FFFF and surrogates
+   (0xD800–0xDFFF) with a clean Panic in BOTH the interpreter (_chr) and the
+   runtime (cl_convert__chr). All three paths now panic consistently.
 
 ## HARDENED (passing, no divergence)
 `substr_edges` (past-end / huge / u64-overflow count / codepoint boundary),

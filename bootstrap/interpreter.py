@@ -2116,7 +2116,13 @@ def builtin_convert():
     def _ord(interp, args):
         return CInt(args[0].cp, "u32")
     def _chr(interp, args):
-        return CChar(args[0].val)
+        # A char is a Unicode scalar value. Reject out-of-range / surrogate
+        # codepoints with a clean Panic (was an uncaught Python ValueError/
+        # UnicodeEncodeError later, at from_char/print) so all paths agree.
+        cp = args[0].val
+        if cp > 0x10FFFF or (0xD800 <= cp <= 0xDFFF):
+            raise Panic(f"chr: codepoint out of range: {cp}")
+        return CChar(cp)
     def _int_to_str(interp, args):
         return str(args[0].val)
     def _str_to_int(interp, args):

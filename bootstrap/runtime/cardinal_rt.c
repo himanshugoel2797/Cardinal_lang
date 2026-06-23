@@ -492,7 +492,13 @@ bool cl_strings__eq(cl_str a, cl_str b) {
 }
 
 uint32_t cl_convert__ord(int32_t ch) { return (uint32_t)ch; }
-int32_t  cl_convert__chr(uint32_t v) { return (int32_t)v; }
+int32_t  cl_convert__chr(uint32_t v) {
+    /* A char is a Unicode scalar value: reject out-of-range / surrogate codepoints
+     * (matches the interpreter) rather than encoding an invalid form downstream. */
+    if (v > 0x10FFFF || (v >= 0xD800 && v <= 0xDFFF))
+        cl_panic_cstr("chr: codepoint out of range");
+    return (int32_t)v;
+}
 
 cl_str cl_convert__int_to_str(int64_t v) {
     char buf[24];
