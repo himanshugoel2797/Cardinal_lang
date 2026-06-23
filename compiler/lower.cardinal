@@ -599,6 +599,9 @@ func lower_call (lx LX) (vs {str IVal}) (ts {str Binding}) (callee Expr) (args {
                 do (ir::emit lx.b (IPanic msg: msg))
                 return ImmUnit
             end
+            if (strings::eq id "to_str")
+                do (panic "lower: to_str lowering not yet implemented")
+            end
             if (strings::eq id "len")
                 let at = (checker::check_expr lx.ctx args[0] ts TNone)
                 if (t_is_str at)

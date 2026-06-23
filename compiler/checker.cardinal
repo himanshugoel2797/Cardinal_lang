@@ -1584,6 +1584,15 @@ func check_call (ctx Ctx) (callee Expr) (args {Expr}) (scope {str Binding}) -> T
 end
 
 func check_builtin_call (ctx Ctx) (id str) (args {Expr}) (scope {str Binding}) -> Type
+    if (strings::eq id "to_str")
+        # DESIGN §5.5: string form of any displayable value.
+        if (not (== (len args) 1u64))
+            do (err ctx "to_str takes 1 argument")
+        else
+            do (check_expr ctx args[0] scope TNone)
+        end
+        return (t_str)
+    end
     if (strings::eq id "len")
         if (not (== (len args) 1u64))
             do (err ctx "len takes 1 argument")

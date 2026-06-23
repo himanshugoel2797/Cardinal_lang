@@ -1924,7 +1924,7 @@ class ModuleScope:
 
 def _display(v):
     if isinstance(v, CInt): return str(v.val)
-    if isinstance(v, CFloat): return repr(v.val)
+    if isinstance(v, CFloat): return "%g" % v.val   # DESIGN §5.5: %g, matches the C backend
     if isinstance(v, bool): return "true" if v else "false"
     if isinstance(v, CChar): return chr(v.cp)
     if isinstance(v, str): return v
@@ -2068,6 +2068,10 @@ def _pop(interp, args):
         raise Panic("pop from empty vector")
     return v.items.pop()
 
+def _to_str(interp, args):
+    # The string form of a value (DESIGN §5.5). io::print is print(to_str(x)).
+    return _display(args[0])
+
 GLOBAL_BUILTINS = {
     "panic": Builtin("panic", _panic),
     "len": Builtin("len", _len),
@@ -2076,6 +2080,7 @@ GLOBAL_BUILTINS = {
     "map_has": Builtin("map_has", _map_has),
     "map_del": Builtin("map_del", _map_del),
     "map_keys": Builtin("map_keys", _map_keys),
+    "to_str": Builtin("to_str", _to_str),
 }
 
 

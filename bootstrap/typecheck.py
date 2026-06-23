@@ -640,6 +640,13 @@ class Checker:
     def check_call(self, e, scope, sig):
         # builtins with special signatures
         callee = e.callee
+        if isinstance(callee, Name) and callee.ident == "to_str":
+            # DESIGN §5.5: string form of any displayable value.
+            if len(e.args) != 1:
+                self.err("to_str takes 1 argument", e)
+            else:
+                self.check_expr(e.args[0], scope, sig, None)
+            return STR
         if isinstance(callee, Name) and callee.ident == "len":
             if len(e.args) != 1:
                 self.err("len takes 1 argument", e)
