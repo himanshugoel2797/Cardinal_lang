@@ -725,11 +725,16 @@ func callee_mangle (lx LX) (callee Expr) -> str
 end
 
 func lower_io (lx LX) (vs {str IVal}) (ts {str Binding}) (fn str) (args {Expr}) -> IVal
+    # io::print(x) == print(to_str(x)): one formatter (DESIGN §5.5).
     let i = 0u64
     while (< i (len args))
         let v = (lower_expr lx vs ts args[i] TNone)
         let t = (checker::check_expr lx.ctx args[i] ts TNone)
-        do (lower_display lx vs ts v t)
+        let s = (lower_to_str lx vs ts v t)
+        set lx.irm.externs["cl_print_str"] = true
+        let a1 {IVal} = (vec IVal)
+        do (push a1 s)
+        do (ir::emit lx.b (ICall has_dst: false dst: ImmUnit callee: "cl_print_str" args: a1 ty: (irt (unit_ty))))
         set i = (+ i 1)
     end
     if (strings::eq fn "println")
@@ -737,35 +742,6 @@ func lower_io (lx LX) (vs {str IVal}) (ts {str Binding}) (fn str) (args {Expr}) 
         do (ir::emit lx.b (ICall has_dst: false dst: ImmUnit callee: "cl_print_nl" args: (vec IVal) ty: (irt (unit_ty))))
     end
     return ImmUnit
-end
-
-# Emit a single print call (cl_print_<kind>) for a scalar/str leaf value.
-func disp_call (lx LX) (sym str) (iv IVal) -> unit
-    set lx.irm.externs[sym] = true
-    let a {IVal} = (vec IVal)
-    do (push a iv)
-    do (ir::emit lx.b (ICall has_dst: false dst: ImmUnit callee: sym args: a ty: (irt (unit_ty))))
-end
-
-# Emit a print of a fixed literal string.
-func disp_str (lx LX) (s str) -> unit
-    set lx.irm.externs["cl_print_str"] = true
-    let a {IVal} = (vec IVal)
-    do (push a (ImmStr s: s))
-    do (ir::emit lx.b (ICall has_dst: false dst: ImmUnit callee: "cl_print_str" args: a ty: (irt (unit_ty))))
-end
-
-# Emit `if (idx > 0) print " "` — the element separator inside a collection.
-func disp_sep (lx LX) (idx IVal) -> unit
-    let c = (ir::fresh_temp lx.b (irt (bool_ty)))
-    do (ir::emit lx.b (IBin dst: c op: ">" lhs: idx rhs: (ImmInt val: 0i64 ty: (irt (u64_ty))) ty: (irt (u64_ty)) chk: false))
-    let yes = (ir::fresh_label lx.b "sep_y")
-    let no = (ir::fresh_label lx.b "sep_n")
-    do (ir::emit lx.b (ICondBr cond: c then_l: yes else_l: no))
-    do (ir::new_block lx.b yes)
-    do (disp_str lx " ")
-    do (ir::emit lx.b (IBr target: no))
-    do (ir::new_block lx.b no)
 end
 
 # The bare name of a "mod::Name" qualified type identity (for struct display).
@@ -781,153 +757,11 @@ func bare_name (qn str) -> str
     return qn
 end
 
-# Recursively display a value of type `t`, matching the interpreter's _display:
-# scalars/str/char as themselves; arrays `[..]`, vectors/maps `{..}`, structs
-# `(Name f: v ...)`; elements space-separated.
-func lower_display (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) -> unit
-    match t
-        case (TInt n)
-            if (== (strings::chars n)[0] 'i')
-                do (disp_call lx "cl_print_i64" iv)
-            else
-                do (disp_call lx "cl_print_u64" iv)
-            end
-        case (TFloat n)
-            do (disp_call lx "cl_print_f64" iv)
-        case (TPrim n)
-            if (strings::eq n "bool")
-                do (disp_call lx "cl_print_bool" iv)
-            elsif (strings::eq n "str")
-                do (disp_call lx "cl_print_str" iv)
-            elsif (strings::eq n "char")
-                do (disp_call lx "cl_print_char" iv)
-            elsif (strings::eq n "unit")
-                do (disp_str lx "unit")
-            else
-                do (panic "lower: cannot io::print this type")
-            end
-        case (TStruct n)
-            do (lower_display_struct lx vs ts iv t)
-        case (TArray e)
-            do (lower_display_seq lx vs ts iv t "[" "]")
-        case (TVec e)
-            do (lower_display_seq lx vs ts iv t "{" "}")
-        case (TMap k v)
-            do (lower_display_map lx vs ts iv t)
-        case (TEnum n)
-            do (panic "lower: display of enum values not yet supported")
-        else
-            do (panic "lower: cannot io::print this type")
-    end
-end
-
-# Array/vector display: open elem0 ' ' elem1 ... close.
-func lower_display_seq (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) (openb str) (closeb str) -> unit
-    let is_v = (t_is_vec t)
-    let elem = (t_elem t)
-    do (disp_str lx openb)
-    let idxn = (uniq lx "di")
-    let idx = (ir::add_local lx.b idxn (irt (u64_ty)))
-    let n = (ir::fresh_temp lx.b (irt (u64_ty)))
-    do (ir::emit lx.b (IAssign place: (PLocal name: idxn ty: (irt (u64_ty))) src: (ImmInt val: 0i64 ty: (irt (u64_ty)))))
-    if is_v
-        do (ir::emit lx.b (IVecLen dst: n vec: iv))
-    else
-        do (ir::emit lx.b (IArrLen dst: n arr: iv))
-    end
-    let head = (ir::fresh_label lx.b "ds_head")
-    let bodyl = (ir::fresh_label lx.b "ds_body")
-    let post = (ir::fresh_label lx.b "ds_post")
-    let fin = (ir::fresh_label lx.b "ds_end")
-    do (ir::emit lx.b (IBr target: head))
-    do (ir::new_block lx.b head)
-    let cond = (ir::fresh_temp lx.b (irt (bool_ty)))
-    do (ir::emit lx.b (IBin dst: cond op: "<" lhs: idx rhs: n ty: (irt (u64_ty)) chk: false))
-    do (ir::emit lx.b (ICondBr cond: cond then_l: bodyl else_l: fin))
-    do (ir::new_block lx.b bodyl)
-    do (disp_sep lx idx)
-    let elemv = (ir::fresh_temp lx.b (irt elem))
-    if is_v
-        do (ir::emit lx.b (IVecGet dst: elemv vec: iv idx: idx ty: (irt elem)))
-    else
-        do (ir::emit lx.b (IArrGet dst: elemv arr: iv idx: idx ty: (irt elem)))
-    end
-    do (lower_display lx vs ts elemv elem)
-    do (ir::emit lx.b (IBr target: post))
-    do (ir::new_block lx.b post)
-    let nxt = (ir::fresh_temp lx.b (irt (u64_ty)))
-    do (ir::emit lx.b (IBin dst: nxt op: "+" lhs: idx rhs: (ImmInt val: 1i64 ty: (irt (u64_ty))) ty: (irt (u64_ty)) chk: false))
-    do (ir::emit lx.b (IAssign place: (PLocal name: idxn ty: (irt (u64_ty))) src: nxt))
-    do (ir::emit lx.b (IBr target: head))
-    do (ir::new_block lx.b fin)
-    do (disp_str lx closeb)
-end
-
-# Map display: { k0: v0 k1: v1 ... } in insertion order (via map_keys).
-func lower_display_map (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) -> unit
-    let kty = (t_map_key t)
-    let vty = (t_map_val t)
-    do (disp_str lx "{")
-    let keys = (ir::fresh_temp lx.b (irt (TVec elem: kty)))
-    do (ir::emit lx.b (IMapKeys dst: keys map: iv))
-    let idxn = (uniq lx "dm")
-    let idx = (ir::add_local lx.b idxn (irt (u64_ty)))
-    let n = (ir::fresh_temp lx.b (irt (u64_ty)))
-    do (ir::emit lx.b (IAssign place: (PLocal name: idxn ty: (irt (u64_ty))) src: (ImmInt val: 0i64 ty: (irt (u64_ty)))))
-    do (ir::emit lx.b (IVecLen dst: n vec: keys))
-    let head = (ir::fresh_label lx.b "dm_head")
-    let bodyl = (ir::fresh_label lx.b "dm_body")
-    let post = (ir::fresh_label lx.b "dm_post")
-    let fin = (ir::fresh_label lx.b "dm_end")
-    do (ir::emit lx.b (IBr target: head))
-    do (ir::new_block lx.b head)
-    let cond = (ir::fresh_temp lx.b (irt (bool_ty)))
-    do (ir::emit lx.b (IBin dst: cond op: "<" lhs: idx rhs: n ty: (irt (u64_ty)) chk: false))
-    do (ir::emit lx.b (ICondBr cond: cond then_l: bodyl else_l: fin))
-    do (ir::new_block lx.b bodyl)
-    do (disp_sep lx idx)
-    let kv = (ir::fresh_temp lx.b (irt kty))
-    do (ir::emit lx.b (IVecGet dst: kv vec: keys idx: idx ty: (irt kty)))
-    do (lower_display lx vs ts kv kty)
-    do (disp_str lx ": ")
-    let vv = (ir::fresh_temp lx.b (irt vty))
-    do (ir::emit lx.b (IMapGet dst: vv map: iv key: kv kty: (irt kty) vty: (irt vty)))
-    do (lower_display lx vs ts vv vty)
-    do (ir::emit lx.b (IBr target: post))
-    do (ir::new_block lx.b post)
-    let nxt = (ir::fresh_temp lx.b (irt (u64_ty)))
-    do (ir::emit lx.b (IBin dst: nxt op: "+" lhs: idx rhs: (ImmInt val: 1i64 ty: (irt (u64_ty))) ty: (irt (u64_ty)) chk: false))
-    do (ir::emit lx.b (IAssign place: (PLocal name: idxn ty: (irt (u64_ty))) src: nxt))
-    do (ir::emit lx.b (IBr target: head))
-    do (ir::new_block lx.b fin)
-    do (disp_str lx "}")
-end
-
-# Struct display: (Name f0: v0 f1: v1 ...) in declaration order.
-func lower_display_struct (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) -> unit
-    let qn = (t_struct_name t)
-    let sl = (checker::struct_fields lx.ctx qn)
-    do (disp_str lx "(")
-    do (disp_str lx (bare_name qn))
-    do (disp_str lx " ")
-    let i = 0u64
-    while (< i (len sl.fields))
-        if (> i 0u64)
-            do (disp_str lx " ")
-        end
-        let fd = sl.fields[i]
-        do (disp_str lx (strings::concat fd.name ": "))
-        let fv = (ir::fresh_temp lx.b (irt fd.ty))
-        do (ir::emit lx.b (ILoadField dst: fv base: iv field: fd.name ty: (irt fd.ty)))
-        do (lower_display lx vs ts fv fd.ty)
-        set i = (+ i 1)
-    end
-    do (disp_str lx ")")
-end
 
 # --------------------------------------------------------------------------- #
-# to_str (DESIGN §5.5) — builds a cl_str (vs lower_display which prints directly).
-# Same canonical forms; used by the explicit `(to_str x)` builtin.
+# to_str (DESIGN §5.5) — the sole value formatter: io::print is print(to_str(x)).
+# User types (struct/enum) dispatch to a synthesized (or user-overridden) per-type
+# `<Type>_to_str` function; scalars/containers are inlined.
 # --------------------------------------------------------------------------- #
 
 # concat(a, b) -> fresh str temp
@@ -983,7 +817,8 @@ func lower_to_str (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) 
                 do (panic "lower: to_str of this type unsupported")
             end
         case (TStruct nm)
-            return (lts_struct lx vs ts iv t)
+            # call the type's (autogenerated or user-overridden) to_str function
+            return (ts_call1 lx (to_str_sym nm) iv)
         case (TArray e)
             return (lts_seq lx vs ts iv t "[" "]")
         case (TVec e)
@@ -991,7 +826,7 @@ func lower_to_str (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) 
         case (TMap k v)
             return (lts_map lx vs ts iv t)
         case (TEnum nm)
-            do (panic "lower: to_str of enum values not yet implemented")
+            return (ts_call1 lx (to_str_sym nm) iv)
         else
             do (panic "lower: to_str of this type unsupported")
     end
@@ -1123,6 +958,71 @@ func lts_struct (lx LX) (vs {str IVal}) (ts {str Binding}) (iv IVal) (t Type) ->
     end
     do (ts_app lx accn acc (ImmStr s: ")"))
     return acc
+end
+
+# Enum value -> "Name::Variant" (bare enum name + variant), built inline as the
+# body of the synthesized to_str function.
+func lts_enum (lx LX) (iv IVal) (t Type) (ename str) (variants {str}) -> IVal
+    let resn = (uniq lx "tseres")
+    let res = (ir::add_local lx.b resn (irt (str_ty)))
+    do (ir::emit lx.b (IAssign place: (PLocal name: resn ty: (irt (str_ty))) src: (ImmStr s: (strings::concat ename "::?"))))
+    let i = 0u64
+    while (< i (len variants))
+        let c = (ir::fresh_temp lx.b (irt (bool_ty)))
+        do (ir::emit lx.b (IBin dst: c op: "==" lhs: iv rhs: (ImmInt val: (as i i64) ty: (irt t)) ty: (irt t) chk: false))
+        let yes = (ir::fresh_label lx.b "ev_y")
+        let no = (ir::fresh_label lx.b "ev_n")
+        do (ir::emit lx.b (ICondBr cond: c then_l: yes else_l: no))
+        do (ir::new_block lx.b yes)
+        do (ir::emit lx.b (IAssign place: (PLocal name: resn ty: (irt (str_ty))) src: (ImmStr s: (strings::concat ename (strings::concat "::" variants[i])))))
+        do (ir::emit lx.b (IBr target: no))
+        do (ir::new_block lx.b no)
+        set i = (+ i 1)
+    end
+    return res
+end
+
+# "mod::Name" -> the mangled to_str symbol cl_<mod>__<Name>_to_str.
+func to_str_sym (qn str) -> str
+    let cs = (strings::chars qn)
+    let i = 0u64
+    while (< i (len cs))
+        if (and (== cs[i] ':') (and (< (+ i 1u64) (len cs)) (== cs[(+ i 1u64)] ':')))
+            let md = (strings::substr qn 0u64 i)
+            let nm = (strings::substr qn (+ i 2u64) (- (len cs) (+ i 2u64)))
+            return (mangle md (strings::concat nm "_to_str"))
+        end
+        set i = (+ i 1u64)
+    end
+    return (mangle "" (strings::concat qn "_to_str"))
+end
+
+# Synthesize `func <Name>_to_str (self T) -> str` for a struct (autogen body).
+func synth_struct_to_str (lx LX) (modname str) (sname str) -> unit
+    let pty = (TStruct name: (qual modname sname))
+    let params {IRParam} = (vec IRParam)
+    do (push params (IRParam name: "self" ty: (irt pty)))
+    set lx.b = (ir::new_builder (mangle modname (strings::concat sname "_to_str")) params (irt (str_ty)))
+    set lx.uq[0] = 0i64
+    let pv = (Local name: "self" ty: (irt pty))
+    let evs {str IVal} = (map str IVal)
+    let ets {str Binding} = (map str Binding)
+    let s = (lts_struct lx evs ets pv pty)
+    do (ir::emit lx.b (IRet has_val: true val: s))
+    do (push lx.irm.funcs lx.b.fn)
+end
+
+# Synthesize `func <Name>_to_str (self E) -> str` for an enum (variant switch).
+func synth_enum_to_str (lx LX) (modname str) (ename str) (variants {str}) -> unit
+    let ety = (TEnum name: (qual modname ename))
+    let params {IRParam} = (vec IRParam)
+    do (push params (IRParam name: "self" ty: (irt ety)))
+    set lx.b = (ir::new_builder (mangle modname (strings::concat ename "_to_str")) params (irt (str_ty)))
+    set lx.uq[0] = 0i64
+    let pv = (Local name: "self" ty: (irt ety))
+    let s = (lts_enum lx pv ety ename variants)
+    do (ir::emit lx.b (IRet has_val: true val: s))
+    do (push lx.irm.funcs lx.b.fn)
 end
 
 # Lower the value for struct field `fname` (declared type `fty`) from the
@@ -1654,6 +1554,30 @@ export func lower_program (src str) (searchdirs {str}) -> IRModule
             end
         end
         set ni = (+ ni 1)
+    end
+    # Pass 3: synthesize <Type>_to_str for every struct/enum (always-emit,
+    # DESIGN §5.5/§5.6). User OVERRIDES are step 3 (they need interpreter-side
+    # defining-module dispatch for parity); until then every hook is autogenerated.
+    # KNOWN (until step 3): a user function literally named `<Type>_to_str` in that
+    # type's module mangles to the SAME symbol as the synthesized hook -> C
+    # duplicate-symbol error, with no Cardinal-level diagnostic yet.
+    let ti = 0u64
+    while (< ti (len names))
+        let tsig = ctx.sigs[names[ti]]
+        if tsig.has_module
+            set lx.ctx.cur = tsig
+            for d in tsig.decls
+                match d
+                    case (DStruct sname sfields is_packed exported)
+                        do (synth_struct_to_str lx tsig.name sname)
+                    case (DEnum ename variants exported)
+                        do (synth_enum_to_str lx tsig.name ename variants)
+                    else
+                        pass
+                end
+            end
+        end
+        set ti = (+ ti 1)
     end
     return m
 end
