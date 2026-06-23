@@ -5,21 +5,21 @@ that runs on the Python bootstrap interpreter and emits native code. **Goal:
 self-host** — DONE for the C backend. Remote: `github.com/himanshugoel2797/Cardinal_lang`
 (push over SSH; the `gh` token is expired).
 
-**Status:** Stage 4 (sum types + match, closures), Stage 5 (self-host fixed point),
-and the reflection API are all DONE + committed. A second backend — a **native
-x86_64 direct-assembler** (`backend_x86.cardinal`, emits GNU `as` AT&T, same IR +
-runtime ABI as the C backend) — is in progress: milestones 1–3 done (scalars,
-control flow, calls, strings, GC rooting, sum types, vectors, maps), all
-byte-identical to the interpreter + GC-sanitizer-clean. **Remaining x86 milestones:
-floats (xmm), by-value aggregates (value structs + arrays via the SysV MEMORY /
-register-pair ABI), and closures (`cl_closure` is 16 bytes).** See
-"x86_64 backend" below.
+**Status:** Stage 4 (sum types + match, closures), Stage 5 (C-backend self-host),
+the reflection API, AND a full **native x86_64 direct-assembler backend** are all
+DONE + committed. The x86 backend (`backend_x86.cardinal`, emits GNU `as` AT&T,
+same IR + runtime ABI as the C backend) compiles the same 10/13 examples
+byte-identically to the interpreter, is GC-sanitizer-clean, AND **self-hosts**:
+the native x86-compiled compiler compiles the whole compiler to byte-identical C.
+**The only remaining x86 gap is floats (xmm); the compiler doesn't use floats, so
+it doesn't block x86 self-host.**
 
-- **Self-host:** `sh compiler/selfhost.sh` → cc1.c == cc2.c byte-identical.
+- **C self-host:** `sh compiler/selfhost.sh` → cc1.c == cc2.c byte-identical.
+- **x86 self-host:** `sh compiler/selfhost_x86.sh` → the native x86 compiler emits
+  identical C to the Python-hosted compiler.
 - **x86 backend:** `sh compiler/ccrun_x86.sh <prog.cardinal>` (emit `.s`: `--emit`).
-  Driver `emitx86.cardinal`; selector `backend.cardinal` ("x86_64"). Works today on
-  fib/mathx/scalar/sum/vector/map programs; panics cleanly on the unimplemented
-  aggregate/closure/float ops.
+  Driver `emitx86.cardinal`; selector `backend.cardinal` ("x86_64"). Floats raise
+  a clean `panic "x86: float ..."`.
 - **Reflection (§5.6):** builtin `reflect` module — `reflect::typeof(x) -> TypeInfo
   {name,kind,fields,variants}` (static type → descriptor) and `reflect::variant_of(x)`
   (live sum/enum variant). Deferred: per-field type descriptors + byte offsets
@@ -194,7 +194,27 @@ are identical (only residual diff is the C toolchain embedding the input path).
 Enabled by native `fs::read_file`/`fs::exists`/`sys::args` (cardinal_rt.c) + the
 `int main(int argc,char**argv)` wrapper setting `cl_sys_set_args`.
 
-## NEXT: x86_64 backend — remaining milestones
+## x86_64 backend — DONE (self-hosts; commits through milestone 7)
+A stack-slot machine (no regalloc): every IR temp/local/param → a size-aware frame
+slot; ints computed in 64-bit then normalized to width; full SysV AMD64 ABI
+(integer regs, 2-reg ≤16B aggregates, >16B MEMORY on the stack, hidden-pointer
+returns, integer overflow args on the stack); precise GC shadow-stack rooting; call
+args/values parked in frame SCRATCH slots (never push/pop across a call — that
+misaligns %rsp). Covers scalars, control flow, calls+recursion, panic, strings,
+io, sum types, vectors, maps, closures (boxes/env/16B cl_closure/thunks), arrays
+(24B cl_array via hidden-ptr + MEMORY-class cl_array_at), and value structs
+(IStructNew/ILoadField/PField, ≤16B in regs, >16B MEMORY). Verify with
+`ccrun_x86.sh`; GC-stress with ASan+UBSan + `CARDINAL_GC_THRESHOLD=0`;
+`selfhost_x86.sh` checks the whole-compiler self-emit identity. Two committee-found
+ABI bugs were fixed: narrow call-return normalization (str ==) and multi-word
+container elements (vec/map of closures).
+
+**Only remaining x86 op:** floats (xmm) — ImmFloat (rodata .double), addsd/.../
+ucomisd, cvtsi2sd/cvttsd2si, float args xmm0..7 / return xmm0, cl_f64_to_str. No
+example and not the compiler uses floats, so this is the last loose end, not a
+blocker.
+
+## (historical) x86_64 backend — remaining milestones
 `backend_x86.cardinal` is a stack-slot machine (no regalloc): every IR temp/local/
 param → an 8-byte frame slot; ints computed in 64-bit then normalized to width;
 SysV AMD64 ABI; precise GC shadow-stack rooting; call args + values parked in
