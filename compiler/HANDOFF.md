@@ -207,18 +207,20 @@ immutable static `cl_str`.** You must:
      inline); recurse-via-calls (the model recursive sum-type display will reuse,
      Stage 4). ENUM display works now. io::print rerouted to `print(to_str(x))` —
      ONE formatter; lower_display + disp_* DELETED. GC-safe at threshold 0.
-     **STEP 3 (pending) — user OVERRIDES + descriptors:** (a) override hooks: a
-     user `<Type>_to_str` in the type's defining module replaces the autogen.
-     NATIVE needs Pass 3 to SKIP synthesis when the user defined it (else
-     duplicate symbol — current KNOWN hazard, no diagnostic). INTERPRETER needs
-     defining-module dispatch: `_display`/`to_str` of a StructV/EnumV must call the
-     module's `<Type>_to_str` if present — but StructV/EnumV DON'T carry their
-     defining module, so add a `defmod` field (set at construction via find_struct's
-     module) and split+lookup. CHECKER (both, verdict-equivalent): a
-     `<Type>_to_str` must be `(T)->str` (wrong sig = error). Without all three,
-     overrides would silently diverge interpreter-vs-native — that's why step 2
-     ships autogen-only. (b) **runtime type descriptors** (§5.6, user chose IN
-     scope) — its own later subsystem; NOT needed by to_str.
+     **STEP 3 DONE (committee APPROVE, commit abce79c) — user OVERRIDES:** a user
+     `<Type>_to_str (x T) -> str` in the type's defining module replaces the
+     autogen (travels with the type). (a) NATIVE: Pass 3 SKIPS synthesis when the
+     module defines that function. (b) INTERPRETER: StructV/EnumV carry `defmod`
+     (set at every construction site); `_display(interp,v)` dispatches a struct/enum
+     to its module's `<Type>_to_str` via `interp.call` if present, else canonical
+     (recursing so nested overrides apply). (c) BOTH checkers: a `<T>_to_str` for a
+     local struct/enum must be `(T)->str` (wrong sig = error; `foo_to_str` for
+     non-type foo is left alone). Verified incl. cross-module + module-local
+     shadowing; difftest AGREE=13. **`to_str`/§5.5 is now COMPLETE for struct/enum.**
+     Remaining: **sum-type `to_str`** lands with Stage 4 (the function model already
+     supports recursion-via-calls; synth a variant-tag switch). **Runtime type
+     descriptors** (§5.6, user chose IN scope) — its own later subsystem; NOT
+     needed by to_str.
    * **`set m[k].field = v` — RESOLVED (user ruling): rejected in BOTH checkers.**
      Maps hold value-semantic copies, so taking a mutable field reference into a
      map element has no faithful semantics. `check_place` now threads a `via_map`
