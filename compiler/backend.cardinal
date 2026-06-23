@@ -8,10 +8,14 @@ module backend
 import strings
 import ir
 import backend_c
+import backend_x86
 
 export func emit_with (name str) (m IRModule) -> str
     if (strings::eq name "c")
         return (backend_c::emit m)
+    end
+    if (strings::eq name "x86_64")
+        return (backend_x86::emit m)
     end
     do (panic (strings::concat "backend: unknown backend " name))
     return ""

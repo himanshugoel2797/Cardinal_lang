@@ -1,0 +1,49 @@
+module emitx86
+
+# Driver: lower the Cardinal program named on argv[0] to IR, emit x86_64 assembly
+# (GNU `as`, AT&T), print it. Mirrors emitir.cardinal but selects the x86_64
+# backend. (Kept separate so the C-backend self-host driver emitir is untouched.)
+
+import io
+import fs
+import sys
+import strings
+import checker
+import lower
+import backend
+
+func dirname (p str) -> str
+    let cs = (strings::chars p)
+    let last = (- 1i64)
+    let i = 0u64
+    while (< i (len cs))
+        if (== cs[i] '/')
+            set last = (as i i64)
+        end
+        set i = (+ i 1)
+    end
+    if (< last 0i64)
+        return "."
+    end
+    return (strings::substr p 0u64 (as last u64))
+end
+
+func main () -> i32
+    let a = (sys::args)
+    let dirs {str} = (vec str)
+    do (push dirs (dirname a[0]))
+    do (push dirs ".")
+    let src = (fs::read_file a[0])
+    let errs = (checker::check_file src dirs)
+    if (> (len errs) 0u64)
+        let i = 0u64
+        while (< i (len errs))
+            do (io::println errs[i])
+            set i = (+ i 1)
+        end
+        return 1i32
+    end
+    let m = (lower::lower_program src dirs)
+    do (io::print (backend::emit_with "x86_64" m))
+    return 0i32
+end

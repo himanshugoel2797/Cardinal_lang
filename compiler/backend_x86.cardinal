@@ -1,0 +1,1029 @@
+module backend_x86
+
+# x86_64 direct-assembler backend: consumes the SAME IR (ir.cardinal) as the C
+# backend and emits GNU `as` (AT&T) assembly, assembled + linked against the
+# canonical runtime (cardinal_rt.c + cardinal_gc.c) — identical ABI to the C
+# backend, so program behavior is byte-identical to the interpreter.
+#
+# Model: a stack-slot machine (no register allocation). Every IR temp/local/param
+# gets an 8-byte frame slot at -N(%rbp); each instruction loads operand slots into
+# scratch regs (%rax/%rcx/%rdx), computes, and stores the result back. Integers
+# are computed in 64-bit and normalized (sign/zero-extended) to the declared
+# width, so a slot always holds the value extended to 64 bits.
+#
+# MILESTONE 1: sized ints (i8..i64/u8..u64), bool, char, enums, full control flow,
+# casts (int<->int), function calls + recursion, panic, io of scalars (via the
+# lowerer's to_str calls), and precise GC shadow-stack rooting. Floats, strings
+# literals, and aggregates (structs/arrays/vec/map/sum/closure) raise a clean
+# panic until their milestone.
+
+import strings
+import convert
+import checker
+import ir
+
+# --------------------------------------------------------------------------- #
+# Small string helpers
+# --------------------------------------------------------------------------- #
+
+func i2s (v i64) -> str
+    return (convert::int_to_str v)
+end
+
+func cat2 (a str) (b str) -> str
+    return (strings::concat a b)
+end
+
+func cat3 (a str) (b str) (c str) -> str
+    return (strings::concat a (strings::concat b c))
+end
+
+func line (s str) -> str
+    return (strings::concat s "\n")
+end
+
+# Escape a string for a GNU `as` .asciz directive (control bytes -> C escapes).
+func asm_escape (s str) -> str
+    let cs = (strings::chars s)
+    let out = ""
+    let i = 0u64
+    while (< i (len cs))
+        let c = cs[i]
+        if (== c '"')
+            set out = (strings::concat out "\\\"")
+        elsif (== c '\\')
+            set out = (strings::concat out "\\\\")
+        elsif (== c '\n')
+            set out = (strings::concat out "\\n")
+        elsif (== c '\t')
+            set out = (strings::concat out "\\t")
+        elsif (== c '\r')
+            set out = (strings::concat out "\\r")
+        else
+            set out = (strings::concat out (strings::from_char c))
+        end
+        set i = (+ i 1)
+    end
+    return out
+end
+
+# Intern a string literal into the rodata pool, returning its label.
+func pool_add (strs {str str}) (s str) -> str
+    if (map_has strs s)
+        return strs[s]
+    end
+    let lab = (strings::concat ".Lstr" (i2s (as (len (map_keys strs)) i64)))
+    set strs[s] = lab
+    return lab
+end
+
+# Collect every string literal reachable in a module into the rodata pool.
+func collect_iv (strs {str str}) (v IVal) -> unit
+    match v
+        case (ImmStr s)
+            let ign = (pool_add strs s)
+        else
+            pass
+    end
+end
+
+func collect_instr (strs {str str}) (ins Instr) -> unit
+    match ins
+        case (IConst dst v ty)
+            do (collect_iv strs v)
+        case (IAssign p src)
+            do (collect_iv strs src)
+        case (ICall has_dst dst callee args ty)
+            let i = 0u64
+            while (< i (len args))
+                do (collect_iv strs args[i])
+                set i = (+ i 1)
+            end
+        case (IPanic msg)
+            do (collect_iv strs msg)
+        case (IStructNew dst struct_name fnames fvals)
+            let i = 0u64
+            while (< i (len fvals))
+                do (collect_iv strs fvals[i])
+                set i = (+ i 1)
+            end
+        case (IVecLit dst elem elems)
+            let i = 0u64
+            while (< i (len elems))
+                do (collect_iv strs elems[i])
+                set i = (+ i 1)
+            end
+        case (IArrLit dst elem elems)
+            let i = 0u64
+            while (< i (len elems))
+                do (collect_iv strs elems[i])
+                set i = (+ i 1)
+            end
+        case (ISumNew dst variant_qual tag fnames fvals)
+            let i = 0u64
+            while (< i (len fvals))
+                do (collect_iv strs fvals[i])
+                set i = (+ i 1)
+            end
+        else
+            pass
+    end
+end
+
+func collect_strs (m IRModule) -> {str str}
+    let strs {str str} = (map str str)
+    let fi = 0u64
+    while (< fi (len m.funcs))
+        let f = m.funcs[fi]
+        let bi = 0u64
+        while (< bi (len f.blocks))
+            let blk = f.blocks[bi]
+            let ii = 0u64
+            while (< ii (len blk.instrs))
+                do (collect_instr strs blk.instrs[ii])
+                set ii = (+ ii 1)
+            end
+            set bi = (+ bi 1)
+        end
+        set fi = (+ fi 1)
+    end
+    return strs
+end
+
+# --------------------------------------------------------------------------- #
+# Integer type info: width (bits) + signedness, from a type name.
+# --------------------------------------------------------------------------- #
+
+func int_bits (name str) -> i64
+    if (or (strings::eq name "i8") (strings::eq name "u8"))
+        return 8i64
+    end
+    if (or (strings::eq name "i16") (strings::eq name "u16"))
+        return 16i64
+    end
+    if (or (strings::eq name "i32") (strings::eq name "u32"))
+        return 32i64
+    end
+    return 64i64
+end
+
+func int_signed (name str) -> bool
+    return (== (strings::chars name)[0] 'i')
+end
+
+# An IRType's integer (bits, signed) — char/enum/bool behave as fixed-width ints.
+# Returns bits; signedness via irt_signed.
+func irt_bits (t IRType) -> i64
+    match t
+        case (TyOf st)
+            match st
+                case (TInt n)
+                    return (int_bits n)
+                case (TEnum n)
+                    return 32i64
+                case (TPrim n)
+                    if (strings::eq n "char")
+                        return 32i64
+                    end
+                    if (strings::eq n "bool")
+                        return 8i64
+                    end
+                    return 64i64
+                else
+                    return 64i64
+            end
+        else
+            return 64i64
+    end
+    return 64i64
+end
+
+func irt_signed (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TInt n)
+                    return (int_signed n)
+                case (TEnum n)
+                    return true
+                case (TPrim n)
+                    return false
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+func irt_is_float (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TFloat n)
+                    return true
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+func irt_is_unit (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TPrim n)
+                    return (strings::eq n "unit")
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+func irt_is_int_class (t IRType) -> bool
+    if (irt_is_float t)
+        return false
+    end
+    if (irt_is_unit t)
+        return false
+    end
+    return true
+end
+
+# Managed (GC-traced) types — must be shadow-stack-rooted. Mirrors backend_c.
+func managed (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TStruct n)
+                    return true
+                case (TArray e)
+                    return true
+                case (TVec e)
+                    return true
+                case (TMap k v)
+                    return true
+                case (TFunc p r)
+                    return true
+                case (TSum n)
+                    return true
+                case (TPrim n)
+                    return (strings::eq n "str")
+                else
+                    return false
+            end
+        case (Ptr p)
+            return true
+        case VoidPtr
+            return false
+    end
+    return false
+end
+
+# A managed type is a single 8-byte handle EXCEPT value structs/arrays/closures,
+# which are multi-word and unsupported in milestone 1 (raise a clean panic).
+func is_simple_8byte (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TStruct n)
+                    return false
+                case (TArray e)
+                    return false
+                case (TFunc p r)
+                    return false
+                else
+                    return true
+            end
+        case (Ptr p)
+            return true
+        case VoidPtr
+            return true
+    end
+    return true
+end
+
+# --------------------------------------------------------------------------- #
+# Frame: assign an 8-byte slot to every temp/local/param. Slot keys: "t<id>" for
+# temps, "l<name>" for locals/params. Offsets are negative from %rbp.
+# --------------------------------------------------------------------------- #
+
+func tkey (id i64) -> str
+    return (strings::concat "t" (i2s id))
+end
+func lkey (name str) -> str
+    return (strings::concat "l" name)
+end
+
+# The slot key for an operand IVal (Temp/Local only).
+func iv_key (v IVal) -> str
+    match v
+        case (Temp id ty)
+            return (tkey id)
+        case (Local name ty)
+            return (lkey name)
+        else
+            return ""
+    end
+    return ""
+end
+
+func iv_ty (v IVal) -> IRType
+    match v
+        case (Temp id ty)
+            return ty
+        case (Local name ty)
+            return ty
+        case (ImmInt vv ty)
+            return ty
+        case (ImmFloat t ty)
+            return ty
+        case (ImmNull ty)
+            return ty
+        case (ImmBool b)
+            return (TyOf t: (TPrim name: "bool"))
+        case (ImmChar cp)
+            return (TyOf t: (TPrim name: "char"))
+        case (ImmStr s)
+            return (TyOf t: (TPrim name: "str"))
+        case ImmUnit
+            return (TyOf t: (TPrim name: "unit"))
+    end
+    return (TyOf t: (TPrim name: "unit"))
+end
+
+# --------------------------------------------------------------------------- #
+# Register naming for a width (the low sub-register of %rax/%rcx/%rdx).
+# --------------------------------------------------------------------------- #
+
+func reg_for (base str) (bits i64) -> str
+    if (== bits 8i64)
+        if (strings::eq base "a")
+            return "%al"
+        end
+        if (strings::eq base "c")
+            return "%cl"
+        end
+        return "%dl"
+    end
+    if (== bits 16i64)
+        if (strings::eq base "a")
+            return "%ax"
+        end
+        if (strings::eq base "c")
+            return "%cx"
+        end
+        return "%dx"
+    end
+    if (== bits 32i64)
+        if (strings::eq base "a")
+            return "%eax"
+        end
+        if (strings::eq base "c")
+            return "%ecx"
+        end
+        return "%edx"
+    end
+    if (strings::eq base "a")
+        return "%rax"
+    end
+    if (strings::eq base "c")
+        return "%rcx"
+    end
+    return "%rdx"
+end
+
+# Sign/zero-extend %rax (holding a `bits`-wide value) to a normalized 64-bit form.
+func extend_rax (bits i64) (signed bool) -> str
+    if (== bits 64i64)
+        return ""
+    end
+    if (== bits 32i64)
+        if signed
+            return (line "    movslq %eax, %rax")
+        end
+        return (line "    movl %eax, %eax")
+    end
+    if (== bits 16i64)
+        if signed
+            return (line "    movswq %ax, %rax")
+        end
+        return (line "    movzwq %ax, %rax")
+    end
+    # 8-bit
+    if signed
+        return (line "    movsbq %al, %rax")
+    end
+    return (line "    movzbq %al, %rax")
+end
+
+# --------------------------------------------------------------------------- #
+# Per-function state: slot offsets + the current function's label prefix.
+# --------------------------------------------------------------------------- #
+
+struct BX
+    slots {str i64}     # slot key -> byte offset from %rbp (negative)
+    fname str           # current function (label prefix, avoids cross-fn clashes)
+    strs {str str}      # string-literal content -> rodata label
+end
+
+func slot_off (bx BX) (key str) -> i64
+    if (map_has bx.slots key)
+        return bx.slots[key]
+    end
+    do (panic (strings::concat "x86: no slot for " key))
+    return 0i64
+end
+
+func off_mem (off i64) -> str
+    return (strings::concat (i2s off) "(%rbp)")
+end
+
+# Per-function label (IR labels repeat across functions; prefix to disambiguate).
+func lbl (bx BX) (name str) -> str
+    return (strings::concat ".L" (strings::concat bx.fname (strings::concat "_" name)))
+end
+
+# The SysV integer argument register for parameter index i (0..5).
+func argreg (i i64) -> str
+    if (== i 0i64)
+        return "%rdi"
+    end
+    if (== i 1i64)
+        return "%rsi"
+    end
+    if (== i 2i64)
+        return "%rdx"
+    end
+    if (== i 3i64)
+        return "%rcx"
+    end
+    if (== i 4i64)
+        return "%r8"
+    end
+    return "%r9"
+end
+
+# --------------------------------------------------------------------------- #
+# Operand load / result store
+# --------------------------------------------------------------------------- #
+
+# Load operand `v` into the 64-bit register named by base ("a"/"c"/"d" -> r*x) or
+# a full register string starting with '%' (e.g. an arg reg). A slot already holds
+# the value normalized to 64 bits, so a plain movq suffices.
+func load_into (bx BX) (regfull str) (v IVal) -> str
+    match v
+        case (Temp id ty)
+            return (line (cat3 "    movq " (cat3 (off_mem (slot_off bx (tkey id))) ", " regfull) ""))
+        case (Local name ty)
+            return (line (cat3 "    movq " (cat3 (off_mem (slot_off bx (lkey name))) ", " regfull) ""))
+        case (ImmInt vv ty)
+            return (line (cat3 "    movabsq $" (cat3 (i2s vv) ", " regfull) ""))
+        case (ImmBool b)
+            if b
+                return (line (cat2 "    movq $1, " regfull))
+            end
+            return (line (cat2 "    movq $0, " regfull))
+        case (ImmChar cp)
+            return (line (cat3 "    movabsq $" (cat3 (i2s cp) ", " regfull) ""))
+        case ImmUnit
+            return (line (cat2 "    movq $0, " regfull))
+        case (ImmNull ty)
+            return (line (cat2 "    movq $0, " regfull))
+        case (ImmFloat t ty)
+            do (panic "x86: float literal (later milestone)")
+        case (ImmStr s)
+            do (panic "x86: string literal (later milestone)")
+    end
+    return ""
+end
+
+func reg_base (which str) -> str
+    if (strings::eq which "a")
+        return "%rax"
+    end
+    if (strings::eq which "c")
+        return "%rcx"
+    end
+    return "%rdx"
+end
+
+# Store %rax into operand `dst`'s slot.
+func store_rax (bx BX) (dst IVal) -> str
+    return (line (cat3 "    movq %rax, " (off_mem (slot_off bx (iv_key dst))) ""))
+end
+
+# Materialize operand `v` into %rax. Unlike load_into, this handles ImmStr (a
+# string literal -> cl_strlit on the interned rodata pointer); it issues a CALL,
+# so callers must not hold live values in caller-saved regs across it.
+func load_to_rax (bx BX) (v IVal) -> str
+    match v
+        case (ImmStr s)
+            let lab = bx.strs[s]
+            let out = (line (cat2 "    leaq " (cat2 lab "(%rip), %rdi")))
+            return (strings::concat out (line "    call cl_strlit"))
+        else
+            return (load_into bx "%rax" v)
+    end
+    return (load_into bx "%rax" v)
+end
+
+# --------------------------------------------------------------------------- #
+# Instruction emission
+# --------------------------------------------------------------------------- #
+
+func cmp_setcc (op str) (signed bool) -> str
+    if (strings::eq op "==")
+        return "sete"
+    end
+    if (strings::eq op "!=")
+        return "setne"
+    end
+    if (strings::eq op "<")
+        if signed
+            return "setl"
+        end
+        return "setb"
+    end
+    if (strings::eq op "<=")
+        if signed
+            return "setle"
+        end
+        return "setbe"
+    end
+    if (strings::eq op ">")
+        if signed
+            return "setg"
+        end
+        return "seta"
+    end
+    if signed
+        return "setge"
+    end
+    return "setae"
+end
+
+func is_cmp_op (op str) -> bool
+    let v {str} = (vec str)
+    do (push v "<")
+    do (push v "<=")
+    do (push v ">")
+    do (push v ">=")
+    do (push v "==")
+    do (push v "!=")
+    let i = 0u64
+    while (< i (len v))
+        if (strings::eq v[i] op)
+            return true
+        end
+        set i = (+ i 1)
+    end
+    return false
+end
+
+func emit_bin (bx BX) (dst IVal) (op str) (lhs IVal) (rhs IVal) (ty IRType) (chk bool) -> str
+    let bits = (irt_bits ty)
+    let signed = (irt_signed ty)
+    let out = ""
+    set out = (strings::concat out (load_into bx "%rax" lhs))
+    set out = (strings::concat out (load_into bx "%rcx" rhs))
+    if (is_cmp_op op)
+        # comparison operands carry the operand type's width/signedness; the result
+        # is a bool (0/1).
+        set out = (strings::concat out (line "    cmpq %rcx, %rax"))
+        set out = (strings::concat out (line (cat3 "    " (cmp_setcc op signed) " %al")))
+        set out = (strings::concat out (line "    movzbq %al, %rax"))
+        set out = (strings::concat out (store_rax bx dst))
+        return out
+    end
+    if (or (strings::eq op "/") (strings::eq op "%"))
+        let okl = (lbl bx (strings::concat "divok_" (iv_key dst)))
+        set out = (strings::concat out (line "    testq %rcx, %rcx"))
+        set out = (strings::concat out (line (cat2 "    jne " okl)))
+        set out = (strings::concat out (line "    leaq .Lcl_divzero(%rip), %rdi"))
+        set out = (strings::concat out (line "    call cl_panic_cstr"))
+        set out = (strings::concat out (line (cat2 okl ":")))
+        if signed
+            set out = (strings::concat out (line "    cqto"))
+            set out = (strings::concat out (line "    idivq %rcx"))
+        else
+            set out = (strings::concat out (line "    xorl %edx, %edx"))
+            set out = (strings::concat out (line "    divq %rcx"))
+        end
+        if (strings::eq op "%")
+            set out = (strings::concat out (line "    movq %rdx, %rax"))
+        end
+        set out = (strings::concat out (extend_rax bits signed))
+        set out = (strings::concat out (store_rax bx dst))
+        return out
+    end
+    # arithmetic / bitwise (fold target)
+    if (strings::eq op "+")
+        set out = (strings::concat out (line "    addq %rcx, %rax"))
+    elsif (strings::eq op "-")
+        set out = (strings::concat out (line "    subq %rcx, %rax"))
+    elsif (strings::eq op "*")
+        set out = (strings::concat out (line "    imulq %rcx, %rax"))
+    elsif (strings::eq op "band")
+        set out = (strings::concat out (line "    andq %rcx, %rax"))
+    elsif (strings::eq op "bor")
+        set out = (strings::concat out (line "    orq %rcx, %rax"))
+    elsif (strings::eq op "bxor")
+        set out = (strings::concat out (line "    xorq %rcx, %rax"))
+    elsif (strings::eq op "shl")
+        set out = (strings::concat out (line "    shlq %cl, %rax"))
+    elsif (strings::eq op "shr")
+        if signed
+            set out = (strings::concat out (line "    sarq %cl, %rax"))
+        else
+            set out = (strings::concat out (line "    shrq %cl, %rax"))
+        end
+    else
+        do (panic (strings::concat "x86: unsupported binary op " op))
+    end
+    if chk
+        # width overflow: raw 64-bit result vs its normalized (truncated) form.
+        set out = (strings::concat out (line "    movq %rax, %rdx"))
+        set out = (strings::concat out (extend_rax bits signed))
+        let okl = (lbl bx (strings::concat "ovok_" (iv_key dst)))
+        set out = (strings::concat out (line "    cmpq %rax, %rdx"))
+        set out = (strings::concat out (line (cat2 "    je " okl)))
+        set out = (strings::concat out (line "    leaq .Lcl_overflow(%rip), %rdi"))
+        set out = (strings::concat out (line "    call cl_panic_cstr"))
+        set out = (strings::concat out (line (cat2 okl ":")))
+    else
+        set out = (strings::concat out (extend_rax bits signed))
+    end
+    set out = (strings::concat out (store_rax bx dst))
+    return out
+end
+
+func emit_un (bx BX) (dst IVal) (op str) (v IVal) (ty IRType) (chk bool) -> str
+    let bits = (irt_bits ty)
+    let signed = (irt_signed ty)
+    let out = (load_into bx "%rax" v)
+    if (strings::eq op "not")
+        set out = (strings::concat out (line "    testq %rax, %rax"))
+        set out = (strings::concat out (line "    sete %al"))
+        set out = (strings::concat out (line "    movzbq %al, %rax"))
+        set out = (strings::concat out (store_rax bx dst))
+        return out
+    end
+    if (strings::eq op "bnot")
+        set out = (strings::concat out (line "    notq %rax"))
+        set out = (strings::concat out (extend_rax bits signed))
+        set out = (strings::concat out (store_rax bx dst))
+        return out
+    end
+    # unary minus
+    set out = (strings::concat out (line "    negq %rax"))
+    set out = (strings::concat out (extend_rax bits signed))
+    set out = (strings::concat out (store_rax bx dst))
+    return out
+end
+
+func emit_call (bx BX) (has_dst bool) (dst IVal) (callee str) (args {IVal}) -> str
+    if (> (len args) 6u64)
+        do (panic "x86: >6 call arguments (stack args later)")
+    end
+    let out = ""
+    # Materialize each arg into %rax and push it (left-to-right), THEN pop into the
+    # SysV arg registers in reverse. This keeps already-evaluated args on the stack
+    # (not in caller-saved regs) so a strlit/call during a later arg can't clobber
+    # them. The push/pop pairs leave %rsp 16-aligned at the call site.
+    let i = 0u64
+    while (< i (len args))
+        if (irt_is_float (iv_ty args[i]))
+            do (panic "x86: float call arg (later milestone)")
+        end
+        set out = (strings::concat out (load_to_rax bx args[i]))
+        set out = (strings::concat out (line "    pushq %rax"))
+        set i = (+ i 1)
+    end
+    let n = (as (len args) i64)
+    let j = (- n 1i64)
+    while (>= j 0i64)
+        set out = (strings::concat out (line (cat2 "    popq " (argreg j))))
+        set j = (- j 1i64)
+    end
+    set out = (strings::concat out (line (cat2 "    call " callee)))
+    if has_dst
+        set out = (strings::concat out (store_rax bx dst))
+    end
+    return out
+end
+
+func emit_instr (bx BX) (ins Instr) (nroots i64) -> str
+    match ins
+        case (IConst dst v ty)
+            let out = (load_to_rax bx v)
+            return (strings::concat out (store_rax bx dst))
+        case (IBin dst op lhs rhs ty chk)
+            return (emit_bin bx dst op lhs rhs ty chk)
+        case (IUn dst op v ty chk)
+            return (emit_un bx dst op v ty chk)
+        case (ICast dst v toty)
+            # int<->int: load, normalize to the target width, store. (float later)
+            if (irt_is_float toty)
+                do (panic "x86: float cast (later milestone)")
+            end
+            if (irt_is_float (iv_ty v))
+                do (panic "x86: float cast (later milestone)")
+            end
+            let out = (load_into bx "%rax" v)
+            set out = (strings::concat out (extend_rax (irt_bits toty) (irt_signed toty)))
+            return (strings::concat out (store_rax bx dst))
+        case (IAssign p src)
+            match p
+                case (PLocal name ty)
+                    let out = (load_to_rax bx src)
+                    return (strings::concat out (line (cat3 "    movq %rax, " (off_mem (slot_off bx (lkey name))) "")))
+                else
+                    do (panic "x86: only PLocal assignment supported (aggregates later)")
+            end
+        case (ICall has_dst dst callee args ty)
+            return (emit_call bx has_dst dst callee args)
+        case (IEnumConst dst enum_name variant intval)
+            let out = (line (cat2 "    movq $" (cat2 (i2s intval) ", %rax")))
+            return (strings::concat out (store_rax bx dst))
+        case (IBr target)
+            return (line (cat2 "    jmp " (lbl bx target)))
+        case (ICondBr cond then_l else_l)
+            let out = (load_into bx "%rax" cond)
+            set out = (strings::concat out (line "    testq %rax, %rax"))
+            set out = (strings::concat out (line (cat2 "    jne " (lbl bx then_l))))
+            set out = (strings::concat out (line (cat2 "    jmp " (lbl bx else_l))))
+            return out
+        case (IRet has_val v)
+            let out = ""
+            if (> nroots 0i64)
+                set out = (strings::concat out (line (cat2 "    movl $" (cat2 (i2s nroots) ", %edi"))))
+                set out = (strings::concat out (line "    call cl_gc_pop_roots"))
+            end
+            if has_val
+                if (irt_is_float (iv_ty v))
+                    do (panic "x86: float return (later milestone)")
+                end
+                set out = (strings::concat out (load_into bx "%rax" v))
+            end
+            set out = (strings::concat out (line "    leave"))
+            set out = (strings::concat out (line "    ret"))
+            return out
+        case (IPanic msg)
+            let out = (load_to_rax bx msg)
+            set out = (strings::concat out (line "    movq %rax, %rdi"))
+            set out = (strings::concat out (line "    call cl_panic"))
+            return out
+        else
+            do (panic "x86: unsupported instruction (later milestone)")
+    end
+    return ""
+end
+
+# --------------------------------------------------------------------------- #
+# Function emission
+# --------------------------------------------------------------------------- #
+
+func round16 (n i64) -> i64
+    let r = (% n 16i64)
+    if (== r 0i64)
+        return n
+    end
+    return (+ n (- 16i64 r))
+end
+
+func emit_func (f IRFunc) (strs {str str}) -> str
+    # 1) assign a slot to every param, non-unit temp, and local.
+    let slots {str i64} = (map str i64)
+    let off = 0i64
+    let pi = 0u64
+    while (< pi (len f.params))
+        set off = (- off 8i64)
+        set slots[(lkey f.params[pi].name)] = off
+        set pi = (+ pi 1)
+    end
+    let ti = 0u64
+    while (< ti (len f.temps))
+        match f.temps[ti]
+            case (Temp id ty)
+                if (not (irt_is_unit ty))
+                    set off = (- off 8i64)
+                    set slots[(tkey id)] = off
+                end
+            else
+                pass
+        end
+        set ti = (+ ti 1)
+    end
+    let li = 0u64
+    while (< li (len f.locals))
+        set off = (- off 8i64)
+        set slots[(lkey f.locals[li].name)] = off
+        set li = (+ li 1)
+    end
+    let frame = (round16 (- 0i64 off))
+    let bx = (BX slots: slots fname: f.name strs: strs)
+
+    # 2) collect managed slots (for GC rooting): (key, offset) pairs.
+    let rkeys {str} = (vec str)
+    set pi = 0u64
+    while (< pi (len f.params))
+        if (managed f.params[pi].ty)
+            if (not (is_simple_8byte f.params[pi].ty))
+                do (panic "x86: multi-word aggregate param (later milestone)")
+            end
+            do (push rkeys (lkey f.params[pi].name))
+        end
+        set pi = (+ pi 1)
+    end
+    let mtemps {str} = (vec str)
+    set ti = 0u64
+    while (< ti (len f.temps))
+        match f.temps[ti]
+            case (Temp id ty)
+                if (and (not (irt_is_unit ty)) (managed ty))
+                    if (not (is_simple_8byte ty))
+                        do (panic "x86: multi-word aggregate temp (later milestone)")
+                    end
+                    do (push mtemps (tkey id))
+                    do (push rkeys (tkey id))
+                end
+            else
+                pass
+        end
+        set ti = (+ ti 1)
+    end
+    let mlocals {str} = (vec str)
+    set li = 0u64
+    while (< li (len f.locals))
+        if (managed f.locals[li].ty)
+            if (not (is_simple_8byte f.locals[li].ty))
+                do (panic "x86: multi-word aggregate local (later milestone)")
+            end
+            do (push mlocals (lkey f.locals[li].name))
+            do (push rkeys (lkey f.locals[li].name))
+        end
+        set li = (+ li 1)
+    end
+    let nroots = (as (len rkeys) i64)
+
+    # 3) prologue
+    let out = ""
+    set out = (strings::concat out (line (cat2 f.name ":")))
+    set out = (strings::concat out (line "    pushq %rbp"))
+    set out = (strings::concat out (line "    movq %rsp, %rbp"))
+    if (> frame 0i64)
+        set out = (strings::concat out (line (cat2 "    subq $" (cat2 (i2s frame) ", %rsp"))))
+    end
+    # store incoming params (int-class only; ≤6)
+    if (> (len f.params) 6u64)
+        do (panic "x86: >6 params (stack params later)")
+    end
+    set pi = 0u64
+    while (< pi (len f.params))
+        if (irt_is_float f.params[pi].ty)
+            do (panic "x86: float param (later milestone)")
+        end
+        set out = (strings::concat out (line (cat2 "    movq " (cat3 (argreg (as pi i64)) ", " (off_mem (slot_off bx (lkey f.params[pi].name)))))))
+        set pi = (+ pi 1)
+    end
+    # zero managed temp/local slots (params already hold valid handles)
+    let zi = 0u64
+    while (< zi (len mtemps))
+        set out = (strings::concat out (line (cat3 "    movq $0, " (off_mem (slot_off bx mtemps[zi])) "")))
+        set zi = (+ zi 1)
+    end
+    set zi = 0u64
+    while (< zi (len mlocals))
+        set out = (strings::concat out (line (cat3 "    movq $0, " (off_mem (slot_off bx mlocals[zi])) "")))
+        set zi = (+ zi 1)
+    end
+    # root every managed slot on the shadow stack
+    let ri = 0u64
+    while (< ri (len rkeys))
+        set out = (strings::concat out (line (cat2 "    leaq " (cat2 (off_mem (slot_off bx rkeys[ri])) ", %rdi"))))
+        set out = (strings::concat out (line "    movl $8, %esi"))
+        set out = (strings::concat out (line "    call cl_gc_push_root"))
+        set ri = (+ ri 1)
+    end
+
+    # 4) body
+    let bi = 0u64
+    while (< bi (len f.blocks))
+        let blk = f.blocks[bi]
+        set out = (strings::concat out (line (cat2 (lbl bx blk.label) ":")))
+        let ii = 0u64
+        while (< ii (len blk.instrs))
+            set out = (strings::concat out (emit_instr bx blk.instrs[ii] nroots))
+            set ii = (+ ii 1)
+        end
+        set bi = (+ bi 1)
+    end
+    return out
+end
+
+# --------------------------------------------------------------------------- #
+# main wrapper + module driver
+# --------------------------------------------------------------------------- #
+
+func ends_with_main (s str) -> bool
+    let cs = (strings::chars s)
+    let suf = (strings::chars "__main")
+    if (< (len cs) (len suf))
+        return false
+    end
+    let off = (- (len cs) (len suf))
+    let i = 0u64
+    while (< i (len suf))
+        if (not (== cs[(+ off i)] suf[i]))
+            return false
+        end
+        set i = (+ i 1)
+    end
+    return true
+end
+
+func irt_is_int_ret (t IRType) -> bool
+    match t
+        case (TyOf st)
+            match st
+                case (TInt n)
+                    return true
+                else
+                    return false
+            end
+        else
+            return false
+    end
+    return false
+end
+
+func main_wrapper (m IRModule) -> str
+    let found = false
+    let tname = ""
+    let tret = (TyOf t: (TPrim name: "unit"))
+    let i = 0u64
+    while (< i (len m.funcs))
+        if (and (not found) (ends_with_main m.funcs[i].name))
+            set found = true
+            set tname = m.funcs[i].name
+            set tret = m.funcs[i].ret
+        end
+        set i = (+ i 1)
+    end
+    let out = ""
+    set out = (strings::concat out (line ".globl main"))
+    set out = (strings::concat out (line "main:"))
+    set out = (strings::concat out (line "    pushq %rbp"))
+    set out = (strings::concat out (line "    movq %rsp, %rbp"))
+    set out = (strings::concat out (line "    subq $16, %rsp"))
+    # argc/argv arrive in %edi/%rsi — set program args before clobbering them.
+    set out = (strings::concat out (line "    call cl_sys_set_args"))
+    set out = (strings::concat out (line "    leaq -8(%rbp), %rdi"))
+    set out = (strings::concat out (line "    call cl_gc_init"))
+    if (not found)
+        set out = (strings::concat out (line "    xorl %eax, %eax"))
+        set out = (strings::concat out (line "    leave"))
+        set out = (strings::concat out (line "    ret"))
+        return out
+    end
+    set out = (strings::concat out (line (cat2 "    call " tname)))
+    if (not (irt_is_int_ret tret))
+        set out = (strings::concat out (line "    xorl %eax, %eax"))
+    end
+    set out = (strings::concat out (line "    leave"))
+    set out = (strings::concat out (line "    ret"))
+    return out
+end
+
+export func emit (m IRModule) -> str
+    let strs = (collect_strs m)
+    let out = ""
+    set out = (strings::concat out (line "    .section .rodata"))
+    set out = (strings::concat out (line ".Lcl_divzero:"))
+    set out = (strings::concat out (line "    .asciz \"integer division by zero\""))
+    set out = (strings::concat out (line ".Lcl_overflow:"))
+    set out = (strings::concat out (line "    .asciz \"integer overflow\""))
+    # string-literal pool (one rodata entry per distinct literal; cl_strlit interns
+    # by pointer, so identical literals share a label -> a single interned handle).
+    for s in (map_keys strs)
+        set out = (strings::concat out (line (cat2 strs[s] ":")))
+        set out = (strings::concat out (line (cat3 "    .asciz \"" (asm_escape s) "\"")))
+    end
+    set out = (strings::concat out (line "    .text"))
+    let i = 0u64
+    while (< i (len m.funcs))
+        set out = (strings::concat out (emit_func m.funcs[i] strs))
+        set out = (strings::concat out (line ""))
+        set i = (+ i 1)
+    end
+    set out = (strings::concat out (main_wrapper m))
+    return out
+end
