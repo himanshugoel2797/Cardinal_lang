@@ -82,6 +82,9 @@ uint64_t cl_map_len(cl_map m);
  * and command-line arguments). cl_sys_set_args is called by the emitted main. */
 cl_str cl_fs__read_file(cl_str path);
 bool   cl_fs__exists(cl_str path);
+void   cl_fs__write_file(cl_str path, cl_str contents);
+void   cl_fs__read_file_cb(cl_str path, cl_closure cb);
+void   cl_fs__write_file_cb(cl_str path, cl_str contents, cl_closure cb);
 cl_vec cl_sys__args(void);
 void   cl_sys_set_args(int argc, char **argv);
 

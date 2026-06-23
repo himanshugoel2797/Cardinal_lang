@@ -610,6 +610,51 @@ bool cl_fs__exists(cl_str path) {
     return ok;
 }
 
+/* fs::write_file(path, contents) -> unit : write contents verbatim (the full byte
+ * length, so embedded NULs are preserved), truncating any existing file. */
+void cl_fs__write_file(cl_str path, cl_str contents) {
+    char *p = cl_str_cstr(path);
+    FILE *f = fopen(p, "wb");
+    if (!f) { fprintf(stderr, "panic: write_file: %s\n", p); free(p); exit(101); }
+    uint64_t n = 0;
+    const char *b = str_bytes(contents, &n);
+    if (n > 0) fwrite(b, 1, n, f);
+    fclose(f);
+    free(p);
+}
+
+/* A closure for `func(str) -> unit` / `func(bool) -> unit` is a {fn, env} pair;
+ * the code pointer takes the env handle as its leading argument. */
+typedef void (*cl_cb_str)(cl_handle env, cl_str s);
+typedef void (*cl_cb_bool)(cl_handle env, bool b);
+
+/* fs::read_file_cb(path, cb) -> unit : read the file, then call cb(contents). The
+ * fresh string is rooted across the callback (which may allocate / trigger GC). */
+void cl_fs__read_file_cb(cl_str path, cl_closure cb) {
+    cl_str contents = cl_fs__read_file(path);
+    cl_gc_push_root(&contents, sizeof contents);
+    ((cl_cb_str)cb.fn)(cb.env, contents);
+    cl_gc_pop_roots(1);
+}
+
+/* fs::write_file_cb(path, contents, cb) -> unit : write the file, then call cb(ok)
+ * with whether the write succeeded (no panic on failure). */
+void cl_fs__write_file_cb(cl_str path, cl_str contents, cl_closure cb) {
+    char *p = cl_str_cstr(path);
+    bool ok = true;
+    FILE *f = fopen(p, "wb");
+    if (!f) {
+        ok = false;
+    } else {
+        uint64_t n = 0;
+        const char *b = str_bytes(contents, &n);
+        if (n > 0 && fwrite(b, 1, n, f) != n) ok = false;
+        fclose(f);
+    }
+    free(p);
+    ((cl_cb_bool)cb.fn)(cb.env, ok);
+}
+
 /* Program arguments (set from main's argv; arg[0] is the first arg AFTER the
  * program name, matching the interpreter's sys::args). */
 static int    g_argc = 0;
