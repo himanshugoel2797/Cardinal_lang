@@ -437,6 +437,65 @@ func is_int_name (s str) -> bool
     return (str_in_vec s v)
 end
 
+# DESIGN §7.2 (Rust-style suffix): an integer literal whose value does not fit
+# its (suffix or inferred-context) type is a compile error. Literals are always
+# non-negative (unary minus is a separate op), so we treat the stored i64 bit
+# pattern as an unsigned magnitude `u` (the lexer panics on a >u64 magnitude, so
+# `u` is the true value here) and compare against the type's max representable
+# magnitude.
+func int_fits (value i64) (tyname str) -> bool
+    let u = (as value u64)
+    let limit = (bnot 0u64)
+    if (strings::eq tyname "i8")
+        set limit = 127u64
+    elsif (strings::eq tyname "i16")
+        set limit = 32767u64
+    elsif (strings::eq tyname "i32")
+        set limit = 2147483647u64
+    elsif (strings::eq tyname "i64")
+        set limit = 9223372036854775807u64
+    elsif (strings::eq tyname "u8")
+        set limit = 255u64
+    elsif (strings::eq tyname "u16")
+        set limit = 65535u64
+    elsif (strings::eq tyname "u32")
+        set limit = 4294967295u64
+    elsif (strings::eq tyname "u64")
+        set limit = (bnot 0u64)
+    else
+        return true
+    end
+    return (<= u limit)
+end
+
+func check_int_fits (ctx Ctx) (value i64) (tyname str) -> unit
+    if (not (int_fits value tyname))
+        do (err ctx (strings::concat "integer literal out of range for " tyname))
+    end
+end
+
+# A non-zero IEEE value `d` is infinite iff d == d*2 (0 also satisfies this, NaN
+# never does — and a float literal is never NaN). Used to detect a float literal
+# that rounds to infinity at its target type (DESIGN §7.2: that is a compile
+# error, mirroring the integer literal range check).
+func f64_is_inf (d f64) -> bool
+    return (and (not (== d 0.0)) (== d (* d 2.0)))
+end
+
+func check_float_fits (ctx Ctx) (text str) (tyname str) -> unit
+    let d = (convert::str_to_float text)
+    if (f64_is_inf d)
+        do (err ctx (strings::concat "float literal out of range for " tyname))
+        return
+    end
+    if (strings::eq tyname "f32")
+        let f = (as d f32)
+        if (f64_is_inf (as f f64))
+            do (err ctx "float literal out of range for f32")
+        end
+    end
+end
+
 func is_float_name (s str) -> bool
     return (or (strings::eq s "f32") (strings::eq s "f64"))
 end
@@ -702,6 +761,9 @@ func builtin_path_type (m str) (f str) -> Type
         if (strings::eq f "str_to_int")
             return (mk_fn1 (t_str) (TInt name: "i64"))
         end
+        if (strings::eq f "str_to_float")
+            return (mk_fn1 (t_str) (TFloat name: "f64"))
+        end
         return TNone
     end
     if (strings::eq m "fs")
@@ -795,6 +857,7 @@ func builtin_fn_names (m str) -> {str}
         do (push v "chr")
         do (push v "int_to_str")
         do (push v "str_to_int")
+        do (push v "str_to_float")
     end
     if (strings::eq m "fs")
         do (push v "read_file")
@@ -1428,13 +1491,21 @@ export func check_expr (ctx Ctx) (e Expr) (scope {str Binding}) (expected Type) 
     match e
         case (EInt value suffix)
             if (strings::eq suffix "")
+                if (is_int expected)
+                    do (check_int_fits ctx value (type_name expected))
+                end
                 return TUInt
             end
+            do (check_int_fits ctx value suffix)
             return (TInt name: suffix)
         case (EFloat text suffix)
             if (strings::eq suffix "")
+                if (is_float expected)
+                    do (check_float_fits ctx text (type_name expected))
+                end
                 return TUFloat
             end
+            do (check_float_fits ctx text suffix)
             return (TFloat name: suffix)
         case (EBool value)
             return (t_bool)
@@ -1630,6 +1701,24 @@ func check_op (ctx Ctx) (op str) (args {Expr}) (scope {str Binding}) -> Type
     let argts {Type} = (vec Type)
     for a in args
         do (push argts (check_expr ctx a scope TNone))
+    end
+    # If unification pins these operands to a concrete int type (e.g. the untyped
+    # literal in `(< 5000000000 n)` is pinned to n's i32), range-check any direct
+    # literal operand against it by re-checking with that expected type. A nested
+    # op re-handles its own operands, so `(* 200 200)` -> u8 still WRAPS while a
+    # bare out-of-range literal operand is rejected (DESIGN §7.2).
+    let cnum = TNone
+    let foundc = false
+    for t in argts
+        if (and (not foundc) (or (is_int t) (is_float t)))
+            set cnum = t
+            set foundc = true
+        end
+    end
+    if foundc
+        for a in args
+            do (check_expr ctx a scope cnum)
+        end
     end
     if (is_arith_op op)
         return (unify_num ctx argts)

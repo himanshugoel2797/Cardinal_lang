@@ -192,6 +192,7 @@ class Checker:
             sig.funcs["chr"] = FuncT((IntT("u32"),), CHAR)
             sig.funcs["int_to_str"] = FuncT((IntT("i64"),), STR)
             sig.funcs["str_to_int"] = FuncT((STR,), IntT("i64"))
+            sig.funcs["str_to_float"] = FuncT((STR,), FloatT("f64"))
             self.sigs[name] = sig
             return sig
         if name == "fs":
@@ -552,12 +553,45 @@ class Checker:
         e.ctype = t                      # annotate AST for the lowering pass
         return t
 
+    def _int_lit_fits(self, value, tyname, node):
+        # DESIGN §7.2 (Rust-style suffix): an integer literal whose value does
+        # not fit its (suffix or inferred-context) type is a compile error.
+        # Literals are non-negative (unary minus is a separate op).
+        bits, signed = INT_TYPES[tyname]
+        hi = (1 << (bits - 1)) - 1 if signed else (1 << bits) - 1
+        if not (0 <= value <= hi):
+            self.err(f"integer literal {value} out of range for {tyname}", node)
+
+    def _float_lit_fits(self, value, tyname, node):
+        # A float literal that rounds to infinity at its target type is a compile
+        # error (DESIGN §7.2). `value` is the already-parsed f64 (inf if it even
+        # overflows f64). For f32, packing raises iff it rounds to inf.
+        import math, struct
+        if math.isinf(value):
+            self.err(f"float literal out of range for {tyname}", node)
+            return
+        if tyname == "f32":
+            try:
+                struct.pack("f", value)
+            except OverflowError:
+                self.err(f"float literal out of range for f32", node)
+
     def _check_expr(self, e, scope, sig, expected):
         k = type(e)
         if k is IntLit:
-            return IntT(e.ty) if e.ty else UINT_LIT
+            if e.ty:
+                self._int_lit_fits(e.value, e.ty, e)          # suffixed: own type
+                return IntT(e.ty)
+            if isinstance(expected, IntT):
+                self._int_lit_fits(e.value, expected.name, e)  # bare: context type
+            return UINT_LIT
         if k is FloatLit:
-            return FloatT(e.ty) if e.ty else UFLOAT_LIT
+            if e.ty:
+                self._float_lit_fits(e.value, e.ty, e)          # suffixed: own type
+                return FloatT(e.ty)
+            if isinstance(expected, FloatT):
+                self._float_lit_fits(e.value, expected.name, e)  # bare: context type
+            return UFLOAT_LIT
         if k is BoolLit:
             return BOOL
         if k is CharLit:
@@ -665,6 +699,15 @@ class Checker:
             self.expect_bool(self.check_expr(e.args[0], scope, sig, BOOL), e.args[0])
             return BOOL
         argts = [self.check_expr(a, scope, sig, None) for a in e.args]
+        # When unification pins these operands to a concrete int type (e.g. the
+        # untyped literal in `(< 5000000000 n)` is pinned to n's i32), range-check
+        # any direct literal operand against it. Re-checking via check_expr lets a
+        # nested op handle its own operands (so `(* 200 200)` -> u8 still WRAPS,
+        # while a bare out-of-range literal operand is rejected).
+        cnum = next((t for t in argts if isinstance(t, (IntT, FloatT))), None)
+        if cnum is not None:
+            for a in e.args:
+                self.check_expr(a, scope, sig, cnum)
         if op in ("+", "-", "*", "/", "%"):
             return self.unify_num(argts, e)
         if op in ("<", "<=", ">", ">=", "==", "!="):

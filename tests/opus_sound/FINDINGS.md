@@ -5,8 +5,36 @@ validation**, so out-of-range constants reach radically different runtime
 behavior across the three paths. 3 confirmed soundness families (8 repros), all
 `checkcmp` AGREE (py=ok card=ok) yet diverge at runtime.
 
-## CONFIRMED SOUNDNESS BREAKS (status: DOCUMENTED — fix is a coordinated
-## lexer + both-checkers + interpreter change, deferred as a focused follow-up)
+## CONFIRMED SOUNDNESS BREAKS — ALL FIXED
+
+Resolution (coordinated lexer + both-checkers + interpreter + runtime change),
+grounded in DESIGN: a *literal* that cannot fit its type is a compile error
+(§7.2 / §539 Rust-style suffix), while arithmetic *overflow* wraps (§161 machine
+semantics). All 8 repros now agree three-way (`run3`) or AGREE-on-reject in both
+checkers (`checkcmp`):
+
+- **Family 1 (arithmetic overflow → wraps):** the interpreter wrapped untyped
+  arithmetic into the target width at the coerce boundary (was `_check_fits`
+  panic), matching the backends. s04→64, s05→−31072, s06→0; all PASS three-way.
+- **Family 1 single literals + Family 2 (out-of-range literal → reject):** both
+  checkers range-check integer literals — suffixed against the suffix type, bare
+  untyped against the inferred/context type (a per-op re-check pins comparison
+  operands like s07). The Cardinal lexer (which accumulates in i64) now panics on
+  a >u64 magnitude so s14 errors instead of silently wrapping. s07/s10/s14/s15
+  AGREE-reject.
+- **Family 3 (out-of-f32 literal → reject):** the user chose *reject* (Rust-style,
+  consistent with ints) over saturation. Added a `convert::str_to_float` builtin
+  (interp + both checker sigs + C runtime `cl_convert__str_to_float`/strtod); both
+  checkers reject a float literal that rounds to ∞ at its target type (exact IEEE
+  agreement: Python `struct.pack`, Cardinal `(as d f32)` + an `inf` test). The
+  interpreter also clamps `_round_float` to a signed ∞ instead of raising an
+  uncaught `OverflowError`. s17 AGREE-reject; PASS three-way (all reject).
+
+Gates after the fix: difftest **AGREE=13/0**; C & x86 self-host **byte-identical
+(73915 lines)**; sweeps **arith/floats/control/aggregates 116/116**,
+**collections/sums/gc 105/105**.
+
+## ORIGINAL REPORT (for reference)
 
 ### Family 1 — untyped literal / arithmetic folded into a smaller type, unchecked
 `coerce(UntypedInt, Int)` returns the target with no value check. The interpreter

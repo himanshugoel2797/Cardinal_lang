@@ -45,6 +45,7 @@ uint32_t cl_convert__ord(int32_t ch);
 int32_t  cl_convert__chr(uint32_t v);
 cl_str   cl_convert__int_to_str(int64_t v);
 int64_t  cl_convert__str_to_int(cl_str s);                        /* panics if not an integer */
+double   cl_convert__str_to_float(cl_str s);                      /* panics if not a number */
 
 /* Scalar -> str for `to_str` (DESIGN §5.5). cl_convert__int_to_str is the i64 one. */
 cl_str   cl_u64_to_str(uint64_t v);

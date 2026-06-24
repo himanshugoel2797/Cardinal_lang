@@ -544,6 +544,27 @@ int64_t cl_convert__str_to_int(cl_str s) {
     return neg ? -acc : acc;
 }
 
+double cl_convert__str_to_float(cl_str s) {
+    uint64_t nbytes;
+    const char *b = str_bytes(s, &nbytes);
+    /* Trim surrounding ASCII whitespace, then parse an IEEE double via strtod
+     * (correctly-rounded decimal->f64, matching the bootstrap interpreter's
+     * Python float()). An out-of-f64 magnitude yields +/-inf, like strtod. */
+    uint64_t i = 0, j = nbytes;
+    while (i < j && (b[i] == ' ' || b[i] == '\t' || b[i] == '\n' || b[i] == '\r')) i++;
+    while (j > i && (b[j-1] == ' ' || b[j-1] == '\t' || b[j-1] == '\n' || b[j-1] == '\r')) j--;
+    if (i >= j) cl_panic_cstr("str_to_float: not a number");
+    char buf[512];
+    uint64_t len = j - i;
+    if (len >= sizeof(buf)) cl_panic_cstr("str_to_float: number too long");
+    for (uint64_t k = 0; k < len; k++) buf[k] = b[i + k];
+    buf[len] = '\0';
+    char *end = NULL;
+    double d = strtod(buf, &end);
+    if (end != buf + len) cl_panic_cstr("str_to_float: not a number");
+    return d;
+}
+
 /* String-literal interning: a literal's C-string pointer is stable, so map it to
  * a managed string held forever in a permanently-rooted map. Emitted code calls
  * cl_strlit("...") inline; this guarantees a stable, already-rooted handle (no

@@ -1796,7 +1796,13 @@ class Interp:
     def _round_float(self, v, ty):
         if ty == "f32":
             import struct
-            return struct.unpack("f", struct.pack("f", v))[0]
+            try:
+                return struct.unpack("f", struct.pack("f", v))[0]
+            except OverflowError:
+                # A literal beyond the f32 range rounds to a signed infinity
+                # (IEEE saturation), matching the C backend's (float)x. NEVER
+                # raise an uncaught host exception (DESIGN: no host accidents).
+                return float("inf") if v > 0 else float("-inf")
         return v
 
     def _fzero(self):
@@ -1816,8 +1822,14 @@ class Interp:
             if name in INT_TYPES:
                 if isinstance(v, CInt):
                     if v.ty is None:
-                        self._check_fits(v.val, name)
-                        return CInt(v.val, name)
+                        # DESIGN §161: integer overflow wraps (two's complement
+                        # machine semantics). An untyped value computed in
+                        # arbitrary precision (e.g. `(* 200 200)` -> u8) wraps
+                        # into the target width, matching the backends. A *bare*
+                        # out-of-range literal is rejected earlier by the checker
+                        # (Rust-style suffix range check), so the only untyped
+                        # values reaching here are computed ones, which wrap.
+                        return self.wrap_int(v.val, name)
                     if v.ty == name:
                         return v
                     raise CardinalError(f"expected {name}, got {v.ty} (use a cast)")
@@ -2146,10 +2158,23 @@ def builtin_convert():
         # wrap to i64 (two's complement) so an overflowing string matches the
         # C/x86 runtime (cl_convert__str_to_int) instead of keeping a wide value.
         return interp.wrap_int(-acc if neg else acc, "i64")
+    def _str_to_float(interp, args):
+        # Correctly-rounded decimal -> f64 (matches the C runtime's strtod). An
+        # out-of-f64 magnitude rounds to a signed infinity, like strtod; an
+        # un-parseable string panics. NOT Python's lenient float() extras
+        # (underscores etc.) — strict-ish to match the runtime.
+        s = args[0].strip()
+        if not s:
+            raise Panic("str_to_float: not a number")
+        try:
+            return CFloat(float(s), "f64")
+        except (ValueError, OverflowError):
+            raise Panic(f"str_to_float: not a number: {args[0]!r}")
     ms.env.define("ord", Builtin("convert::ord", _ord), mutable=False)
     ms.env.define("chr", Builtin("convert::chr", _chr), mutable=False)
     ms.env.define("int_to_str", Builtin("convert::int_to_str", _int_to_str), mutable=False)
     ms.env.define("str_to_int", Builtin("convert::str_to_int", _str_to_int), mutable=False)
+    ms.env.define("str_to_float", Builtin("convert::str_to_float", _str_to_float), mutable=False)
     return ms
 
 

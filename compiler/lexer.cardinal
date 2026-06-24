@@ -103,6 +103,18 @@ func digit_val (c char) -> i64
     return (- 1)
 end
 
+# True if accumulating `cur*base + digit` would exceed the u64 range — i.e. the
+# integer literal is too large to represent losslessly. Magnitudes are unsigned
+# (literals are non-negative), so the check is done in u64: cur*base + digit
+# overflows iff cur > (U64_MAX - digit) / base.
+func acc_overflow_u64 (cur i64) (base i64) (digit i64) -> bool
+    let uv = (as cur u64)
+    let ub = (as base u64)
+    let ud = (as digit u64)
+    let umax = (bnot 0u64)
+    return (> uv (/ (- umax ud) ub))
+end
+
 func is_int_suffix (s str) -> bool
     return (or (strings::eq s "i8")  (or (strings::eq s "i16") (or (strings::eq s "i32")
            (or (strings::eq s "i64") (or (strings::eq s "u8")  (or (strings::eq s "u16")
@@ -241,6 +253,7 @@ func scan_number (src str) (cs [char]) (start u64) (n u64) -> NumRes
     end
 
     let value = 0i64
+    let overflowed = false
     let is_float = false
     let ftext = ""
 
@@ -251,9 +264,15 @@ func scan_number (src str) (cs [char]) (start u64) (n u64) -> NumRes
         if (== ch '_')
             set i = (+ i 1)
         elsif (and (== base 16) (is_hex ch))
+            if (acc_overflow_u64 value 16 (digit_val ch))
+                set overflowed = true
+            end
             set value = (+ (* value 16) (digit_val ch))
             set i = (+ i 1)
         elsif (and (not (== base 16)) (is_digit ch))
+            if (acc_overflow_u64 value base (digit_val ch))
+                set overflowed = true
+            end
             set value = (+ (* value base) (digit_val ch))
             set ftext = (strings::concat ftext (strings::from_char ch))
             set i = (+ i 1)
@@ -307,6 +326,9 @@ func scan_number (src str) (cs [char]) (start u64) (n u64) -> NumRes
             do (panic "float literal with integer suffix")
         end
         return (NumRes tok: (KFloat text: ftext suffix: suffix) next: i)
+    end
+    if overflowed
+        do (panic "integer literal exceeds u64 range")
     end
     return (NumRes tok: (KInt value: value suffix: suffix) next: i)
 end

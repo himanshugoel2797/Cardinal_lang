@@ -129,17 +129,21 @@ restricted to numbers, char, bool, str, enum, null.
 
 # Campaign 4 — Opus fleet (`tests/opus_*`, run one-at-a-time, RAM-safe)
 
-## opus_sound (17 tests) — literal-range soundness FAMILY (documented, fix deferred)
-Headline find: **neither checker range-checks literals**. Out-of-range constants
-diverge three ways — see `tests/opus_sound/FINDINGS.md` for the 8 repros. Three
-families: (1) untyped literal/arithmetic folded into a smaller type (interp panics
-in arbitrary precision; backends silently wrap — incl. s07 control-flow
-corruption); (2) suffixed literal overflowing its own type (3-way split, no two
-agree — s14/s15); (3) out-of-f32 float literal (interp Python crash / C inf / x86
-assembler error — s17). The proper fix is coordinated across lexer (lossless
-literal values), both checkers (range-check bare + suffixed + float literals), and
-the interpreter (wrap untyped arithmetic per DESIGN "overflow wraps"; never raise
-an uncaught Python exception). Captured as a focused follow-up.
+## opus_sound (17 tests) — literal-range soundness FAMILY — ALL 8 FIXED
+Headline find: **neither checker range-checked literals**. Out-of-range constants
+diverged three ways — see `tests/opus_sound/FINDINGS.md`. Fixed per DESIGN: a
+*literal* that can't fit its type is a compile error (§7.2/§539 Rust-style suffix),
+while arithmetic *overflow* wraps (§161). (1) Untyped arithmetic now WRAPS in the
+interpreter at the coerce boundary, matching the backends (s04→64, s05→−31072,
+s06→0). (2) Both checkers range-check integer literals — suffixed vs the suffix
+type, bare vs the inferred/context type, with a per-op re-check for comparison
+operands (s07/s10/s14/s15 reject); the Cardinal lexer panics on a >u64 magnitude
+(s14). (3) Out-of-f32 float literals are REJECTED (user's call, Rust-consistent):
+new `convert::str_to_float` builtin (interp + both checkers + C runtime strtod);
+both checkers reject a literal that rounds to ∞ at its target type; the interpreter
+clamps `_round_float` to a signed ∞ instead of crashing (s17 rejects). Gates:
+difftest AGREE=13/0; C & x86 self-host byte-identical (73915 lines); sweeps
+116/116 + 105/105.
 
 ## opus_codegen (25 tests) — 2 fixed
 x86 codegen / register-pressure stress; the park-args-to-scratch design shrugged
