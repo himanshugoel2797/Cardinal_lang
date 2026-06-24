@@ -21,6 +21,7 @@ import strings
 import convert
 import checker
 import ir
+import strutil
 
 # --------------------------------------------------------------------------- #
 # Small string helpers
@@ -1410,65 +1411,14 @@ func ret_is_mem (ft Type) (sm {str IRStruct}) -> bool
     return false
 end
 
-func bc_str_lt (a str) (b str) -> bool
-    let ca = (strings::chars a)
-    let cb = (strings::chars b)
-    let n = (len ca)
-    if (< (len cb) n)
-        set n = (len cb)
-    end
-    let i = 0u64
-    while (< i n)
-        let xa = (convert::ord ca[i])
-        let xb = (convert::ord cb[i])
-        if (< xa xb)
-            return true
-        end
-        if (> xa xb)
-            return false
-        end
-        set i = (+ i 1)
-    end
-    return (< (len ca) (len cb))
-end
-
+# Sorted map keys (lexicographic, via the shared strutil::sorted) — deterministic
+# emission order for the self-host fixed point (DESIGN §11).
 func sorted_keys (m {str Type}) -> {str}
-    let ks {str} = (vec str)
-    for k in (map_keys m)
-        do (push ks k)
-    end
-    let i = 1u64
-    while (< i (len ks))
-        let j = i
-        while (and (> j 0u64) (bc_str_lt ks[j] ks[(- j 1u64)]))
-            let tmp = ks[j]
-            set ks[j] = ks[(- j 1u64)]
-            set ks[(- j 1u64)] = tmp
-            set j = (- j 1u64)
-        end
-        set i = (+ i 1)
-    end
-    return ks
+    return (strutil::sorted (map_keys m))
 end
 
-# Same insertion sort, for a {str str} map (the string/float-literal pools).
 func sorted_str_keys (m {str str}) -> {str}
-    let ks {str} = (vec str)
-    for k in (map_keys m)
-        do (push ks k)
-    end
-    let i = 1u64
-    while (< i (len ks))
-        let j = i
-        while (and (> j 0u64) (bc_str_lt ks[j] ks[(- j 1u64)]))
-            let tmp = ks[j]
-            set ks[j] = ks[(- j 1u64)]
-            set ks[(- j 1u64)] = tmp
-            set j = (- j 1u64)
-        end
-        set i = (+ i 1)
-    end
-    return ks
+    return (strutil::sorted (map_keys m))
 end
 
 # A function-as-value thunk: drops the env arg the closure ABI inserts and shifts

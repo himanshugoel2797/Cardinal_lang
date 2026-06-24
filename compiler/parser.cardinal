@@ -15,6 +15,7 @@ module parser
 import strings
 import convert
 import lexer
+import strutil
 
 # --------------------------------------------------------------------------- #
 # AST: types
@@ -299,15 +300,7 @@ end
 # --------------------------------------------------------------------------- #
 
 func str_in (s str) (list {str}) -> bool
-    let i = 0u64
-    let n = (len list)
-    while (< i n)
-        if (strings::eq list[i] s)
-            return true
-        end
-        set i = (+ i 1)
-    end
-    return false
+    return (strutil::contains list s)
 end
 
 func is_op_sym (s str) -> bool

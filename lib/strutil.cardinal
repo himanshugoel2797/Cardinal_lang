@@ -1,0 +1,66 @@
+module strutil
+
+# General-purpose string-vector utilities, factored out of the compiler (which
+# had 3 copies of byte-wise less-than and 5 copies of this insertion sort). Until
+# the language has generics these operate on `{str}` specifically.
+
+import strings
+import convert
+
+# Lexicographic byte-wise less-than on two strings (compares Unicode scalar
+# values of the chars, shorter string first on a common prefix).
+export func str_lt (a str) (b str) -> bool
+    let ca = (strings::chars a)
+    let cb = (strings::chars b)
+    let n = (len ca)
+    if (< (len cb) n)
+        set n = (len cb)
+    end
+    let i = 0u64
+    while (< i n)
+        let xa = (convert::ord ca[i])
+        let xb = (convert::ord cb[i])
+        if (< xa xb)
+            return true
+        end
+        if (> xa xb)
+            return false
+        end
+        set i = (+ i 1)
+    end
+    return (< (len ca) (len cb))
+end
+
+# A new vector with the elements of `xs` sorted ascending by `str_lt` (stable
+# insertion sort). Commonly used as `(strutil::sorted (map_keys m))` to iterate a
+# map in deterministic key order.
+export func sorted (xs {str}) -> {str}
+    let ks {str} = (vec str)
+    for k in xs
+        do (push ks k)
+    end
+    let i = 1u64
+    while (< i (len ks))
+        let j = i
+        while (and (> j 0u64) (str_lt ks[j] ks[(- j 1u64)]))
+            let tmp = ks[j]
+            set ks[j] = ks[(- j 1u64)]
+            set ks[(- j 1u64)] = tmp
+            set j = (- j 1u64)
+        end
+        set i = (+ i 1)
+    end
+    return ks
+end
+
+# True if `s` is an element of `xs`.
+export func contains (xs {str}) (s str) -> bool
+    let i = 0u64
+    while (< i (len xs))
+        if (strings::eq xs[i] s)
+            return true
+        end
+        set i = (+ i 1)
+    end
+    return false
+end

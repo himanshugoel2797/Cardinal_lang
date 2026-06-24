@@ -19,13 +19,13 @@ keep=0
 [ "$1" = "--keep" ] && keep=1
 
 echo "[1/4] Python-hosted compiler emits the compiler -> cc1.c"
-( cd "$comp" && python3 "$root/bootstrap/cardinal.py" emitir.cardinal "$comp/emitir.cardinal" ) > "$tmp/cc1.c"
+( cd "$comp" && python3 "$root/bootstrap/cardinal.py" emitir.cardinal "$comp/emitir.cardinal" "$root/lib" ) > "$tmp/cc1.c"
 
 echo "[2/4] build native cc1 from cc1.c"
 cc -O2 -fwrapv -I "$rt" -o "$tmp/cc1" "$tmp/cc1.c" "$rt/cardinal_rt.c" "$rt/cardinal_gc.c"
 
 echo "[3/4] cc1 recompiles the compiler -> cc2.c"
-( cd "$comp" && "$tmp/cc1" "$comp/emitir.cardinal" ) > "$tmp/cc2.c"
+( cd "$comp" && "$tmp/cc1" "$comp/emitir.cardinal" "$root/lib" ) > "$tmp/cc2.c"
 
 echo "[4/4] compare cc1.c vs cc2.c"
 if diff -q "$tmp/cc1.c" "$tmp/cc2.c" >/dev/null; then

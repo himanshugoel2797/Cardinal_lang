@@ -19,6 +19,7 @@ import strings
 import convert
 import fs
 import parser
+import strutil
 
 # --------------------------------------------------------------------------- #
 # Type representation
@@ -515,14 +516,7 @@ end
 # --------------------------------------------------------------------------- #
 
 func str_in_vec (s str) (v {str}) -> bool
-    let i = 0u64
-    while (< i (len v))
-        if (strings::eq v[i] s)
-            return true
-        end
-        set i = (+ i 1)
-    end
-    return false
+    return (strutil::contains v s)
 end
 
 # Module-local type identity is carried as a qualified name string "mod::bare"

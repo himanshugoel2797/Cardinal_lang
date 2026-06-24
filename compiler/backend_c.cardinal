@@ -13,6 +13,7 @@ import strings
 import convert
 import checker
 import ir
+import strutil
 
 # --------------------------------------------------------------------------- #
 # Type mapping
@@ -527,46 +528,10 @@ func thunk_def (name str) (ft Type) -> str
     return (strings::concat out "}\n")
 end
 
-# Lexicographic key order so thunk emission is deterministic (§11).
-func bc_str_lt (a str) (b str) -> bool
-    let ca = (strings::chars a)
-    let cb = (strings::chars b)
-    let n = (len ca)
-    if (< (len cb) n)
-        set n = (len cb)
-    end
-    let i = 0u64
-    while (< i n)
-        let xa = (convert::ord ca[i])
-        let xb = (convert::ord cb[i])
-        if (< xa xb)
-            return true
-        end
-        if (> xa xb)
-            return false
-        end
-        set i = (+ i 1)
-    end
-    return (< (len ca) (len cb))
-end
-
+# Lexicographic key order so thunk emission is deterministic (§11), via the
+# shared strutil::sorted.
 func sorted_thunk_names (m {str Type}) -> {str}
-    let ks {str} = (vec str)
-    for k in (map_keys m)
-        do (push ks k)
-    end
-    let i = 1u64
-    while (< i (len ks))
-        let j = i
-        while (and (> j 0u64) (bc_str_lt ks[j] ks[(- j 1u64)]))
-            let tmp = ks[j]
-            set ks[j] = ks[(- j 1u64)]
-            set ks[(- j 1u64)] = tmp
-            set j = (- j 1u64)
-        end
-        set i = (+ i 1)
-    end
-    return ks
+    return (strutil::sorted (map_keys m))
 end
 
 # The integer type name of an IRType ("" if not an int), and its bit width.
@@ -1131,14 +1096,7 @@ func proto (f IRFunc) -> str
 end
 
 func str_in (v {str}) (s str) -> bool
-    let i = 0u64
-    while (< i (len v))
-        if (strings::eq v[i] s)
-            return true
-        end
-        set i = (+ i 1)
-    end
-    return false
+    return (strutil::contains v s)
 end
 
 func referenced_labels (f IRFunc) -> {str}

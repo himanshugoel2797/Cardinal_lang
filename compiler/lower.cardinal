@@ -19,6 +19,7 @@ import convert
 import parser
 import checker
 import ir
+import strutil
 
 # --------------------------------------------------------------------------- #
 # Mutable lowering state. All mutated state is behind reference vecs/maps (cells
@@ -949,22 +950,7 @@ end
 
 # Sort a vec of strings lexicographically (deterministic env layout, §11).
 func sorted_strs (xs {str}) -> {str}
-    let ks {str} = (vec str)
-    for k in xs
-        do (push ks k)
-    end
-    let i = 1u64
-    while (< i (len ks))
-        let j = i
-        while (and (> j 0u64) (str_lt ks[j] ks[(- j 1u64)]))
-            let tmp = ks[j]
-            set ks[j] = ks[(- j 1u64)]
-            set ks[(- j 1u64)] = tmp
-            set j = (- j 1u64)
-        end
-        set i = (+ i 1)
-    end
-    return ks
+    return (strutil::sorted xs)
 end
 
 # Lower an anonymous-function literal to a closure value (closure conversion):
@@ -2593,48 +2579,12 @@ func build_callmap (ctx Ctx) (sig Sig) -> {str str}
     return m
 end
 
-# Lexicographic string order (by codepoint), so emission order is independent of
-# map iteration order — a prerequisite for the byte-identical self-host fixed
-# point (DESIGN §11). map_keys order must NOT drive output.
-func str_lt (a str) (b str) -> bool
-    let ca = (strings::chars a)
-    let cb = (strings::chars b)
-    let n = (len ca)
-    if (< (len cb) n)
-        set n = (len cb)
-    end
-    let i = 0u64
-    while (< i n)
-        let xa = (convert::ord ca[i])
-        let xb = (convert::ord cb[i])
-        if (< xa xb)
-            return true
-        end
-        if (> xa xb)
-            return false
-        end
-        set i = (+ i 1)
-    end
-    return (< (len ca) (len cb))
-end
-
+# Sorted map keys (lexicographic, via the shared strutil::sorted), so emission
+# order is independent of map iteration order — a prerequisite for the
+# byte-identical self-host fixed point (DESIGN §11). map_keys order must NOT
+# drive output.
 func sorted_sig_names (m {str Sig}) -> {str}
-    let ks {str} = (vec str)
-    for k in (map_keys m)
-        do (push ks k)
-    end
-    let i = 1u64
-    while (< i (len ks))
-        let j = i
-        while (and (> j 0u64) (str_lt ks[j] ks[(- j 1u64)]))
-            let tmp = ks[j]
-            set ks[j] = ks[(- j 1u64)]
-            set ks[(- j 1u64)] = tmp
-            set j = (- j 1u64)
-        end
-        set i = (+ i 1)
-    end
-    return ks
+    return (strutil::sorted (map_keys m))
 end
 
 export func lower_program (src str) (searchdirs {str}) -> IRModule
