@@ -227,6 +227,30 @@ func escape_char (c char) -> char
     return c
 end
 
+# Build a str from the char slice cs[start..stop), clamped to len(cs). Used in
+# place of `strings::substr src ...`: substr is codepoint-indexed and rescans
+# UTF-8 from byte 0 on every call, so slicing the whole source once per token
+# would make the lexer O(n^2) in source size. `cs` is already materialized
+# (chars(src)), so building from it is O(stop-start) per token instead.
+func slice_str (cs [char]) (start u64) (stop u64) -> str
+    let m = (len cs)
+    let lo = start
+    if (> lo m)
+        set lo = m
+    end
+    let hi = stop
+    if (> hi m)
+        set hi = m
+    end
+    let out = ""
+    let i = lo
+    while (< i hi)
+        set out = (strings::concat out (strings::from_char cs[i]))
+        set i = (+ i 1)
+    end
+    return out
+end
+
 # --------------------------------------------------------------------------- #
 # Number scanner
 # --------------------------------------------------------------------------- #
@@ -311,7 +335,7 @@ func scan_number (src str) (cs [char]) (start u64) (n u64) -> NumRes
         while (and (< i n) (or (is_letter cs[i]) (is_digit cs[i])))
             set i = (+ i 1)
         end
-        set suffix = (strings::substr src sstart (- i sstart))
+        set suffix = (slice_str cs sstart i)
         if (not (or (is_int_suffix suffix) (is_float_suffix suffix)))
             do (panic (strings::concat "bad numeric suffix: " suffix))
         end
@@ -469,7 +493,7 @@ export func lex (src str) -> {Tok}
             while (and (< i n) (is_ident_cont cs[i]))
                 set i = (+ i 1)
             end
-            let word = (strings::substr src start (- i start))
+            let word = (slice_str cs start i)
             if (map_has kws word)
                 do (push toks (Tok kind: (KKw name: word) line: line))
             elsif (map_has types word)
@@ -482,7 +506,7 @@ export func lex (src str) -> {Tok}
             # punctuation: try a two-char operator first
             let two = ""
             if (< (+ i 1) n)
-                set two = (strings::substr src i 2)
+                set two = (slice_str cs i (+ i 2))
             end
             if (or (strings::eq two "::") (or (strings::eq two "->")
                (or (strings::eq two "<=") (or (strings::eq two ">=")

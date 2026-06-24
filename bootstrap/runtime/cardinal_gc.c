@@ -30,13 +30,20 @@ static uint32_t  g_cap;
 static uint32_t  g_live;
 static uint64_t  g_bytes_live;
 static uint64_t  g_bytes_since_gc;
-static uint64_t  g_threshold = 1u << 20;   /* 1 MiB default */
+static uint64_t  g_threshold = 1u << 20;   /* 1 MiB default; grows with live set */
+static uint64_t  g_min_threshold = 1u << 20; /* floor for the adaptive threshold */
 static uint64_t  g_collections;
 static int       g_stats;
 
 /* mark worklist */
 static uint32_t *g_work;
 static uint32_t  g_work_cap, g_work_len;
+
+/* free-slot stack: indices of unused handle-table slots, so alloc_slot is O(1)
+ * instead of linearly scanning g_table for a hole. Slots are pushed here when
+ * freed (sweep) or first created (table growth), and popped on allocation. */
+static uint32_t *g_free;
+static uint32_t  g_free_cap, g_free_len;
 
 /* shadow stack: precise roots, parallel arrays of (address, byte-size) */
 static void    **g_root_addr;
@@ -87,10 +94,11 @@ void cl_gc_init(void *stack_base) {
     (void)stack_base;                 /* rooting is via the shadow stack now */
     const char *t = getenv("CARDINAL_GC_THRESHOLD");
     if (t) g_threshold = strtoull(t, NULL, 0);
+    g_min_threshold = g_threshold;
     if (getenv("CARDINAL_GC_STATS")) { g_stats = 1; atexit(gc_print_stats); }
 }
 
-void cl_gc_set_threshold(uint64_t bytes) { g_threshold = bytes; }
+void cl_gc_set_threshold(uint64_t bytes) { g_threshold = bytes; g_min_threshold = bytes; }
 uint64_t cl_gc_live_count(void)  { return g_live; }
 uint64_t cl_gc_bytes_live(void)  { return g_bytes_live; }
 
@@ -112,15 +120,26 @@ void *cl_gc_deref(cl_handle h) {
     return g_table[i].ptr;
 }
 
+static void free_push(uint32_t i) {
+    if (g_free_len == g_free_cap) {
+        g_free_cap = g_free_cap ? g_free_cap * 2 : 256;
+        g_free = (uint32_t *)realloc(g_free, g_free_cap * sizeof(uint32_t));
+        if (!g_free) cl_panic_cstr("out of memory (gc freelist)");
+    }
+    g_free[g_free_len++] = i;
+}
+
 static uint32_t alloc_slot(void) {
-    for (uint32_t i = 1; i < g_cap; i++)        /* index 0 reserved (null) */
-        if (!g_table[i].used) return i;
-    uint32_t old = g_cap;
+    if (g_free_len) return g_free[--g_free_len];    /* O(1): reuse a free slot */
+    uint32_t old = g_cap;                           /* table full -> grow */
     g_cap = g_cap ? g_cap * 2 : 64;
     g_table = (cl_slot *)realloc(g_table, g_cap * sizeof(cl_slot));
     if (!g_table) cl_panic_cstr("out of memory (handle table)");
     memset(g_table + old, 0, (g_cap - old) * sizeof(cl_slot));
-    return old ? old : 1;
+    uint32_t first = old ? old : 1;                 /* index 0 reserved (null) */
+    for (uint32_t i = first + 1; i < g_cap; i++)    /* seed free list with the rest */
+        free_push(i);
+    return first;
 }
 
 cl_handle cl_gc_alloc(uint64_t size) {
@@ -190,7 +209,14 @@ void cl_gc_collect(void) {
             g_table[i].generation++;        /* invalidate stale handles */
             g_bytes_live -= g_table[i].size;
             g_live--;
+            free_push(i);                   /* return slot to the free list */
         }
     }
     g_bytes_since_gc = 0;
+    /* Adaptive trigger: collect again only after the live set grows by ~2x.
+     * A fixed threshold with a growing live set makes total GC work O(n^2)
+     * (O(n) collections, each scanning the O(n) live heap); scaling the
+     * threshold with live size amortizes collection to ~O(n). */
+    g_threshold = g_bytes_live * 2;
+    if (g_threshold < g_min_threshold) g_threshold = g_min_threshold;
 }
