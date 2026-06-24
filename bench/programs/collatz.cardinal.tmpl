@@ -1,0 +1,23 @@
+module collatz
+import io
+# Sum of Collatz stopping times for 1..N. Branchy integer work. units = N.
+func main () -> i32
+    let total = 0i64
+    let k = 1i64
+    while (<= k __N__i64)
+        let n = k
+        let steps = 0i64
+        while (> n 1i64)
+            if (== (% n 2i64) 0i64)
+                set n = (/ n 2i64)
+            else
+                set n = (+ (* n 3i64) 1i64)
+            end
+            set steps = (+ steps 1i64)
+        end
+        set total = (+ total steps)
+        set k = (+ k 1i64)
+    end
+    do (io::println total)
+    return 0i32
+end

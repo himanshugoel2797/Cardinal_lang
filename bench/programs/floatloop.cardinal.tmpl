@@ -1,0 +1,15 @@
+module floatloop
+import io
+# Floating-point arithmetic loop. Work-units = N iterations.
+func main () -> i32
+    let acc f64 = 1.0
+    let i = 0i64
+    while (< i __N__i64)
+        let x = (as i f64)
+        set acc = (+ (* acc 1.0000001f64) (* x 0.5f64))
+        set acc = (- acc (* acc 0.0000005f64))
+        set i = (+ i 1i64)
+    end
+    do (io::println acc)
+    return 0i32
+end

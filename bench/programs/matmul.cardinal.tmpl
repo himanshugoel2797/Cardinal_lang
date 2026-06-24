@@ -1,0 +1,16 @@
+module matmul
+import io
+# Nested loops computing a scalar reduction over an N*N space. units = N*N.
+func main () -> i32
+    let acc = 0i64
+    for i = 0 to __N__
+        for j = 0 to __N__
+            let a = (as i i64)
+            let b = (as j i64)
+            set acc = (+ acc (* (+ a 1i64) (+ b 1i64)))
+            set acc = (% acc 2147483647i64)
+        end
+    end
+    do (io::println acc)
+    return 0i32
+end

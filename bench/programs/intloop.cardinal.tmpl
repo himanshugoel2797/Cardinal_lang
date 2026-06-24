@@ -1,0 +1,15 @@
+module intloop
+import io
+# Tight integer arithmetic loop. Work-units = N iterations.
+func main () -> i32
+    let acc = 1i64
+    let i = 0i64
+    while (< i __N__i64)
+        set acc = (+ acc (* i 3i64))
+        set acc = (% acc 1000000007i64)
+        set acc = (bxor acc i)
+        set i = (+ i 1i64)
+    end
+    do (io::println acc)
+    return 0i32
+end
