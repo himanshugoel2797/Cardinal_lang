@@ -1095,10 +1095,6 @@ func proto (f IRFunc) -> str
     return (strings::concat (ctype f.ret) (strings::concat " " (strings::concat f.name (strings::concat "(" (strings::concat ps ")")))))
 end
 
-func str_in (v {str}) (s str) -> bool
-    return (strutil::contains v s)
-end
-
 func referenced_labels (f IRFunc) -> {str}
     let refs {str} = (vec str)
     let bi = 0u64
@@ -1184,7 +1180,7 @@ func func_def (f IRFunc) -> str
     let bi = 0u64
     while (< bi (len f.blocks))
         let blk = f.blocks[bi]
-        if (str_in referenced blk.label)
+        if (strutil::contains referenced blk.label)
             set out = (strings::concat out (strings::concat "  " (strings::concat blk.label ":;\n")))
         end
         let ii = 0u64

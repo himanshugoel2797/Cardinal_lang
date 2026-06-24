@@ -299,10 +299,6 @@ end
 # Operator / keyword classification (mirrors OPERATOR_SYMS / WORD_OPS)
 # --------------------------------------------------------------------------- #
 
-func str_in (s str) (list {str}) -> bool
-    return (strutil::contains list s)
-end
-
 func is_op_sym (s str) -> bool
     let ops {str} = (vec str)
     do (push ops "+")
@@ -316,7 +312,7 @@ func is_op_sym (s str) -> bool
     do (push ops ">=")
     do (push ops "==")
     do (push ops "!=")
-    return (str_in s ops)
+    return (strutil::contains ops s)
 end
 
 func is_word_op (s str) -> bool
@@ -330,7 +326,7 @@ func is_word_op (s str) -> bool
     do (push ops "bnot")
     do (push ops "shl")
     do (push ops "shr")
-    return (str_in s ops)
+    return (strutil::contains ops s)
 end
 
 func is_operator (p P) -> bool
@@ -390,7 +386,7 @@ func kw_in (p P) (terms {str}) -> bool
     if (not (at_kind p "kw"))
         return false
     end
-    return (str_in (tk_text (peek p)) terms)
+    return (strutil::contains terms (tk_text (peek p)))
 end
 
 # --------------------------------------------------------------------------- #

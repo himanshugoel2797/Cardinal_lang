@@ -435,7 +435,7 @@ func is_int_name (s str) -> bool
     do (push v "u16")
     do (push v "u32")
     do (push v "u64")
-    return (str_in_vec s v)
+    return (strutil::contains v s)
 end
 
 # DESIGN §7.2 (Rust-style suffix): an integer literal whose value does not fit
@@ -508,16 +508,12 @@ func is_prim_name (s str) -> bool
     do (push v "str")
     do (push v "unit")
     do (push v "handle")
-    return (str_in_vec s v)
+    return (strutil::contains v s)
 end
 
 # --------------------------------------------------------------------------- #
 # Small helpers
 # --------------------------------------------------------------------------- #
-
-func str_in_vec (s str) (v {str}) -> bool
-    return (strutil::contains v s)
-end
 
 # Module-local type identity is carried as a qualified name string "mod::bare"
 # in the TStruct/TEnum/TSum `name` field, so type_eq (string compare) is module
@@ -634,7 +630,7 @@ func defining_module (ctx Ctx) (n str) -> str
     for alias in (map_keys ctx.cur.imported)
         let mname = ctx.cur.imported[alias]
         if (and (map_has ctx.sigs mname) (sig_has_type ctx.sigs[mname] n))
-            if (not (str_in_vec mname found))
+            if (not (strutil::contains found mname))
                 do (push found mname)
             end
         end
@@ -801,7 +797,7 @@ func is_builtin_module (m str) -> bool
     do (push v "fs")
     do (push v "sys")
     do (push v "reflect")
-    return (str_in_vec m v)
+    return (strutil::contains v m)
 end
 
 # The reflect module's TypeInfo record (DESIGN §5.6 runtime type descriptors).
@@ -1104,7 +1100,7 @@ end
 # sum). Unlike find_variant (registry-wide, first-match-wins), this binds to the
 # scrutinee's own sum — matching the reference's `table[vname]`.
 func variant_in_sig (sig Sig) (sname str) (vname str) -> VarLookup
-    if (and (map_has sig.sum_variants sname) (str_in_vec vname sig.sum_variants[sname]))
+    if (and (map_has sig.sum_variants sname) (strutil::contains sig.sum_variants[sname] vname))
         if (map_has sig.variants vname)
             return (VarLookup found: true info: sig.variants[vname])
         end
@@ -1593,7 +1589,7 @@ func check_path (ctx Ctx) (parts {str}) -> Type
         let m1 = parts[1]
         # local enum  Enum::Variant
         if (map_has ctx.cur.enums m0)
-            if (not (str_in_vec m1 ctx.cur.enums[m0]))
+            if (not (strutil::contains ctx.cur.enums[m0] m1))
                 do (err ctx (strings::concat "no variant " (strings::concat m1 (strings::concat " in enum " m0))))
             end
             return (TEnum name: (make_qual ctx.cur.name m0))
@@ -1604,7 +1600,7 @@ func check_path (ctx Ctx) (parts {str}) -> Type
             if (map_has ctx.sigs mname)
                 let osig = ctx.sigs[mname]
                 if (map_has osig.enums m0)
-                    if (not (str_in_vec m1 osig.enums[m0]))
+                    if (not (strutil::contains osig.enums[m0] m1))
                         do (err ctx (strings::concat "no variant " (strings::concat m1 (strings::concat " in enum " m0))))
                     end
                     return (TEnum name: (make_qual mname m0))
@@ -1656,7 +1652,7 @@ func is_arith_op (op str) -> bool
     do (push v "*")
     do (push v "/")
     do (push v "%")
-    return (str_in_vec op v)
+    return (strutil::contains v op)
 end
 
 func is_cmp_op (op str) -> bool
@@ -1667,7 +1663,7 @@ func is_cmp_op (op str) -> bool
     do (push v ">=")
     do (push v "==")
     do (push v "!=")
-    return (str_in_vec op v)
+    return (strutil::contains v op)
 end
 
 func is_bit_op (op str) -> bool
@@ -1678,7 +1674,7 @@ func is_bit_op (op str) -> bool
     do (push v "shl")
     do (push v "shr")
     do (push v "bnot")
-    return (str_in_vec op v)
+    return (strutil::contains v op)
 end
 
 func check_op (ctx Ctx) (op str) (args {Expr}) (scope {str Binding}) -> Type
