@@ -64,3 +64,15 @@ export func contains (xs {str}) (s str) -> bool
     end
     return false
 end
+
+# Index of the first occurrence of `s` in `xs`, or -1 if absent.
+export func index_of (xs {str}) (s str) -> i64
+    let i = 0u64
+    while (< i (len xs))
+        if (strings::eq xs[i] s)
+            return (as i i64)
+        end
+        set i = (+ i 1)
+    end
+    return (- 1i64)
+end

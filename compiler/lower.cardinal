@@ -118,17 +118,6 @@ func ival_name (v IVal) -> str
     return ""
 end
 
-func index_of (v {str}) (s str) -> i64
-    let i = 0u64
-    while (< i (len v))
-        if (strings::eq v[i] s)
-            return (as i i64)
-        end
-        set i = (+ i 1)
-    end
-    return 0i64
-end
-
 # --- local Type predicates / accessors (Type variants are exported, so we match
 # directly rather than export a pile of checker predicates) --- #
 
@@ -909,7 +898,7 @@ func lower_path (lx LX) (ts {str Binding}) (parts {str}) -> IVal
         let e1 = parts[1]
         # local enum  Enum::Variant
         if (map_has lx.ctx.cur.enums e0)
-            let idx = (index_of lx.ctx.cur.enums[e0] e1)
+            let idx = (strutil::index_of lx.ctx.cur.enums[e0] e1)
             let dst = (ir::fresh_temp lx.b (irt (TEnum name: e0)))
             do (ir::emit lx.b (IEnumConst dst: dst enum_name: e0 variant: e1 intval: idx))
             return dst
@@ -920,7 +909,7 @@ func lower_path (lx LX) (ts {str Binding}) (parts {str}) -> IVal
             if (map_has lx.ctx.sigs mname)
                 let osig = lx.ctx.sigs[mname]
                 if (map_has osig.enums e0)
-                    let idx = (index_of osig.enums[e0] e1)
+                    let idx = (strutil::index_of osig.enums[e0] e1)
                     let dst = (ir::fresh_temp lx.b (irt (TEnum name: e0)))
                     do (ir::emit lx.b (IEnumConst dst: dst enum_name: e0 variant: e1 intval: idx))
                     return dst
@@ -1417,7 +1406,7 @@ func sum_tag (lx LX) (sumq str) (variant str) -> i64
     if (map_has lx.ctx.sigs m)
         let sig = lx.ctx.sigs[m]
         if (map_has sig.sum_variants b)
-            return (index_of sig.sum_variants[b] variant)
+            return (strutil::index_of sig.sum_variants[b] variant)
         end
     end
     do (panic (strings::concat "lower: unknown sum variant " variant))
